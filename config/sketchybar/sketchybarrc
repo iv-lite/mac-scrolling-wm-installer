@@ -1,0 +1,152 @@
+#!/bin/bash
+# SketchyBar config — Nord theme, Rift integration
+# Config: ~/.config/sketchybar/sketchybarrc
+
+PLUGIN_DIR="$CONFIG_DIR/plugins"
+
+# ─────────────────────────────────────────────────────────────
+# Nord palette
+# ─────────────────────────────────────────────────────────────
+NORD_POLAR_0="0xff2e3440"  # base bg
+NORD_POLAR_1="0xff3b4252"  # item bg
+NORD_POLAR_2="0xff434c5e"  # inactive border
+NORD_POLAR_3="0xff4c566a"  # unfocused text
+NORD_SNOW_0="0xffd8dee9"   # text
+NORD_SNOW_1="0xffe5e9f0"   # label text
+NORD_FROST_CYAN="0xff8fbcbb"
+NORD_FROST_ICE="0xff88c0d0"   # primary accent / active ws
+NORD_FROST_BLUE="0xff81a1c1"  # front app / disk
+NORD_FROST_DEEP="0xff5e81ac"
+NORD_RED="0xffbf616a"       # memory
+NORD_ORANGE="0xffd08770"    # cpu
+NORD_YELLOW="0xffebcb8b"    # weather
+NORD_GREEN="0xffa3be8c"     # battery/ftp
+NORD_PURPLE="0xffb48ead"    # volume
+
+BAR_BG="0xcc2e3440"
+TRANSPARENT="0x00000000"
+ITEM_BG="0x503b4252"
+
+# ─────────────────────────────────────────────────────────────
+# Bar
+# ─────────────────────────────────────────────────────────────
+sketchybar --bar position=top height=36 blur_radius=30 color="$BAR_BG" \
+           --bar margin=0 padding_left=8 padding_right=8 \
+           --default icon.font="Hack Nerd Font:Bold:16.0" \
+                    icon.color="$NORD_SNOW_0" \
+                    label.font="Hack Nerd Font:Medium:13.0" \
+                    label.color="$NORD_SNOW_1" \
+                    background.color="$TRANSPARENT" \
+                    update_freq=0
+
+# ─────────────────────────────────────────────────────────────
+# Custom event fired by Rift (workspace_changed)
+# ─────────────────────────────────────────────────────────────
+sketchybar --add event rift_workspace_changed
+
+# ─────────────────────────────────────────────────────────────
+# Left: workspace indicators
+# ─────────────────────────────────────────────────────────────
+for i in 1 2 3 4 5 6 7 8 9; do
+  sketchybar --add item space."$i" left \
+    --set space."$i" \
+      icon="$i" \
+      label.drawing=off \
+      icon.font="Hack Nerd Font:Bold:15.0" \
+      icon.color="$NORD_POLAR_3" \
+      icon.padding_left=8 \
+      icon.padding_right=8 \
+      background.drawing=on \
+      background.color="$TRANSPARENT" \
+      background.corner_radius=6 \
+      background.height=24 \
+      script="$PLUGIN_DIR/rift.sh" \
+    --subscribe space."$i" rift_workspace_changed
+done
+
+# Separator
+sketchybar --add item spacer-left left \
+  --set spacer-left icon="|" icon.color="$NORD_POLAR_2" \
+        icon.padding_left=3 icon.padding_right=3 label.drawing=off
+
+# Front app
+sketchybar --add item front_app left \
+  --set front_app label.color="$NORD_FROST_BLUE" \
+        label.font="Hack Nerd Font:Bold:13.0" \
+        label.padding_left=2 label.padding_right=0 \
+        icon.drawing=off \
+        script="$PLUGIN_DIR/front_app.sh" \
+  --subscribe front_app front_app_switched
+
+# ─────────────────────────────────────────────────────────────
+# Right: widgets
+# ─────────────────────────────────────────────────────────────
+sketchybar --add item media right \
+  --set media icon="$NORD_FROST_ICE" \
+        background.color="$TRANSPARENT" background.height=24 \
+        icon.padding_right=2 label.padding_left=2 \
+        script="$PLUGIN_DIR/media.sh" \
+        update_freq=5 \
+  --subscribe media media_change system_woke
+
+sketchybar --add item weather right \
+  --set weather icon="$NORD_YELLOW" \
+        background.color="$ITEM_BG" background.height=24 background.corner_radius=6 \
+        padding_left=6 padding_right=6 \
+        script="$PLUGIN_DIR/weather.sh" \
+        update_freq=1800
+
+sketchybar --add item cpu right \
+  --set cpu icon="$NORD_ORANGE" \
+        background.color="$ITEM_BG" background.height=24 background.corner_radius=6 \
+        padding_left=6 padding_right=6 \
+        script="$PLUGIN_DIR/cpu.sh" \
+        update_freq=5
+
+sketchybar --add item memory right \
+  --set memory icon="$NORD_RED" \
+        background.color="$ITEM_BG" background.height=24 background.corner_radius=6 \
+        padding_left=6 padding_right=6 \
+        script="$PLUGIN_DIR/memory.sh" \
+        update_freq=10
+
+sketchybar --add item disk right \
+  --set disk icon="$NORD_FROST_BLUE" \
+        background.color="$ITEM_BG" background.height=24 background.corner_radius=6 \
+        padding_left=6 padding_right=6 \
+        script="$PLUGIN_DIR/disk.sh" \
+        update_freq=60
+
+sketchybar --add item wifi right \
+  --set wifi icon="$NORD_FROST_CYAN" \
+        background.color="$ITEM_BG" background.height=24 background.corner_radius=6 \
+        padding_left=6 padding_right=6 \
+        script="$PLUGIN_DIR/wifi.sh" \
+        update_freq=30
+
+sketchybar --add item volume right \
+  --set volume icon="$NORD_PURPLE" \
+        background.color="$ITEM_BG" background.height=24 background.corner_radius=6 \
+        padding_left=6 padding_right=6 \
+        script="$PLUGIN_DIR/volume.sh" \
+  --subscribe volume volume_change
+
+sketchybar --add item battery right \
+  --set battery icon="$NORD_GREEN" \
+        background.color="$ITEM_BG" background.height=24 background.corner_radius=6 \
+        padding_left=6 padding_right=6 \
+        script="$PLUGIN_DIR/battery.sh" \
+        update_freq=120 \
+  --subscribe battery system_woke power_source_change
+
+sketchybar --add item clock right \
+  --set clock icon="$NORD_FROST_ICE" \
+        background.color="$ITEM_BG" background.height=24 background.corner_radius=6 \
+        padding_left=6 padding_right=6 \
+        script="$PLUGIN_DIR/clock.sh" \
+        update_freq=10
+
+# ─────────────────────────────────────────────────────────────
+# Initial render
+# ─────────────────────────────────────────────────────────────
+sketchybar --update

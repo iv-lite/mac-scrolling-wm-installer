@@ -1,0 +1,13 @@
+#!/bin/bash
+# JankyBorders config — Nord theme
+# Loaded by the borders service from ~/.config/borders/bordersrc
+
+options=(
+	style=round
+	width=4.0
+	hidpi=on
+	active_color=0xff88c0d0
+	inactive_color=0xff434c5e
+)
+
+borders "${options[@]}"

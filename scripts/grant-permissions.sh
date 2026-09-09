@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RED=$'\033[0;31m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+fail() { echo "  ${RED}✗ $*${RESET}"; }
+
+# ─────────────────────────────────────────────────────────────
+# Grant Accessibility to CLI binaries (invisible in System Settings)
+# 1. user DB via tccutil-rs (no sudo, no SIP disable)
+# 2. system DB with sudo as fallback
+# 3. manual instructions as last resort
+# ─────────────────────────────────────────────────────────────
+grant() {
+	local bin="$1"
+	if [ ! -x "$bin" ]; then
+		warn "$bin not found — skipping"
+		return 0
+	fi
+	if command -v tccutil-rs >/dev/null 2>&1; then
+		if tccutil-rs grant --user Accessibility "$bin" >/dev/null 2>&1; then
+			ok "Accessibility granted to $bin (user db)"
+			return 0
+		fi
+		if sudo -n tccutil-rs grant Accessibility "$bin" >/dev/null 2>&1; then
+			ok "Accessibility granted to $bin (system db via sudo)"
+			return 0
+		fi
+	fi
+	fail "Could not grant Accessibility to $bin automatically."
+	echo "     Grant manually: System Settings → Privacy & Security →"
+	echo "     Accessibility → '+' → add '$bin'"
+}
+
+note "Granting Accessibility permissions..."
+
+grant "$(command -v rift 2>/dev/null || true)"
+grant "$(command -v sketchybar 2>/dev/null || true)"
+grant "$(command -v borders 2>/dev/null || true)"
+
+# The terminal itself needs Full Disk Access for tccutil-rs to open TCC.db.
+# If the grants above failed, surface a helpful hint.
+warn "If grants failed: the terminal app running this installer needs"
+echo "     'Full Disk Access' (System Settings → Privacy & Security → Full Disk Access),"
+echo "     then quit and reopen the terminal and re-run: bash scripts/grant-permissions.sh"
+
+# Restart tccd so any grants are picked up by running processes without waiting.
+if command -v tccutil-rs >/dev/null 2>&1; then
+	sudo -n launchctl stop com.apple.tccd >/dev/null 2>&1 || true
+fi
+
+echo ""
+ok "Permission grants finished"
