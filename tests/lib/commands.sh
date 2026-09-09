@@ -31,8 +31,9 @@ ensure_deps() {
   if ! command -v tart >/dev/null 2>&1; then need="$need cirruslabs/cli/tart"; fi
   if ! command -v sshpass >/dev/null 2>&1; then need="$need cirruslabs/cli/sshpass"; fi
   if [ -n "$need" ]; then
-    note "Tapping cirruslabs/cli (required for tart/sshpass)..."
+    note "Tapping and trusting cirruslabs/cli (required for tart/sshpass)..."
     brew tap cirruslabs/cli
+    brew trust cirruslabs/cli 2>/dev/null || true
     note "Installing missing requirements:$need"
     brew install $need
   fi
@@ -164,7 +165,7 @@ cmd_clean() {
   if brew tap 2>/dev/null | grep -q "^cirruslabs/cli$"; then
     [ -t 0 ] && read -p "  Untap cirruslabs/cli? [y/N] " yn || yn=""
     case "$yn" in
-      y|Y) brew untap cirruslabs/cli; ok "tap cirruslabs/cli removed";;
+      y|Y) brew untap cirruslabs/cli >/dev/null 2>&1; brew untrust cirruslabs/cli >/dev/null 2>&1 || true; ok "tap cirruslabs/cli removed";;
       *)   note "kept tap cirruslabs/cli";;
     esac
   fi
