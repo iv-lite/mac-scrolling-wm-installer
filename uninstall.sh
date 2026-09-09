@@ -23,9 +23,11 @@ echo "  This will:"
 echo "   • Stop/remove Rift, SketchyBar, JankyBorders services"
 echo "   • Revoke Accessibility permissions"
 echo "   • Move configs to ~/.config/backups (not deleted)"
-echo "   • Uninstall brew packages: rift, sketchybar, borders,"
-echo "     tccutil-rs, nowplaying-cli, jq, font-hack-nerd-font"
-echo "   • Untap: acsandmann/tap, FelixKratz/formulae, uinaf/tap"
+echo "   • Uninstall brew packages (you'll choose which to keep)"
+echo "     rift, sketchybar, borders, tccutil-rs, jq, nowplaying-cli,"
+echo "     ghostty, font-hack-nerd-font"
+echo "   • Untap repos no longer needed (acsandmann/tap,"
+echo "     FelixKratz/formulae, uinaf/tap)"
 echo "   • Revert system defaults (separate Spaces, hidden menu bar)"
 echo ""
 read -r -p "  Continue? [y/N] " answer
@@ -102,24 +104,94 @@ if [ -z "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 4. Uninstall brew packages + untaps
+# 4. Uninstall brew packages + untaps (interactive keep menu)
 # ─────────────────────────────────────────────────────────────
-echo ""
-note "Uninstalling brew packages..."
-
 if command -v brew >/dev/null 2>&1; then
-	brew uninstall rift >/dev/null 2>&1 && ok "Uninstalled rift" || warn "rift not installed — skipping"
-	brew uninstall sketchybar >/dev/null 2>&1 && ok "Uninstalled sketchybar" || warn "sketchybar not installed — skipping"
-	brew uninstall borders >/dev/null 2>&1 && ok "Uninstalled borders" || warn "borders not installed — skipping"
-	brew uninstall tccutil-rs >/dev/null 2>&1 && ok "Uninstalled tccutil-rs" || warn "tccutil-rs not installed — skipping"
-	brew uninstall nowplaying-cli >/dev/null 2>&1 && ok "Uninstalled nowplaying-cli" || warn "nowplaying-cli not installed — skipping"
-	brew uninstall jq >/dev/null 2>&1 && ok "Uninstalled jq" || warn "jq not installed — skipping"
-	brew uninstall --cask font-hack-nerd-font >/dev/null 2>&1 && ok "Uninstalled font-hack-nerd-font" || warn "font-hack-nerd-font not installed — skipping"
+	echo ""
+	note "Reviewing installed brew packages..."
 
-	brew untap acsandmann/tap >/dev/null 2>&1 || true
-	brew untap FelixKratz/formulae >/dev/null 2>&1 || true
-	brew untap uinaf/tap >/dev/null 2>&1 || true
-	ok "Brew taps removed (best-effort)"
+	# Installed-package catalog: name, type, originating tap (if any)
+	declare -a pkg_names pkg_types pkg_taps
+	n=0
+	add_pkg() {
+		local name="$1" type="$2" tap="${3:-}"
+		if brew list --"$type" "$name" >/dev/null 2>&1; then
+			pkg_names[$n]="$name"
+			pkg_types[$n]="$type"
+			pkg_taps[$n]="$tap"
+			n=$(( n + 1 ))
+		fi
+	}
+
+	add_pkg rift            formula acsandmann/tap
+	add_pkg sketchybar      formula FelixKratz/formulae
+	add_pkg borders         formula FelixKratz/formulae
+	add_pkg tccutil-rs      formula uinaf/tap
+	add_pkg nowplaying-cli  formula
+	add_pkg jq              formula
+	add_pkg ghostty         cask
+	add_pkg font-hack-nerd-font cask
+
+	if [ "$n" -eq 0 ]; then
+		warn "No packages from this setup are installed — nothing to uninstall."
+	else
+		echo ""
+		echo "  Installed packages from this setup:"
+		i=0
+		while [ "$i" -lt "$n" ]; do
+			echo "    [$(( i + 1 ))] ${pkg_names[$i]}"
+			i=$(( i + 1 ))
+		done
+		echo ""
+		echo "  Enter the numbers you want to KEEP (space-separated,"
+		read -r -p '  e.g. "3 6"), or press Enter to remove all: ' keep_answer
+
+		# Normalize the answer into a guarded space-delimited set: " 1 3 "
+		keep_set=""
+		for num in ${keep_answer:-}; do
+			case "$num" in
+				''|*[!0-9]*) continue ;;
+			esac
+			if [ "$num" -ge 1 ] && [ "$num" -le "$n" ]; then
+				keep_set="$keep_set $num"
+			fi
+		done
+		keep_set=" $keep_set "
+
+		echo ""
+		i=0
+		remove_taps=""
+		while [ "$i" -lt "$n" ]; do
+			num=$(( i + 1 ))
+			name="${pkg_names[$i]}"
+			type="${pkg_types[$i]}"
+			tap="${pkg_taps[$i]}"
+			if [[ " $keep_set " == *" $num "* ]]; then
+				ok "Keeping $name"
+			else
+				if brew uninstall --"$type" "$name" >/dev/null 2>&1; then
+					ok "Uninstalled $name"
+				else
+					warn "$name could not be uninstalled (best-effort)"
+				fi
+				if [ -n "$tap" ]; then
+					case "$remove_taps" in
+						*" $tap "*) ;;
+						*) remove_taps="$remove_taps $tap " ;;
+					esac
+				fi
+			fi
+			i=$(( i + 1 ))
+		done
+
+		# Only untap repos whose packages were actually removed
+		if [ -n "$remove_taps" ]; then
+			for tap in $remove_taps; do
+				brew untap "$tap" >/dev/null 2>&1 || true
+			done
+			ok "Brew taps removed (best-effort)"
+		fi
+	fi
 else
 	warn "brew not found — skipping package removal"
 fi

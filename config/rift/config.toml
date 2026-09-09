@@ -31,9 +31,15 @@ run_on_start = [
 # ─── Config hot reload ───
 hot_reload = true
 
+# Manage every macOS Space automatically (multi-monitor: no Option+Z per Space).
+# Toggle individual Spaces off anytime with Option+Z.
+default_disable = false
+
 [settings.layout]
 # niri-style scrollable columns
 mode = "scrolling"
+# Multi-monitor: arrange displays VERTICALLY (System Settings → Displays).
+# Side-by-side layouts cause windows to leak between scrolling strips.
 # New windows appended at the end of the strip (niri behaviour: never resize existing)
 window_insertion_point = "end_of_tree"
 
@@ -67,6 +73,12 @@ right = 15
 [settings.layout.gaps.inner]
 horizontal = 12
 vertical = 12
+
+# Per-display gap overrides (optional, multi-monitor).
+# Get your display UUIDs with:  rift-cli query displays
+# [settings.layout.gaps.per_display."<display-uuid>"]
+#   outer = { top = 8, left = 8, bottom = 8, right = 8 }
+#   inner = { horizontal = 8, vertical = 8 }
 
 [settings.gestures]
 # Trackpad swipes switch virtual workspaces
@@ -149,6 +161,16 @@ comb1 = "Alt + Shift"
 "comb1 + 8" = { move_window_to_workspace = 7 }
 "comb1 + 9" = { move_window_to_workspace = 8 }
 
+# ─── Displays (Meta+Alt+Arrows) ───
+"Meta + Alt + Left"          = { focus_display = "left" }
+"Meta + Alt + Right"         = { focus_display = "right" }
+"Meta + Alt + Up"            = { focus_display = "up" }
+"Meta + Alt + Down"          = { focus_display = "down" }
+"Meta + Alt + Shift + Left"  = { move_window_to_display = { selector = "left" } }
+"Meta + Alt + Shift + Right" = { move_window_to_display = { selector = "right" } }
+"Meta + Alt + Shift + Up"    = { move_window_to_display = { selector = "up" } }
+"Meta + Alt + Shift + Down"  = { move_window_to_display = { selector = "down" } }
+
 # Alt+Tab jumps between last two workspaces (kept from defaults)
 "Alt + Tab" = "switch_to_last_workspace"
 
@@ -168,9 +190,9 @@ comb1 = "Alt + Shift"
 "Alt + Space"           = "center_selection"
 
 # ─── Apps ───
-"Alt + Enter" = { "exec" = [
+"Meta + Ctrl + T" = { "exec" = [
   "/bin/bash", "-c",
-  "open -a \"/System/Applications/Utilities/Terminal.app\""
+  "open -a Ghostty"
 ] }
 
 # ─── Misc ───

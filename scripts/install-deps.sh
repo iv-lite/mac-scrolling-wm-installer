@@ -79,5 +79,16 @@ else
 	ok "Hack Nerd Font installed"
 fi
 
+# ─────────────────────────────────────────────────────────────
+# Ghostty terminal (opened via Ctrl+Cmd+T)
+# ─────────────────────────────────────────────────────────────
+note "Installing Ghostty terminal..."
+if brew list --cask ghostty >/dev/null 2>&1; then
+	ok "Ghostty already installed"
+else
+	brew install --cask ghostty
+	ok "Ghostty installed"
+fi
+
 echo ""
 ok "Dependencies ready"
