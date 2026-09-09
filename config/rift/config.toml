@@ -195,6 +195,12 @@ comb1 = "Alt + Shift"
   "open -a Ghostty"
 ] }
 
+# ─── Shortcut cheat sheet (SketchyBar) ───
+"Meta + Alt + K" = { "exec" = [
+  "/bin/bash", "-c",
+  "sketchybar --trigger cheatsheet_toggle"
+] }
+
 # ─── Misc ───
 "Alt + Shift + R" = "reload_config"
 "Alt + Shift + D" = "debug"

@@ -40,9 +40,10 @@ sketchybar --bar position=top height=36 blur_radius=30 color="$BAR_BG" \
                     update_freq=0
 
 # ─────────────────────────────────────────────────────────────
-# Custom event fired by Rift (workspace_changed)
+# Custom events fired by Rift
 # ─────────────────────────────────────────────────────────────
 sketchybar --add event rift_workspace_changed
+sketchybar --add event cheatsheet_toggle
 
 # ─────────────────────────────────────────────────────────────
 # Left: workspace indicators
@@ -77,6 +78,21 @@ sketchybar --add item front_app left \
         icon.drawing=off \
         script="$PLUGIN_DIR/front_app.sh" \
   --subscribe front_app front_app_switched
+
+# Shortcut cheat sheet (toggle with Cmd+Option+K)
+sketchybar --add item cheatsheet left \
+  --set cheatsheet icon="⌨" icon.color="$NORD_YELLOW" \
+        icon.padding_left=6 icon.padding_right=4 \
+        label.drawing=on label=" " \
+        label.padding_left=4 label.padding_right=6 \
+        label.background.drawing=off \
+        label.background.color="$ITEM_BG" \
+        label.background.corner_radius=6 \
+        label.background.height=22 \
+        background.color="$TRANSPARENT" background.height=24 \
+        script="$PLUGIN_DIR/cheatsheet.sh" \
+        click_script="sketchybar --trigger cheatsheet_toggle" \
+  --subscribe cheatsheet cheatsheet_toggle
 
 # ─────────────────────────────────────────────────────────────
 # Right: widgets
