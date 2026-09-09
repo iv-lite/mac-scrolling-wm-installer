@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Tart-based test workflow for the aerospace-installer project.
+#
+# Runs the real install.sh inside a fresh macOS guest VM and lets you
+# verify Rift tiling + SketchyBar visually via screenshots.
+#
+# Known limits:
+#   - Single virtual display  -> multi-monitor bindings cannot be tested.
+#   - CPU-rendered animations -> not representative of real GPU perf.
+#   - Accessibility grants    -> may need one manual GUI grant in the guest.
+#
+# Requires: Apple Silicon host, macOS 13+, Homebrew.
+# Requirements (tart, sshpass) are installed automatically on demand.
+# One-time:  ~25 GB base-image download on `setup`.
+#
+# Structure:
+#   tests/lib/common.sh    shared helpers (colours, SSH, VM lifecycle)
+#   tests/lib/commands.sh  per-subcommand implementations
+#
+# Usage: ./tests/tart-test.sh {setup|up|install|access|login|check|shot|snapshot|restore|ssh|stop|delete|clean}
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+source "$ROOT/tests/lib/common.sh"
+source "$ROOT/tests/lib/commands.sh"
+
+main() {
+  [ $# -ge 1 ] || { usage; exit 0; }
+  case "$1" in
+    -h|--help|help) usage;;
+    setup)          cmd_setup;;
+    clean)          cmd_clean;;
+    up|install|access|login|check|shot|snapshot|restore|ssh|stop|delete)
+      ensure_deps
+      case "$1" in
+        up)        cmd_up "${2:-}";;
+        install)   cmd_install;;
+        access)    cmd_access;;
+        login)     cmd_login;;
+        check)     cmd_check;;
+        shot)      cmd_shot;;
+        snapshot)  cmd_snapshot;;
+        restore)   cmd_restore "${2:-bare}";;
+        ssh)       cmd_ssh;;
+        stop)      cmd_stop;;
+        delete)    cmd_delete;;
+      esac
+      ;;
+    *) die "unknown command '$1'"; usage;;
+  esac
+}
+
+main "$@"
