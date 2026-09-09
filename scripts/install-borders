@@ -14,30 +14,29 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
-# Install SketchyBar
+# Install JankyBorders
 # ─────────────────────────────────────────────────────────────
-if command -v sketchybar >/dev/null 2>&1; then
-	ok "SketchyBar already installed"
+if command -v borders >/dev/null 2>&1; then
+	ok "JankyBorders already installed"
 else
-	note "Installing SketchyBar via Homebrew..."
+	note "Installing JankyBorders via Homebrew..."
 	brew tap FelixKratz/formulae
-	brew install sketchybar
-	ok "SketchyBar installed"
+	brew install borders
+	ok "JankyBorders installed"
 fi
 
 # ─────────────────────────────────────────────────────────────
-# Config + plugins
+# Config: ~/.config/borders/bordersrc (executed on launch)
 # ─────────────────────────────────────────────────────────────
-mkdir -p ~/.config/sketchybar/plugins
+mkdir -p ~/.config/borders
 
-if [ -f ~/.config/sketchybar/sketchybarrc ]; then
-	note "Existing sketchybarrc found — backing up"
-	cp ~/.config/sketchybar/sketchybarrc ~/.config/sketchybar/sketchybarrc.bak
+if [ -f ~/.config/borders/bordersrc ]; then
+	note "Existing bordersrc found — backing up"
+	cp ~/.config/borders/bordersrc ~/.config/borders/bordersrc.bak
 fi
 
-cp "$REPO_ROOT/config/sketchybar/sketchybarrc" ~/.config/sketchybar/sketchybarrc
-cp "$REPO_ROOT"/config/sketchybar/plugins/*.sh ~/.config/sketchybar/plugins/
-chmod +x ~/.config/sketchybar/plugins/*.sh
-ok "SketchyBar config + plugins installed (~/.config/sketchybar)"
+cp "$REPO_ROOT/config/borders/bordersrc" ~/.config/borders/bordersrc
+chmod +x ~/.config/borders/bordersrc
+ok "JankyBorders config installed (~/.config/borders/bordersrc)"
 
-warn "Do not run 'brew services start sketchybar' yet — enable-services.sh will do it."
+warn "Do not run 'brew services start borders' yet — enable-services will do it."

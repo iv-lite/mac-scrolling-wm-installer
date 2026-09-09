@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Shared helpers for the Tart test workflow.
-# Intended to be sourced by tests/tart-test.sh only.
+# Intended to be sourced by tests/preview only.
 
-[ -n "${ROOT:-}" ] || { echo "error: ROOT not set — run via tests/tart-test.sh" >&2; exit 1; }
+[ -n "${ROOT:-}" ] || { echo "error: ROOT not set — run via tests/preview" >&2; exit 1; }
 
 VM="rift-test"
 MOUNT_NAME="installer"

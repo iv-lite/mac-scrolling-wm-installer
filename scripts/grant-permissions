@@ -49,7 +49,7 @@ grant "$(command -v borders 2>/dev/null || true)"
 # If the grants above failed, surface a helpful hint.
 warn "If grants failed: the terminal app running this installer needs"
 echo "     'Full Disk Access' (System Settings → Privacy & Security → Full Disk Access),"
-echo "     then quit and reopen the terminal and re-run: bash scripts/grant-permissions.sh"
+echo "     then quit and reopen the terminal and re-run: bash scripts/grant-permissions"
 
 # Restart tccd so any grants are picked up by running processes without waiting.
 if command -v tccutil-rs >/dev/null 2>&1; then

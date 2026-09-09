@@ -45,4 +45,4 @@ note "Installing Rift launchd service..."
 rift service install
 ok "Rift service installed"
 
-warn "Rift will be started by enable-services.sh after permissions are granted."
+warn "Rift will be started by enable-services after permissions are granted."

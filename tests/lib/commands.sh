@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # Subcommands for the Tart test workflow.
-# Intended to be sourced by tests/tart-test.sh after lib/common.sh.
+# Intended to be sourced by tests/preview after lib/common.sh.
 
 usage() {
   cat <<EOF
-Usage: ./tests/tart-test.sh <command>
+Usage: ./tests/preview <command>
 
   setup      Install tart+sshpass, clone the host-matched base image, tune resources
   up         Boot the VM (GUI by default; --no-graphics for headless) and wait for SSH
-  install    Run install.sh inside the guest (via live host mount)
+  install    Run install inside the guest (via live host mount)
   access     Re-run the accessibility grant script in the guest
   login      Log out/in the GUI session to apply Spaces + menu-bar settings
   check      Query Rift state and installed formulae in the guest
   shot       Capture a screenshot into tests/screenshots/
   snapshot   Create 'bare' (fresh macOS) + 'provisioned' (after install) snapshots
-  restore    Restore a snapshot: './tests/tart-test.sh restore bare'
+  restore    Restore a snapshot: './tests/preview restore bare'
   ssh        Open an interactive shell on the guest
   stop       Gracefully stop the VM
   delete     Stop and delete the VM entirely
@@ -25,7 +25,7 @@ EOF
 ensure_deps() {
   if [ "${TART_DEPS_OK:-}" = "1" ]; then return 0; fi
   if ! command -v brew >/dev/null 2>&1; then
-    die "Homebrew is required — install it first (./install.sh can do this)"
+    die "Homebrew is required — install it first (./install can do this)"
   fi
   local need=""
   if ! command -v tart >/dev/null 2>&1; then need="$need cirruslabs/cli/tart"; fi
@@ -51,12 +51,12 @@ cmd_setup() {
   fi
   note "Tuning resources (4 CPU / 8 GB)..."
   tart set "$VM" --cpus 4 --memory 8192 2>/dev/null || true
-  ok "Setup done — run: ./tests/tart-test.sh up"
+  ok "Setup done — run: ./tests/preview up"
 }
 
 cmd_up() {
   local headless="${1:-}"
-  if ! vm_exists; then die "VM '$VM' does not exist — run: ./tests/tart-test.sh setup"; fi
+  if ! vm_exists; then die "VM '$VM' does not exist — run: ./tests/preview setup"; fi
   if is_running; then
     note "VM '$VM' is already running ($(tart ip "$VM"))"
   else
@@ -72,16 +72,16 @@ cmd_install() {
   note "Enabling passwordless sudo for 'admin' in guest..."
   guest_sudo "sh -c 'echo \"admin ALL=(ALL) NOPASSWD: ALL\" > /etc/sudoers.d/100-admin && chmod 440 /etc/sudoers.d/100-admin'" || \
     warn "could not configure passwordless sudo — install may prompt for the admin password"
-  note "Running install.sh inside the guest (live mount ${GUEST_DIR})..."
-  guest "cd '${GUEST_DIR}' && ./install.sh"
-  ok "install.sh finished in guest"
-  warn "Re-run grants if Accessibility failed:  ./tests/tart-test.sh access"
+  note "Running install inside the guest (live mount ${GUEST_DIR})..."
+  guest "cd '${GUEST_DIR}' && ./install"
+  ok "install finished in guest"
+  warn "Re-run grants if Accessibility failed:  ./tests/preview access"
   ask_cleanup
 }
 
 cmd_access() {
   ensure_running
-  guest "bash '${GUEST_DIR}/scripts/grant-permissions.sh'" || true
+  guest "bash '${GUEST_DIR}/scripts/grant-permissions'" || true
   warn "If grants failed above, open the VM window and grant manually:"
   warn "System Settings → Privacy & Security → Accessibility → enable Rift, SketchyBar, Borders"
 }
@@ -109,7 +109,7 @@ cmd_check() {
 
 ask_cleanup() {
   if [ ! -t 0 ]; then
-    note "Test finished — clean up later with: ./tests/tart-test.sh clean"
+    note "Test finished — clean up later with: ./tests/preview clean"
     return 0
   fi
   echo ""
@@ -117,7 +117,7 @@ ask_cleanup() {
   read -p "  Test finished. Clean up the test VM and tools now? [y/N] " yn
   case "$yn" in
     y|Y) cmd_clean;;
-    *)   note "Kept everything — clean up later with: ./tests/tart-test.sh clean";;
+    *)   note "Kept everything — clean up later with: ./tests/preview clean";;
   esac
 }
 
@@ -198,7 +198,7 @@ cmd_restore() {
   if [ "$snap" != "bare" ] && [ "$snap" != "provisioned" ]; then die "snapshot must be 'bare' or 'provisioned'"; fi
   stop_vm
   tart restore "$VM" "$snap"
-  ok "restored to '$snap' — run: ./tests/tart-test.sh up"
+  ok "restored to '$snap' — run: ./tests/preview up"
 }
 
 cmd_ssh() {

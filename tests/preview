@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tart-based test workflow for the aerospace-installer project.
 #
-# Runs the real install.sh inside a fresh macOS guest VM and lets you
+# Runs the real ./install inside a fresh macOS guest VM and lets you
 # verify Rift tiling + SketchyBar visually via screenshots.
 #
 # Known limits:
@@ -17,7 +17,7 @@
 #   tests/lib/common.sh    shared helpers (colours, SSH, VM lifecycle)
 #   tests/lib/commands.sh  per-subcommand implementations
 #
-# Usage: ./tests/tart-test.sh {setup|up|install|access|login|check|shot|snapshot|restore|ssh|stop|delete|clean}
+# Usage: ./tests/preview {setup|up|install|access|login|check|shot|snapshot|restore|ssh|stop|delete|clean}
 
 set -euo pipefail
 

@@ -14,7 +14,7 @@ and extra widgets), **JankyBorders** (window focus borders), and **Ghostty**
 ## Quick start
 
 ```sh
-./install.sh
+./install
 ```
 
 The installer runs these steps from `scripts/`:
@@ -111,7 +111,7 @@ be clicked.
 ## Uninstall
 
 ```sh
-./uninstall.sh
+./uninstall
 ```
 
 Stops and removes the services and binaries, moves configs to
@@ -121,20 +121,20 @@ Stops and removes the services and binaries, moves configs to
 
 ## Testing in a macOS VM (Tart)
 
-A full test workflow runs `install.sh` inside a real macOS guest VM, using
+A full test workflow runs `./install` inside a real macOS guest VM, using
 Apple's Virtualization.framework for near-native performance:
 
 ```sh
-./tests/tart-test.sh setup        # installs tart/sshpass (auto), clones host-matched base image
-./tests/tart-test.sh up           # boot guest, live-mount the repo, wait for SSH
-./tests/tart-test.sh install      # run install.sh in the guest (asks to clean up afterwards)
-./tests/tart-test.sh check        # query Rift workspaces + installed formulae
-./tests/tart-test.sh shot         # screenshot the bar/tiling into tests/screenshots/
-./tests/tart-test.sh clean        # interactively remove VM, tart, sshpass, base image
+./tests/preview setup        # installs tart/sshpass (auto), clones host-matched base image
+./tests/preview up           # boot guest, live-mount the repo, wait for SSH
+./tests/preview install      # run ./install in the guest (asks to clean up afterwards)
+./tests/preview check        # query Rift workspaces + installed formulae
+./tests/preview shot         # screenshot the bar/tiling into tests/screenshots/
+./tests/preview clean        # interactively remove VM, tart, sshpass, base image
 ```
 
 Dependencies (`tart`, `sshpass`) are installed automatically on demand and can
-be removed with `clean`. See `./tests/tart-test.sh help` for the full command
+be removed with `clean`. See `./tests/preview help` for the full command
 list. Limitations: single virtual display (multi-monitor can't be tested),
 CPU-rendered animations, Accessibility may need one manual grant inside the
 guest.
@@ -142,13 +142,13 @@ guest.
 ## Project layout
 
 ```
-install.sh                Main installer (runs scripts/*.sh)
-uninstall.sh              Full uninstaller with interactive keep menu
+install                   Main installer (runs scripts/*)
+uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
 config/rift/config.toml   Rift config (scrolling layout, bindings, integrations)
 config/sketchybar/        Bar config + plugins (rift, clock, media, weather, cpu, ...)
 config/borders/bordersrc  JankyBorders focus-border config
-tests/                    Tart VM test workflow (tests/tart-test.sh + lib/)
+tests/                    Tart VM test workflow (tests/preview + lib/)
 ```
 
 Configs are installed to `~/.config/{rift,sketchybar,borders}`; existing files

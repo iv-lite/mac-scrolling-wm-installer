@@ -16,7 +16,7 @@ run_step() {
 	echo "──────────────────────────────────────────────"
 	echo "  ${CYAN}▶ ${name}${RESET}"
 	echo "──────────────────────────────────────────────"
-	bash "$REPO_ROOT/scripts/$name.sh"
+	bash "$REPO_ROOT/scripts/$name"
 	local status=$?
 	if [ $status -ne 0 ]; then
 		echo ""
