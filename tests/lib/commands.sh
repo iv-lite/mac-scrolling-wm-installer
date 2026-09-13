@@ -8,6 +8,7 @@ usage() {
   echo "Usage: ./tests/preview <command>"
   echo ""
   echo "Host is auto-detected: macOS -> Tart hypervisor, Linux x86_64 -> QEMU/KVM."
+  echo "Running with no command defaults to: install requirements -> setup -> boot the VM."
   echo ""
   echo "  setup      Install deps, create the VM/disk layout (macOS: clones a"
   echo "             base image; Linux: requires TESTS_MACOS_DISK + boots once)"

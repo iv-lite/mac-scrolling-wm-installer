@@ -246,7 +246,7 @@ backend_restore() {
 
 backend_clean() {
   local yn=""
-  if vm_exists 2>/dev/null; then
+  if [ -d "$QEMU_DIR" ]; then
     vm_stop
     [ -t 0 ] && read -p "  Delete test VM artifacts '$QEMU_DIR' (disk overlays, OpenCore, logs)? [y/N] " yn || yn=""
     case "$yn" in

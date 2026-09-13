@@ -19,6 +19,7 @@
 #   tests/lib/commands.sh       per-subcommand implementations over the backend contract
 #
 # Usage: ./tests/preview {setup|up|install|access|login|check|shot|snapshot|restore|ssh|stop|delete|clean}
+# Running with no command defaults to: install requirements -> setup -> boot the VM.
 
 set -euo pipefail
 
@@ -28,7 +29,13 @@ source "$ROOT/tests/lib/common.sh"
 source "$ROOT/tests/lib/commands.sh"
 
 main() {
-  [ $# -ge 1 ] || { usage; exit 0; }
+  if [ $# -eq 0 ]; then
+    note "No command given — installing requirements and previewing the setup"
+    ensure_deps
+    cmd_setup
+    cmd_up
+    return 0
+  fi
   case "$1" in
     -h|--help|help) usage;;
     setup)          cmd_setup;;
