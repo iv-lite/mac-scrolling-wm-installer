@@ -10,19 +10,19 @@ note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
-# Disable "Displays have separate Spaces" — AeroSpace's recommended setting.
-# Counterintuitive: spans-displays = true ⇔ separate Spaces OFF.
-# AeroSpace manages its own virtual workspaces; having fewer macOS Spaces makes
-# the public APIs it relies on more stable (focus, cross-monitor moves).
-if [ "$(defaults read com.apple.spaces spans-displays 2>/dev/null)" != "1" ]; then
-	note "Disabling 'Displays have separate Spaces' (AeroSpace-recommended)..."
-	defaults write com.apple.spaces "spans-displays" -bool true
-	ok "spans-displays set to true (spaces span all displays)"
+# Enable "Displays have separate Spaces" — Rift's recommended setting.
+# Counterintuitive: spans-displays = false ⇔ separate Spaces ON.
+# Unlike AeroSpace, Rift works with separate Spaces enabled (and recommends it);
+# each display/space gets its own independent tiling layout.
+if [ "$(defaults read com.apple.spaces spans-displays 2>/dev/null)" != "0" ]; then
+	note "Enabling 'Displays have separate Spaces' (Rift-recommended)..."
+	defaults write com.apple.spaces "spans-displays" -bool false
+	ok "spans-displays set to false (separate Spaces)"
 else
-	ok "'Displays have separate Spaces' already disabled"
+	ok "'Displays have separate Spaces' already enabled"
 fi
 
-# The native menu bar stays visible — AeroSpaceBar lives inside it.
+# The native menu bar stays visible — Rift draws its workspace indicators there.
 # (No need to touch the menu bar visibility settings at all.)
 
 # Attempt to apply immediately (logout/login still recommended for the Spaces setting).

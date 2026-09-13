@@ -11,30 +11,15 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
-# AeroSpace (GUI app, self-managed login item via 'start-at-login')
+# Rift (per-user launchd service)
 # ─────────────────────────────────────────────────────────────
-if [ -d /Applications/AeroSpace.app ]; then
-	if pgrep -q -f "AeroSpace.app" 2>/dev/null; then
-		ok "AeroSpace already running"
+if command -v rift >/dev/null 2>&1; then
+	note "Starting Rift..."
+	if rift service start; then
+		ok "Rift running (menu-bar indicators in the native menu bar)"
 	else
-		note "Starting AeroSpace..."
-		open -a AeroSpace
-		sleep 2
-		if pgrep -q -f "AeroSpace.app" 2>/dev/null; then
-			ok "AeroSpace running"
-		else
-			warn "AeroSpace failed to start — verify Accessibility permission was granted, then re-run: open -a AeroSpace"
-		fi
+		warn "Rift failed to start — verify Accessibility permission was granted, then run: rift service start"
 	fi
-fi
-
-# ─────────────────────────────────────────────────────────────
-# AeroSpaceBar (menu-bar companion)
-# ─────────────────────────────────────────────────────────────
-if [ -d /Applications/AeroSpaceBar.app ]; then
-	note "Launching AeroSpaceBar..."
-	open -a AeroSpaceBar 2>/dev/null || true
-	ok "AeroSpaceBar launched (icon in the menu bar)"
 fi
 
 # ─────────────────────────────────────────────────────────────

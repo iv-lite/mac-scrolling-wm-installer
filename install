@@ -28,14 +28,13 @@ run_step() {
 
 echo ""
 echo "  ╔══════════════════════════════════════════════╗"
-echo "  ║   AeroSpace + AeroSpaceBar + JankyBorders    ║"
-echo "  ║            i3-like macOS setup                ║"
+echo "  ║   Rift + JankyBorders + Ghostty installer   ║"
+echo "  ║         niri-like macOS setup                ║"
 echo "  ╚══════════════════════════════════════════════╝"
 
 run_step install-deps
 run_step configure-system
-run_step install-aerospace
-run_step install-aerospacebar
+run_step install-rift
 run_step install-borders
 run_step grant-permissions
 run_step enable-services
@@ -46,25 +45,26 @@ echo "  ${GREEN}  Installation complete!${RESET}"
 echo "  ${GREEN}══════════════════════════════════════════════${RESET}"
 echo ""
 echo "  ${YELLOW}⚠ A logout/login is required for this to take effect:${RESET}"
-echo "     - 'Displays have separate Spaces' disabled (AeroSpace-recommended)"
+echo "     - 'Displays have separate Spaces' enabled (Rift-recommended)"
 echo ""
 echo "  ${YELLOW}⚠ After the next login:${RESET}"
-echo "     - AeroSpace tiles windows in i3-style tree layout"
-echo "     - AeroSpaceBar shows your 1-9 workspaces in the menu bar"
+echo "     - Rift tiles windows in a niri-style scrolling strip"
+echo "     - Rift's own menu-bar indicators show your 1-9 workspaces"
+echo "       (click to switch, hover for the workspace menu)"
 echo "     - If accessibility grants failed above, grant them manually:"
 echo "       System Settings → Privacy & Security → Accessibility"
 echo ""
 echo "  ${CYAN}Usage:${RESET}"
 echo "     Option+Arrows        move focus between windows"
 echo "     Option+Shift+Arrows  move windows"
-echo "     Option+1..9          switch workspace"
+echo "     Option+1..9          switch Rift workspace"
 echo "     Option+Shift+1..9    move window to workspace"
 echo "     Cmd+Option+Arrows    focus display"
-echo "     Cmd+Option+Shift+Arrows  move window/workspace to display"
+echo "     Cmd+Option+Shift+Arrows  move window to display"
 echo "     Option+F             toggle fullscreen"
 echo "     Option+V             toggle floating"
 echo "     Option+Q             close window"
 echo "     Ctrl+Cmd+T           open Ghostty"
-echo "     Option+Shift+R       reload AeroSpace config"
+echo "     Option+Shift+R       reload Rift config"
 echo ""
 echo "  Log out now, then back in (Cmd+Shift+Q)."

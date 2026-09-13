@@ -42,8 +42,7 @@ grant() {
 
 note "Granting Accessibility permissions..."
 
-grant "/Applications/AeroSpace.app/Contents/MacOS/AeroSpace"
-grant "/Applications/AeroSpace.app"
+grant "$(command -v rift 2>/dev/null || true)"
 grant "$(command -v borders 2>/dev/null || true)"
 
 # The terminal itself needs Full Disk Access for tccutil-rs to open TCC.db.
