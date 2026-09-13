@@ -130,7 +130,9 @@ workspace_names = [
 app_rules = [
   # Floating utility windows
   { app_id = "com.apple.calculator", floating = true, size = { w = 360, h = 480 } },
-  { app_name = "System Settings", floating = true },
+  # Float only System Settings sub-panels (dialogs/sheets); the main window tiles
+  { app_id = "com.apple.systempreferences", ax_role = "AXDialog", floating = true },
+  { app_id = "com.apple.systempreferences", ax_role = "AXSheet", floating = true },
   { title_substring = "Preferences", floating = true },
 ]
 
