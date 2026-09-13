@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+
+# ─────────────────────────────────────────────────────────────
+# Install AeroSpaceBar (menu-bar companion for AeroSpace)
+# ─────────────────────────────────────────────────────────────
+if [ -d /Applications/AeroSpaceBar.app ]; then
+	ok "AeroSpaceBar already installed"
+else
+	note "Installing AeroSpaceBar via Homebrew..."
+	brew tap rdrkr/tap
+	brew install --cask aerospacebar
+	ok "AeroSpaceBar installed"
+fi
+
+# AeroSpaceBar reads the AeroSpace config + IPC directly — no config files to
+# write. Launch it so its icon shows up in the menu bar right away.
+note "Launching AeroSpaceBar..."
+open -a AeroSpaceBar 2>/dev/null || true
+ok "AeroSpaceBar running (icon in the menu bar)"
+
+warn "Requirements: macOS 15+ and AeroSpace v0.21+ (both checked by brew/install)."
+warn "Enable 'start at login' for AeroSpaceBar in its Settings if you want it always on."

@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+
+# ─────────────────────────────────────────────────────────────
+# Install AeroSpace
+# ─────────────────────────────────────────────────────────────
+if command -v aerospace >/dev/null 2>&1 || [ -d /Applications/AeroSpace.app ]; then
+	ok "AeroSpace already installed"
+else
+	note "Installing AeroSpace via Homebrew..."
+	brew tap nikitabobko/tap
+	brew install --cask nikitabobko/tap/aerospace
+	ok "AeroSpace installed"
+fi
+
+# First launch surfaces the Accessibility prompt and starts writing defaults.
+if ! pgrep -q -f "AeroSpace.app" 2>/dev/null; then
+	note "Launching AeroSpace once for first-run setup..."
+	open -a AeroSpace 2>/dev/null || true
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Config
+# AeroSpace loads either ~/.aerospace.toml or
+# $XDG_CONFIG_HOME/aerospace/aerospace.toml (~/.config by default) — but NOT
+# both. We install to ~/.config/aerospace/ and move any ~/.aerospace.toml
+# aside so AeroSpace doesn't report an ambiguity error.
+# ─────────────────────────────────────────────────────────────
+mkdir -p ~/.config/aerospace
+
+if [ -f ~/.aerospace.toml ]; then
+	note "Existing ~/.aerospace.toml found — moving to ~/.aerospace.toml.bak"
+	mv ~/.aerospace.toml ~/.aerospace.toml.bak
+fi
+
+if [ -f ~/.config/aerospace/aerospace.toml ]; then
+	note "Existing config found at ~/.config/aerospace/aerospace.toml — backing up"
+	cp ~/.config/aerospace/aerospace.toml ~/.config/aerospace/aerospace.toml.bak
+fi
+
+cp "$REPO_ROOT/config/aerospace/aerospace.toml" ~/.config/aerospace/aerospace.toml
+ok "AeroSpace config installed to ~/.config/aerospace/aerospace.toml"
+
+# First reload enables auto-reload-config's config watcher.
+if command -v aerospace >/dev/null 2>&1; then
+	note "Validating config with a dry-run reload..."
+	if aerospace reload-config --no-gui --dry-run >/dev/null 2>&1; then
+		aerospace reload-config --no-gui >/dev/null 2>&1 || true
+		ok "AeroSpace config validated and reloaded"
+	else
+		warn "Config dry-run reported problems — AeroSpace will show its diagnostics on start"
+	fi
+fi
+
+warn "AeroSpace will be started by enable-services after permissions are granted."
