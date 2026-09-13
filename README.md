@@ -88,6 +88,7 @@ Rift modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 |---|---|
 | `Option` + `F` | Toggle fullscreen |
 | `Option` + `Shift` + `F` | Toggle fullscreen (keeping outer gaps) |
+| `Option` + `M` | Maximize a window (fullscreen within outer gaps) |
 | `Option` + `V` | Toggle floating/tiling |
 | `Option` + `Q` | Close window |
 | `Option` + `W` | Stack windows in the column |
