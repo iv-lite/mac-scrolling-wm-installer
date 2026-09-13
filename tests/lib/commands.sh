@@ -10,8 +10,8 @@ Usage: ./tests/preview <command>
   up         Boot the VM (GUI by default; --no-graphics for headless) and wait for SSH
   install    Run install inside the guest (via live host mount)
   access     Re-run the accessibility grant script in the guest
-  login      Log out/in the GUI session to apply Spaces + menu-bar settings
-  check      Query Rift state and installed formulae in the guest
+  login      Log out/in the GUI session to apply the separate-Spaces setting
+  check      Query AeroSpace state and installed formulae in the guest
   shot       Capture a screenshot into tests/screenshots/
   snapshot   Create 'bare' (fresh macOS) + 'provisioned' (after install) snapshots
   restore    Restore a snapshot: './tests/preview restore bare'
@@ -84,12 +84,12 @@ cmd_access() {
   ensure_running
   guest "bash '${GUEST_DIR}/scripts/grant-permissions'" || true
   warn "If grants failed above, open the VM window and grant manually:"
-  warn "System Settings → Privacy & Security → Accessibility → enable Rift, SketchyBar, Borders"
+  warn "System Settings → Privacy & Security → Accessibility → enable AeroSpace, Borders"
 }
 
 cmd_login() {
   ensure_running
-  note "Restarting the login window to apply Spaces + menu-bar settings..."
+  note "Restarting the login window to apply the separate-Spaces setting..."
   guest_sudo "killall loginwindow" || true
   sleep 15
   note "The GUI session is logging back in (auto-login)."
@@ -97,14 +97,14 @@ cmd_login() {
 
 cmd_check() {
   ensure_running
-  echo "── Rift workspaces ──"
-  guest "rift-cli query workspaces" 2>&1 || true
+  echo "── AeroSpace workspaces ──"
+  guest "aerospace list-workspaces --all" 2>&1 || true
   echo ""
   echo "── Installed formulae ──"
-  guest "brew list --formula | grep -Ei 'rift|sketchybar|borders|jq|tccutil|nowplaying' || echo '(none found)'"
+  guest "brew list | grep -Ei 'aerospace|aerospacebar|borders|tccutil|ghostty' || echo '(none found)'"
   echo ""
-  echo "── SketchyBar items ──"
-  guest "sketchybar --query bar 2>&1 | head -c 300 || true"
+  echo "── AeroSpaceBar.app ──"
+  guest "ls -d /Applications/AeroSpaceBar.app 2>&1 || echo '(not installed)'"
   ask_cleanup
 }
 

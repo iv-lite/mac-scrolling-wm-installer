@@ -4,7 +4,7 @@
 
 [ -n "${ROOT:-}" ] || { echo "error: ROOT not set — run via tests/preview" >&2; exit 1; }
 
-VM="rift-test"
+VM="aerospace-test"
 MOUNT_NAME="installer"
 GUEST_DIR="/Volumes/My Shared Files/${MOUNT_NAME}"
 GREEN=$'\033[0;32m'; YELLOW=$'\033[0;33m'; CYAN=$'\033[0;36m'; RED=$'\033[0;31m'; RESET=$'\033[0m'
