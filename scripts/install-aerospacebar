@@ -17,6 +17,7 @@ if [ -d /Applications/AeroSpaceBar.app ]; then
 	ok "AeroSpaceBar already installed"
 else
 	note "Installing AeroSpaceBar via Homebrew..."
+	brew trust rdrkr/tap 2>/dev/null || true
 	brew tap rdrkr/tap
 	brew install --cask aerospacebar
 	ok "AeroSpaceBar installed"

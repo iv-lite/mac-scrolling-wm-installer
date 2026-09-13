@@ -185,6 +185,7 @@ if command -v brew >/dev/null 2>&1; then
 		if [ -n "$remove_taps" ]; then
 			for tap in $remove_taps; do
 				brew untap "$tap" >/dev/null 2>&1 || true
+				brew untrust "$tap" >/dev/null 2>&1 || true
 			done
 			ok "Brew taps removed (best-effort)"
 		fi

@@ -20,6 +20,7 @@ if command -v aerospace >/dev/null 2>&1 || [ -d /Applications/AeroSpace.app ]; t
 	ok "AeroSpace already installed"
 else
 	note "Installing AeroSpace via Homebrew..."
+	brew trust nikitabobko/tap 2>/dev/null || true
 	brew tap nikitabobko/tap
 	brew install --cask nikitabobko/tap/aerospace
 	ok "AeroSpace installed"

@@ -41,6 +41,7 @@ if command -v tccutil-rs >/dev/null 2>&1; then
 	ok "tccutil-rs already installed"
 else
 	note "Installing tccutil-rs from uinaf/tap..."
+	brew trust uinaf/tap 2>/dev/null || true
 	brew tap uinaf/tap
 	brew install tccutil-rs
 	ok "tccutil-rs installed"

@@ -68,9 +68,9 @@ ensure_deps() {
   if ! command -v tart >/dev/null 2>&1; then need="$need cirruslabs/cli/tart"; fi
   if ! command -v sshpass >/dev/null 2>&1; then need="$need cirruslabs/cli/sshpass"; fi
   if [ -n "$need" ]; then
-    note "Tapping and trusting cirruslabs/cli (required for tart/sshpass)..."
-    brew tap cirruslabs/cli
+    note "Trusting and tapping cirruslabs/cli (required for tart/sshpass)..."
     brew trust cirruslabs/cli 2>/dev/null || true
+    brew tap cirruslabs/cli
     note "Installing missing requirements:$need"
     brew install $need
   fi
