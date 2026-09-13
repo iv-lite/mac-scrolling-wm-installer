@@ -95,7 +95,8 @@ Rift modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 | `Option` + `M` | Maximize a window (fullscreen within outer gaps) |
 | `Option` + `V` | Toggle floating/tiling |
 | `Option` + `Q` | Close window |
-| `Option` + `W` | Stack windows in the column |
+| `Option` + `O` | Stack windows in the column |
+| `Option` + `W` | Cycle the focused column width (0.3 / 0.5 / 1) |
 | `Option` + `/` | Toggle orientation |
 | `Option` + `Ctrl` + `E` | Un-join the layout tree |
 | `Option` + `Space` | Center the focused column |

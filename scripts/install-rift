@@ -50,6 +50,11 @@ cp "$REPO_ROOT/config/rift/config.toml" ~/.config/rift/config.toml
 
 ok "Rift config installed to ~/.config/rift/config.toml"
 
+note "Installing Alt+W column-width cycle helper..."
+cp "$REPO_ROOT/scripts/cycle-column-width" ~/.config/rift/cycle-column-width
+chmod +x ~/.config/rift/cycle-column-width
+ok "cycle-column-width installed (Alt+W: 0.3 → 0.5 → 1)"
+
 # ─────────────────────────────────────────────────────────────
 # launchd service (applies Accessibility before start)
 # ─────────────────────────────────────────────────────────────

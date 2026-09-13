@@ -47,9 +47,10 @@ window_insertion_point = "end_of_tree"
 # exceed the monitor: with 0.7 that's already at 2+ windows (0.5 left two
 # windows at exactly 100% → static 50/50 tiling, no scroll). Note Rift
 # fills the whole screen for a single lone column by design.
-column_width_ratio = 0.7
+column_width_ratio = 1
 min_column_width_ratio = 0.3
-max_column_width_ratio = 0.9
+# 1.0 lets Alt+W (below) pull the focused column to full width
+max_column_width_ratio = 1
 # Keep the focused column centered like niri
 alignment = "center"
 # niri-style reveal-on-navigate focus behaviour
@@ -60,8 +61,8 @@ animate = true
 [settings.layout.scrolling.gestures]
 # Horizontal scroll (trackpad) switches columns
 enabled = true
-invert_horizontal = false
-fingers = 4
+invert_horizontal = true
+fingers = 3
 # Scrolling past the end flows into the next/prev workspace
 propagate_to_workspace_swipe = true
 
@@ -196,7 +197,7 @@ comb1 = "Alt + Shift"
 "Alt + M" = "toggle_fullscreen_within_gaps"
 "Alt + V" = "toggle_window_floating"
 "Alt + Q" = "close_window"
-"Alt + W" = "toggle_stack"
+"Alt + O" = "toggle_stack"
 "Alt + Slash" = "toggle_orientation"
 "Alt + Ctrl + E" = "unjoin_windows"
 
@@ -206,6 +207,9 @@ comb1 = "Alt + Shift"
 "Alt + Shift + BracketLeft" = "snap_strip"
 "Alt + Shift + BracketRight" = "snap_strip"
 "Alt + Space" = "center_selection"
+
+# ─── Column width cycle (Option+W: 0.3 → 0.5 → 1) ───
+"Alt + W" = { "exec" = ["/bin/bash", "-c", "$HOME/.config/rift/cycle-column-width"] }
 
 # ─── Apps ───
 "Meta + Ctrl + T" = { "exec" = ["/bin/bash", "-c", "open -a Ghostty"] }
