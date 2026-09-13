@@ -44,6 +44,7 @@ note "Granting Accessibility permissions..."
 
 grant "$(command -v rift 2>/dev/null || true)"
 grant "$(command -v borders 2>/dev/null || true)"
+grant "/Applications/Aegis.app/Contents/MacOS/Aegis"
 
 # The terminal itself needs Full Disk Access for tccutil-rs to open TCC.db.
 # If the grants above failed, surface a helpful hint.

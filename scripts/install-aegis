@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RED=$'\033[0;31m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+fail() { echo "  ${RED}✗ $*${RESET}"; }
+
+APP="/Applications/Aegis.app"
+AEGIS_RELEASE_URL="https://api.github.com/repos/CCMurphy-dev/Aegis/releases/latest"
+
+# ─────────────────────────────────────────────────────────────
+# Requirements
+# ─────────────────────────────────────────────────────────────
+OS_MAJOR="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1 || echo 0)"
+if [ "$OS_MAJOR" -lt 14 ]; then
+	fail "Aegis requires macOS 14.0+ (Sonoma)."
+	exit 1
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Resolve the latest stable release + asset URL
+# ─────────────────────────────────────────────────────────────
+note "Checking latest Aegis release..."
+if ! command -v curl >/dev/null 2>&1; then
+	fail "curl is required to download Aegis."
+	exit 1
+fi
+
+release_json="$(curl -fsSL "$AEGIS_RELEASE_URL" 2>/dev/null || true)"
+if [ -z "$release_json" ]; then
+	fail "Could not reach GitHub to resolve the latest Aegis release."
+	echo "     Download it manually from https://github.com/CCMurphy-dev/Aegis/releases"
+	exit 1
+fi
+
+latest_tag="$(printf '%s' "$release_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['tag_name'])" 2>/dev/null || true)"
+latest_ver="${latest_tag#v}"
+asset_url="$(printf '%s' "$release_json" | python3 -c "import json,sys
+assets=[a for a in json.load(sys.stdin)['assets'] if a['name']=='Aegis.app.zip']
+print(assets[0]['browser_download_url'])" 2>/dev/null || true)"
+
+if [ -z "$latest_tag" ] || [ -z "$asset_url" ]; then
+	fail "Could not parse the latest Aegis release metadata."
+	exit 1
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Idempotent install / upgrade
+# ─────────────────────────────────────────────────────────────
+installed_version=""
+if [ -d "$APP" ]; then
+	installed_version="$(defaults read "$APP/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo '')"
+fi
+
+if [ -n "$installed_version" ] && [ "$installed_version" = "$latest_ver" ]; then
+	note "Aegis already installed at $latest_tag ($APP) — skipping"
+	ok "Aegis $latest_tag present"
+	exit 0
+fi
+
+if [ -d "$APP" ]; then
+	warn "Aegis $installed_version is installed — upgrading to $latest_tag"
+fi
+
+note "Downloading Aegis $latest_tag..."
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+curl -fL --progress-bar "$asset_url" -o "$tmpdir/Aegis.app.zip"
+unzip -q "$tmpdir/Aegis.app.zip" -d "$tmpdir"
+
+if [ ! -d "$tmpdir/Aegis.app" ]; then
+	fail "Downloaded archive did not contain Aegis.app"
+	exit 1
+fi
+
+if [ -d "$APP" ]; then
+	note "Removing old Aegis.app..."
+	rm -rf "$APP"
+fi
+
+ditto "$tmpdir/Aegis.app" "$APP"
+xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
+
+ok "Aegis $latest_tag installed to $APP"

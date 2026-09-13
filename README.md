@@ -2,14 +2,15 @@
 
 A niri-like window management setup for macOS, built on **Rift** (niri-style
 scrolling-strip tiler with hot-reloadable TOML config and virtual workspaces),
-**Rift's native menu-bar workspace indicators** (no bar app needed),
-**JankyBorders** (window focus borders), and **Ghostty** (terminal). Driven by
-Option-key shortcuts that don't fight macOS defaults.
+**Aegis** (notch-safe menu-bar replacement with workspace indicators and a
+notch HUD), **JankyBorders** (window focus borders), and **Ghostty** (terminal).
+Driven by Option-key shortcuts that don't fight macOS defaults.
 
 ## Requirements
 
-- macOS 13+ (Rift; tested on Sequoia and later)
-- Apple Silicon or Intel; Homebrew installed or auto-installed
+- macOS 14+ (Rift; Aegis requires Sonoma or later)
+- Apple Silicon (notch recommended; Aegis's bar + Notch HUD are notch-designed)
+- Homebrew installed or auto-installed
 - "Displays have separate Spaces" enabled (Rift-recommended; the installer sets it)
 - No Karabiner, no disable of System Integrity Protection
 
@@ -24,23 +25,24 @@ The installer runs these steps from `scripts/`:
 | Script | Purpose |
 |---|---|
 | `install-deps` | Install Homebrew if missing, tccutil-rs, Ghostty |
-| `configure-system` | Enable "Displays have separate Spaces" (Rift-recommended) |
+| `configure-system` | Enable "Displays have separate Spaces"; hide the native menu bar (Aegis replaces it) |
 | `install-rift` | Install Rift + write `~/.config/rift/config.toml` + install its launchd service |
 | `install-borders` | Install JankyBorders + write `~/.config/borders/bordersrc` |
+| `install-aegis` | Download latest Aegis from GitHub Releases → `/Applications/Aegis.app` |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
-| `enable-services` | Start Rift and the `borders` service |
+| `enable-services` | Start Rift, install the Aegis LaunchAgent, start `borders` |
 
 ### After install
 
 1. **Log out and back in** (Cmd+Shift+Q) — applies the enabled
-   separate-Spaces setting.
+   separate-Spaces setting and hides the native menu bar.
 2. Rift tiles in a **niri-style scrolling strip**; workspaces `1..9` are
    persistent. `Option+Shift+R` reloads the config (hot reload is also on).
-3. Rift draws **workspace badges in the native menu bar** — click a badge to
-   switch, and the Rift menu-bar icon opens a workspace/layout menu. No extra
-   bar app to install or configure.
+3. **Aegis** draws the menu bar: clickable workspace indicators (1-9) with
+   window icons, drag-to-move-between-workspaces, plus a notch HUD for
+   volume/brightness/media/notifications. It connects to Rift automatically.
 4. If Accessibility grants failed, grant them manually:
-   System Settings → Privacy & Security → Accessibility (enable Rift, Borders).
+   System Settings → Privacy & Security → Accessibility (enable Rift, Borders, Aegis).
 
 ## Keybindings
 
@@ -99,16 +101,20 @@ Rift modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 > **Moved/removed vs. the AeroSpace setup:** the scrollable strip is back
 > (`Option+[`/`]`), per-Space tiling toggles are `Option+Z`, and workspace
 > switching is `Option+1..9`. The SketchyBar cheat sheet (`Cmd+Option+K`) is
-> gone — Rift's own menu bar replaces SketchyBar entirely.
+> gone — Aegis replaces the menu bar entirely.
 
 ## The menu bar & notch
 
-- **Workspace indicators** live in the **native menu bar** (Rift's
-  `[settings.ui.menu_bar]`): badges for every workspace, click to switch, with a
-  menu-bar icon for layout and workspace controls. macOS already lays the menu
-  bar around the notch, so there's no notch configuration needed.
-- Tune the top gap if the menu bar extends over the notch area on a notched
-  display — see `~/.config/rift/config.toml` `[settings.layout.gaps.outer]`.
+- The native macOS menu bar is **hidden** — Aegis (notch-safe) replaces it.
+- **Workspace indicators** live in Aegis's bar: click a badge to switch
+  workspaces, drag a window icon onto another workspace, right-click for
+  layout/workspace/window commands.
+- The **notch HUD** shows volume/brightness changes, now-playing media,
+  notifications, and Bluetooth device events in the notch area — no more
+  overflowing menu bar items.
+- Aegis auto-detects Rift on launch (Mach subscription) and needs no setup.
+- Tune the top gap if you want more breathing room below Aegis's bar — see
+  `~/.config/rift/config.toml` `[settings.layout.gaps.outer]`.
 
 ## Multi-monitor
 
@@ -126,12 +132,14 @@ Rift modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 ./uninstall
 ```
 
-Stops and removes Rift (launchd service) and borders, moves configs (from
-`~/.config/rift` and `~/.config/borders`, plus any legacy `~/.config/aerospace`)
-to `~/.config/backups/uninstall-<timestamp>/`, then asks you which formulae to
-**keep** (interactive numbered menu). Untaps `acsandmann/tap`,
-`FelixKratz/formulae`, `uinaf/tap` (and legacy `nikitabobko/tap`, `rdrkr/tap`
-only when nothing kept depends on them), and leaves separate Spaces enabled.
+Stops and removes Rift (launchd service), the Aegis LaunchAgent, and borders,
+deletes `/Applications/Aegis.app` and Aegis's preferences, moves configs (from
+`~/.config/rift`, `~/.config/borders`, and `~/.config/aegis`, plus any legacy
+`~/.config/aerospace`) to `~/.config/backups/uninstall-<timestamp>/`, then asks
+you which formulae to **keep** (interactive numbered menu). Untaps
+`acsandmann/tap`, `FelixKratz/formulae`, `uinaf/tap` (and legacy
+`nikitabobko/tap`, `rdrkr/tap` only when nothing kept depends on them), and
+restores the native menu bar (`_HIHideMenuBar` off).
 
 ## Testing in a macOS VM
 
@@ -186,7 +194,7 @@ tested), Accessibility may need one manual grant inside the guest.
 install                   Main installer (runs scripts/*)
 uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
-config/rift/              Rift config (scrolling strip, bindings, gaps, menu bar)
+config/rift/              Rift config (scrolling strip, bindings, gaps)
 config/borders/bordersrc  JankyBorders focus-border config
 tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
@@ -197,5 +205,6 @@ up (`.bak`) before overwriting, and Rift has `hot_reload`, so editing
 
 > **Note on AeroSpace:** an intermediate version of this installer targeted
 > AeroSpace (i3-style tree tiler) with AeroSpaceBar in the menu bar. This
-> version is back on Rift (niri-style scrolling strip) with Rift's own native
-> menu-bar workspace indicators as the bar.
+> version is back on Rift (niri-style scrolling strip) with **Aegis** as the
+> notch-safe menu bar replacement. Rift's own `[settings.ui.menu_bar]` is
+> turned off in `config/rift/config.toml`.

@@ -16,10 +16,42 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 if command -v rift >/dev/null 2>&1; then
 	note "Starting Rift..."
 	if rift service start; then
-		ok "Rift running (menu-bar indicators in the native menu bar)"
+		ok "Rift running (Aegis will connect to it automatically)"
 	else
 		warn "Rift failed to start — verify Accessibility permission was granted, then run: rift service start"
 	fi
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Aegis (LaunchAgent, launched after Rift so it auto-detects Rift)
+# ─────────────────────────────────────────────────────────────
+AEGIS_PLIST="$HOME/Library/LaunchAgents/com.aegis.Aegis.plist"
+AEGIS_BIN="/Applications/Aegis.app/Contents/MacOS/Aegis"
+
+if [ -x "$AEGIS_BIN" ]; then
+	note "Installing Aegis LaunchAgent..."
+	mkdir -p "$HOME/Library/LaunchAgents"
+	cat > "$AEGIS_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.aegis.Aegis</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>$AEGIS_BIN</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+</dict>
+</plist>
+EOF
+	launchctl unload "$AEGIS_PLIST" >/dev/null 2>&1 || true
+	launchctl load "$AEGIS_PLIST" >/dev/null 2>&1 || true
+	ok "Aegis LaunchAgent installed + started"
+else
+	warn "Aegis.app not found — skipping LaunchAgent (run: bash scripts/install-aegis)"
 fi
 
 # ─────────────────────────────────────────────────────────────

@@ -27,15 +27,16 @@ run_step() {
 }
 
 echo ""
-echo "  ╔══════════════════════════════════════════════╗"
-echo "  ║   Rift + JankyBorders + Ghostty installer   ║"
-echo "  ║         niri-like macOS setup                ║"
-echo "  ╚══════════════════════════════════════════════╝"
+echo "  ╔══════════════════════════════════════════════════════╗"
+echo "  ║   Rift + Aegis + JankyBorders + Ghostty installer   ║"
+echo "  ║              niri-like macOS setup                   ║"
+echo "  ╚══════════════════════════════════════════════════════╝"
 
 run_step install-deps
 run_step configure-system
 run_step install-rift
 run_step install-borders
+run_step install-aegis
 run_step grant-permissions
 run_step enable-services
 
@@ -49,8 +50,8 @@ echo "     - 'Displays have separate Spaces' enabled (Rift-recommended)"
 echo ""
 echo "  ${YELLOW}⚠ After the next login:${RESET}"
 echo "     - Rift tiles windows in a niri-style scrolling strip"
-echo "     - Rift's own menu-bar indicators show your 1-9 workspaces"
-echo "       (click to switch, hover for the workspace menu)"
+echo "     - Aegis draws the menu bar (workspace indicators + notch HUD)"
+echo "     - The native macOS menu bar is hidden (Aegis replaces it)"
 echo "     - If accessibility grants failed above, grant them manually:"
 echo "       System Settings → Privacy & Security → Accessibility"
 echo ""

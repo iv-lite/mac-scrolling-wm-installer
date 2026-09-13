@@ -22,8 +22,15 @@ else
 	ok "'Displays have separate Spaces' already enabled"
 fi
 
-# The native menu bar stays visible — Rift draws its workspace indicators there.
-# (No need to touch the menu bar visibility settings at all.)
+# Hide the native macOS menu bar — Aegis replaces it with its own
+# notch-safe bar (workspace indicators + notch HUD).
+if [ "$(defaults read NSGlobalDomain _HIHideMenuBar 2>/dev/null)" != "1" ]; then
+	note "Hiding the native menu bar (Aegis replaces it)..."
+	defaults write NSGlobalDomain _HIHideMenuBar -bool true
+	ok "_HIHideMenuBar set to on"
+else
+	ok "'Hide menu bar' already on"
+fi
 
 # Attempt to apply immediately (logout/login still recommended for the Spaces setting).
 killall SystemUIServer 2>/dev/null || true

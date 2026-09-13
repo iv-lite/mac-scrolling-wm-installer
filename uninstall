@@ -20,15 +20,16 @@ echo "  ║          niri-like macOS setup — uninstall    ║"
 echo "  ╚══════════════════════════════════════════════╝"
 echo ""
 echo "  This will:"
-echo "   • Stop/remove Rift, JankyBorders (and any legacy AeroSpace/AeroSpaceBar)"
+echo "   • Stop/remove Rift, JankyBorders, Aegis (and any legacy AeroSpace/AeroSpaceBar)"
 echo "   • Revoke Accessibility permissions"
 echo "   • Move configs to ~/.config/backups (not deleted)"
 echo "   • Uninstall brew packages (you'll choose which to keep)"
 echo "     rift, borders, tccutil-rs, ghostty"
 echo "     (+ legacy aerospace, aerospacebar if still present)"
+echo "   • Delete Aegis.app + its LaunchAgent/preferences"
 echo "   • Untap repos no longer needed (acsandmann/tap, nikitabobko/tap,"
 echo "     rdrkr/tap, FelixKratz/formulae, uinaf/tap)"
-echo "   • Revert system defaults (re-enable separate Spaces)"
+echo "   • Revert system defaults (show the native menu bar again)"
 echo ""
 read -r -p "  Continue? [y/N] " answer
 if [ "${answer:-n}" != "y" ] && [ "${answer:-n}" != "Y" ]; then
@@ -69,6 +70,17 @@ if command -v borders >/dev/null 2>&1; then
 	ok "JankyBorders service stopped"
 fi
 
+# Aegis: stop + remove LaunchAgent
+if [ -f ~/Library/LaunchAgents/com.aegis.Aegis.plist ]; then
+	launchctl unload ~/Library/LaunchAgents/com.aegis.Aegis.plist >/dev/null 2>&1 || true
+	rm -f ~/Library/LaunchAgents/com.aegis.Aegis.plist
+	ok "Aegis LaunchAgent stopped + removed"
+fi
+if pgrep -q -x Aegis 2>/dev/null; then
+	osascript -e 'tell application "Aegis" to quit' >/dev/null 2>&1 || pkill -x Aegis 2>/dev/null || true
+	ok "Aegis quit"
+fi
+
 # ─────────────────────────────────────────────────────────────
 # 2. Revoke Accessibility permissions
 # ─────────────────────────────────────────────────────────────
@@ -77,7 +89,8 @@ note "Revoking Accessibility permissions..."
 if command -v tccutil-rs >/dev/null 2>&1; then
 	for bin in "$(command -v rift 2>/dev/null || true)" \
 	           "/Applications/AeroSpace.app/Contents/MacOS/AeroSpace" \
-	           "$(command -v borders 2>/dev/null || true)"; do
+	           "$(command -v borders 2>/dev/null || true)" \
+	           "/Applications/Aegis.app/Contents/MacOS/Aegis"; do
 		if [ -n "$bin" ]; then
 			tccutil-rs revoke --user Accessibility "$bin" >/dev/null 2>&1 || true
 		fi
@@ -100,7 +113,7 @@ if [ -f ~/.aerospace.toml ] || [ -f ~/.aerospace.toml.bak ]; then
 	warn "~/.aerospace.toml* exists outside ~/.config — leaving untouched (not ours to remove)"
 fi
 
-for dir in ~/.config/rift ~/.config/aerospace ~/.config/borders; do
+for dir in ~/.config/rift ~/.config/aerospace ~/.config/borders ~/.config/aegis; do
 	if [ -d "$dir" ]; then
 		mv "$dir" "$BACKUP_DIR/"
 		ok "Moved $dir → $BACKUP_DIR/$(basename "$dir")"
@@ -115,7 +128,21 @@ if [ -z "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 4. Uninstall brew packages + untaps (interactive keep menu)
+# 4. Remove Aegis.app + preferences
+# ─────────────────────────────────────────────────────────────
+if [ -d /Applications/Aegis.app ]; then
+	rm -rf /Applications/Aegis.app
+	ok "Removed /Applications/Aegis.app"
+else
+	warn "/Applications/Aegis.app not found — skipping"
+fi
+if defaults read com.aegis.Aegis >/dev/null 2>&1; then
+	defaults delete com.aegis.Aegis 2>/dev/null || true
+	ok "Deleted Aegis preferences"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 5. Uninstall brew packages + untaps (interactive keep menu)
 # ─────────────────────────────────────────────────────────────
 if command -v brew >/dev/null 2>&1; then
 	echo ""
@@ -207,12 +234,15 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 5. Revert system defaults
+# 6. Revert system defaults
 # ─────────────────────────────────────────────────────────────
 echo ""
 note "Reverting system defaults..."
 
-# Re-enable "Displays have separate Spaces" (the macOS default).
+# Show the native menu bar again (Aegis is gone)
+defaults write NSGlobalDomain _HIHideMenuBar -bool false 2>/dev/null || true
+
+# Leave "Displays have separate Spaces" enabled (macOS default).
 defaults write com.apple.spaces "spans-displays" -bool false 2>/dev/null || true
 ok "System defaults reverted"
 

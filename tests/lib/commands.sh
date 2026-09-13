@@ -16,7 +16,7 @@ usage() {
   echo "  install    Sync the repo into the guest and run ./install"
   echo "  access     Re-run the accessibility grant script in the guest"
   echo "  login      Log out/in the GUI session to apply the separate-Spaces setting"
-  echo "  check      Query Rift state and installed formulae in the guest"
+  echo "  check      Query Rift state, installed formulae, and Aegis.app in the guest"
   echo "  shot       Capture a screenshot into tests/screenshots/"
   echo "  snapshot   Create 'bare' (fresh macOS) + 'provisioned' (after install) snapshots"
   echo "  restore    Restore a snapshot: './tests/preview restore bare'"
@@ -62,7 +62,7 @@ cmd_access() {
   sync_repo
   guest "bash '${GUEST_DIR}/scripts/grant-permissions'" || true
   warn "If grants failed above, open the VM window and grant manually:"
-  warn "System Settings → Privacy & Security → Accessibility → enable Rift, Borders"
+  warn "System Settings → Privacy & Security → Accessibility → enable Rift, Borders, Aegis"
 }
 
 cmd_login() {
@@ -81,8 +81,8 @@ cmd_check() {
   echo "── Installed formulae ──"
   guest "brew list | grep -Ei 'rift|aerospace|aerospacebar|borders|tccutil|ghostty' || echo '(none found)'"
   echo ""
-  echo "── AeroSpaceBar.app (should be absent) ──"
-  guest "ls -d /Applications/AeroSpaceBar.app 2>&1 || echo '(not installed)'"
+  echo "── Aegis.app (should be present) ──"
+  guest "ls -d /Applications/Aegis.app 2>&1 || echo '(not installed)'"
   ask_cleanup
 }
 
