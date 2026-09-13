@@ -14,11 +14,20 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 # Rift (per-user launchd service)
 # ─────────────────────────────────────────────────────────────
 if command -v rift >/dev/null 2>&1; then
-	note "Starting Rift..."
-	if rift service start; then
-		ok "Rift service started"
+	if pgrep -qx rift >/dev/null 2>&1; then
+		note "Restarting Rift (applies upgraded binary + config)..."
+		if rift service restart; then
+			ok "Rift restarted"
+		else
+			warn "Rift restart failed — verify Accessibility permission, then run: rift service restart"
+		fi
 	else
-		warn "Rift failed to start — verify Accessibility permission was granted, then run: rift service start"
+		note "Starting Rift..."
+		if rift service start; then
+			ok "Rift service started"
+		else
+			warn "Rift failed to start — verify Accessibility permission was granted, then run: rift service start"
+		fi
 	fi
 fi
 
@@ -74,9 +83,15 @@ fi
 # JankyBorders (brew services)
 # ─────────────────────────────────────────────────────────────
 if command -v borders >/dev/null 2>&1; then
-	note "Starting JankyBorders..."
-	brew services start borders >/dev/null 2>&1 || true
-	ok "JankyBorders service started"
+	if pgrep -qx borders >/dev/null 2>&1; then
+		note "Restarting JankyBorders (applies upgraded binary + bordersrc)..."
+		brew services restart borders >/dev/null 2>&1 || true
+		ok "JankyBorders restarted"
+	else
+		note "Starting JankyBorders..."
+		brew services start borders >/dev/null 2>&1 || true
+		ok "JankyBorders service started"
+	fi
 fi
 
 echo ""

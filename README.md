@@ -20,6 +20,12 @@ Driven by Option-key shortcuts that don't fight macOS defaults.
 ./install
 ```
 
+Re-running `./install` **upgrades** an existing setup: Homebrew components
+(Rift, JankyBorders, Ghostty, tccutil-rs) are updated (no-op when current),
+Aegis is updated from the latest GitHub release, configs are refreshed from
+this repo (previous copies kept as `*.bak`), and the services are restarted so
+the new binaries/config apply immediately.
+
 The installer runs these steps from `scripts/`:
 
 | Script | Purpose |

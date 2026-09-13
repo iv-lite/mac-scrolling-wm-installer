@@ -17,7 +17,11 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 # Install JankyBorders
 # ─────────────────────────────────────────────────────────────
 if command -v borders >/dev/null 2>&1; then
-	ok "JankyBorders already installed"
+	note "JankyBorders already installed — upgrading..."
+	brew trust FelixKratz/formulae 2>/dev/null || true
+	brew tap FelixKratz/formulae
+	brew upgrade borders 2>/dev/null || warn "JankyBorders upgrade failed (network?) — keeping installed version"
+	ok "JankyBorders up to date"
 else
 	note "Installing JankyBorders via Homebrew..."
 	brew trust FelixKratz/formulae 2>/dev/null || true

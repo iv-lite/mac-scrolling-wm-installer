@@ -38,7 +38,9 @@ command -v brew >/dev/null 2>&1 || eval "$(/usr/local/bin/brew shellenv 2>/dev/n
 # tccutil-rs (user TCC db grants, no SIP disable needed)
 # ─────────────────────────────────────────────────────────────
 if command -v tccutil-rs >/dev/null 2>&1; then
-	ok "tccutil-rs already installed"
+	note "Upgrading tccutil-rs..."
+	brew upgrade tccutil-rs 2>/dev/null || warn "tccutil-rs upgrade failed (network?) — keeping installed version"
+	ok "tccutil-rs up to date"
 else
 	note "Installing tccutil-rs from uinaf/tap..."
 	brew trust uinaf/tap 2>/dev/null || true

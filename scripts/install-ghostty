@@ -16,9 +16,11 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 # ─────────────────────────────────────────────────────────────
 # Install Ghostty (opened via Ctrl+Cmd+T)
 # ─────────────────────────────────────────────────────────────
-note "Installing Ghostty terminal..."
+note "Installing/upgrading Ghostty terminal..."
 if brew list --cask ghostty >/dev/null 2>&1; then
-	ok "Ghostty already installed"
+	note "Ghostty already installed — upgrading..."
+	brew upgrade --cask ghostty 2>/dev/null || warn "Ghostty upgrade failed (network?) — keeping installed version"
+	ok "Ghostty up to date"
 else
 	brew install --cask ghostty
 	ok "Ghostty installed"

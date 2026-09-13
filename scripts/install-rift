@@ -17,7 +17,17 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 # Install Rift
 # ─────────────────────────────────────────────────────────────
 if command -v rift >/dev/null 2>&1; then
-	ok "Rift already installed: $(rift --version 2>/dev/null || echo '')"
+	before="$(rift --version 2>/dev/null || echo 'unknown')"
+	note "Rift already installed ($before) — upgrading..."
+	brew trust acsandmann/tap 2>/dev/null || true
+	brew tap acsandmann/tap
+	brew upgrade acsandmann/tap/rift 2>/dev/null || warn "Rift upgrade failed (network?) — keeping $before"
+	after="$(rift --version 2>/dev/null || echo 'unknown')"
+	if [ "$before" = "$after" ]; then
+		ok "Rift is up to date ($after)"
+	else
+		ok "Rift upgraded: $before → $after"
+	fi
 else
 	note "Installing Rift via Homebrew..."
 	brew trust acsandmann/tap 2>/dev/null || true
