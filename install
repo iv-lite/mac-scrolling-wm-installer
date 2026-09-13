@@ -34,6 +34,7 @@ echo "  ╚═══════════════════════
 
 run_step install-deps
 run_step configure-system
+run_step install-ghostty
 run_step install-rift
 run_step install-borders
 run_step install-aegis
@@ -52,6 +53,7 @@ echo "  ${YELLOW}⚠ After the next login:${RESET}"
 echo "     - Rift tiles windows in a niri-style scrolling strip"
 echo "     - Aegis draws the menu bar (workspace indicators + notch HUD)"
 echo "     - The native macOS menu bar is hidden (Aegis replaces it)"
+echo "     - Ghostty runs frameless (title bar hidden)"
 echo "     - If accessibility grants failed above, grant them manually:"
 echo "       System Settings → Privacy & Security → Accessibility"
 echo ""

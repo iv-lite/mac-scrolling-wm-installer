@@ -24,8 +24,9 @@ The installer runs these steps from `scripts/`:
 
 | Script | Purpose |
 |---|---|
-| `install-deps` | Install Homebrew if missing, tccutil-rs, Ghostty |
+| `install-deps` | Install Homebrew if missing, tccutil-rs |
 | `configure-system` | Enable "Displays have separate Spaces"; hide the native menu bar (Aegis replaces it) |
+| `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
 | `install-rift` | Install Rift + write `~/.config/rift/config.toml` + install its launchd service |
 | `install-borders` | Install JankyBorders + write `~/.config/borders/bordersrc` |
 | `install-aegis` | Download latest Aegis from GitHub Releases → `/Applications/Aegis.app` |
@@ -43,6 +44,8 @@ The installer runs these steps from `scripts/`:
    volume/brightness/media/notifications. It connects to Rift automatically.
 4. If Accessibility grants failed, grant them manually:
    System Settings → Privacy & Security → Accessibility (enable Rift, Borders, Aegis).
+5. Ghostty opens **frameless** (`macos-titlebar-style = hidden` in
+   `~/.config/ghostty/config`) — drag its window edge with `Option+Click`.
 
 ## Keybindings
 
@@ -115,6 +118,27 @@ Rift modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 - Aegis auto-detects Rift on launch (Mach subscription) and needs no setup.
 - Tune the top gap if you want more breathing room below Aegis's bar — see
   `~/.config/rift/config.toml` `[settings.layout.gaps.outer]`.
+
+## No title bars (the macOS reality)
+
+macOS tiling window managers (Rift included — same as yabai/AeroSpace) cannot
+hide a window's title bar or toolbar: each app draws its own chrome, so removal
+has to happen per app. This installer does what's safely possible:
+
+- **Ghostty is frameless by default** — `~/.config/ghostty/config` sets
+  `macos-titlebar-style = hidden` and `macos-window-buttons = hidden` (keeps
+  rounded corners and borders). Drag the window by its edge with `Option+Click`.
+- **Other apps:** use each app's native toggle:
+  | App | How |
+  |---|---|
+  | Finder, Mail, Notes, Safari, Chrome, Slack | `View → Hide Toolbar` (often `Cmd+Option+T`) |
+  | Safari fullscreen | `View → Always Show Toolbar in Full Screen` off |
+  | Ghostty | handled for you above |
+  | VS Code | no clean path since 1.94 (hair-line third-party extensions only — not shipped) |
+
+> Global tools that strip titlebars everywhere (e.g. `Brutalium`, `winBuddy`)
+> inject code into running apps and require disabling SIP — out of scope here,
+> the same reason this project never disables SIP.
 
 ## Multi-monitor
 
@@ -195,13 +219,14 @@ install                   Main installer (runs scripts/*)
 uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
 config/rift/              Rift config (scrolling strip, bindings, gaps)
+config/ghostty/           Ghostty config (frameless title bar)
 config/borders/bordersrc  JankyBorders focus-border config
 tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
-Configs are installed to `~/.config/{rift,borders}`; existing files are backed
-up (`.bak`) before overwriting, and Rift has `hot_reload`, so editing
-`~/.config/rift/config.toml` applies live.
+Configs are installed to `~/.config/{rift,ghostty,borders}` (plus `~/.config/aegis`);
+existing files are backed up (`.bak`) before overwriting, and Rift has
+`hot_reload`, so editing `~/.config/rift/config.toml` applies live.
 
 > **Note on AeroSpace:** an intermediate version of this installer targeted
 > AeroSpace (i3-style tree tiler) with AeroSpaceBar in the menu bar. This

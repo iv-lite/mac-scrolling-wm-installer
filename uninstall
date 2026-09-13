@@ -113,7 +113,7 @@ if [ -f ~/.aerospace.toml ] || [ -f ~/.aerospace.toml.bak ]; then
 	warn "~/.aerospace.toml* exists outside ~/.config — leaving untouched (not ours to remove)"
 fi
 
-for dir in ~/.config/rift ~/.config/aerospace ~/.config/borders ~/.config/aegis; do
+for dir in ~/.config/rift ~/.config/aerospace ~/.config/borders ~/.config/aegis ~/.config/ghostty; do
 	if [ -d "$dir" ]; then
 		mv "$dir" "$BACKUP_DIR/"
 		ok "Moved $dir → $BACKUP_DIR/$(basename "$dir")"
