@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Test workflow for the aerospace-installer project. Runs the real ./install
-# inside a fresh macOS guest VM and lets you verify AeroSpace tiling +
-# AeroSpaceBar visually via screenshots.
+# Test workflow for the rift-wm-installer project. Runs the real ./install
+# inside a fresh macOS guest VM and lets you verify Rift tiling +
+# native menu-bar indicators visually via screenshots.
 #
 # Host is auto-detected:
 #   macOS (Apple Silicon) -> Tart hypervisor  (requires macOS 15+, Homebrew)
