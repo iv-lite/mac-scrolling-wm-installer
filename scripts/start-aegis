@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ─────────────────────────────────────────────────────────────
+# Launch Aegis only once Rift's Mach service is reachable.
+#
+# Aegis (as of v1.1.0) spins in a CPU-burning retry loop when it starts
+# before Rift is up: it spawns `rift-cli subscribe mach *`, the process
+# dies, and it retries immediately. Since Aegis is normally launched by a
+# login LaunchAgent racing Rift's own login agent, we gate on the Mach
+# port here instead of launching the binary directly.
+#
+# ProgramArguments in the Aegis LaunchAgent:
+#   [ "/path/to/start-aegis", "/Applications/Aegis.app/Contents/MacOS/Aegis" ]
+# ─────────────────────────────────────────────────────────────
+
+TIMEOUT="${AEGIS_WAIT_SECONDS:-120}"
+BIN="${1:-/Applications/Aegis.app/Contents/MacOS/Aegis}"
+
+# launchd runs LaunchAgents with a minimal PATH; homebrew bin isn't included.
+RIFT_CLI="$(command -v rift-cli 2>/dev/null || echo /opt/homebrew/bin/rift-cli)"
+
+log() { /usr/bin/logger -t aegis-launch "$*" 2>/dev/null || true; }
+
+log "waiting up to ${TIMEOUT}s for Rift Mach service"
+
+deadline=$(( $(date +%s) + TIMEOUT ))
+while [ "$(date +%s)" -lt "$deadline" ]; do
+	if [ -x "$RIFT_CLI" ] && "$RIFT_CLI" query workspaces >/dev/null 2>&1; then
+		log "Rift Mach service ready; launching Aegis"
+		exec "$BIN"
+	fi
+	sleep 1
+done
+
+# Rift never came up. Do NOT launch Aegis — it would busy-loop at ~1000% CPU.
+log "Rift Mach service never became ready in ${TIMEOUT}s; staying down"
+exit 1

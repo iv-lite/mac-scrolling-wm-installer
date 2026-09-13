@@ -16,7 +16,7 @@ usage() {
   echo "  install    Sync the repo into the guest and run ./install"
   echo "  access     Re-run the accessibility grant script in the guest"
   echo "  login      Log out/in the GUI session to apply the separate-Spaces setting"
-  echo "  check      Query Rift state, installed formulae, Aegis.app, and the Ghostty config in the guest"
+  echo "  check      Query Rift state, separate-Spaces mode, Aegis CPU, installed formulae, and the Ghostty config in the guest"
   echo "  shot       Capture a screenshot into tests/screenshots/"
   echo "  snapshot   Create 'bare' (fresh macOS) + 'provisioned' (after install) snapshots"
   echo "  restore    Restore a snapshot: './tests/preview restore bare'"
@@ -75,6 +75,9 @@ cmd_login() {
 
 cmd_check() {
   ensure_running
+  echo "── Separate Spaces (must be mode 1) ──"
+  guest "\"${GUEST_DIR}/scripts/ensure-separate-spaces\" check" 2>&1 || true
+  echo ""
   echo "── Rift workspaces ──"
   guest "rift-cli query workspaces" 2>&1 || true
   echo ""
@@ -83,6 +86,9 @@ cmd_check() {
   echo ""
   echo "── Aegis.app (should be present) ──"
   guest "ls -d /Applications/Aegis.app 2>&1 || echo '(not installed)'"
+  echo ""
+  echo "── Aegis CPU (should be < 10%) ──"
+  guest "ps -o %cpu -p \$(pgrep -x Aegis || echo 1) 2>/dev/null | tail -1" 2>&1 || echo "not running"
   echo ""
   echo "── Ghostty frameless config (should be present) ──"
   guest "grep -q 'macos-titlebar-style = hidden' ~/.config/ghostty/config && echo '(configured)' || echo '(missing)'"

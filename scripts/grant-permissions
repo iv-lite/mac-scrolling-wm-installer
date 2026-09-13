@@ -46,8 +46,38 @@ grant "$(command -v rift 2>/dev/null || true)"
 grant "$(command -v borders 2>/dev/null || true)"
 grant "/Applications/Aegis.app/Contents/MacOS/Aegis"
 
+# ─────────────────────────────────────────────────────────────
+# Post-grant verification: check the TCC database via tccutil-rs
+# list (requires Full Disk Access for the host terminal app).
+# ─────────────────────────────────────────────────────────────
+note "Verifying grants (requires Full Disk Access on the host terminal)..."
+verify_grant() {
+	local bin="$1"
+	if [ -z "$bin" ] || [ ! -e "$bin" ]; then
+		return 0
+	fi
+	# --service filters by TCC service; --user reads per-user DB first
+	# (covers the common grant path; system DB grants need sudo list).
+	if tccutil-rs list --user --service Accessibility 2>/dev/null | grep -qF "$bin"; then
+		ok "$bin found in Accessibility list (user db)"
+	elif tccutil-rs list --service Accessibility 2>/dev/null | grep -qF "$bin"; then
+		ok "$bin found in Accessibility list (system db)"
+	else
+		warn "$bin not visible in Accessibility list"
+		echo "     If the terminal app lacks Full Disk Access, verification is"
+		echo "     unreliable — the grant may still have succeeded."
+	fi
+}
+
+if command -v tccutil-rs >/dev/null 2>&1; then
+	verify_grant "$(command -v rift 2>/dev/null || true)"
+	verify_grant "$(command -v borders 2>/dev/null || true)"
+	verify_grant "/Applications/Aegis.app/Contents/MacOS/Aegis"
+else
+	warn "tccutil-rs not found — skipping verification"
+fi
+
 # The terminal itself needs Full Disk Access for tccutil-rs to open TCC.db.
-# If the grants above failed, surface a helpful hint.
 warn "If grants failed: the terminal app running this installer needs"
 echo "     'Full Disk Access' (System Settings → Privacy & Security → Full Disk Access),"
 echo "     then quit and reopen the terminal and re-run: bash scripts/grant-permissions"

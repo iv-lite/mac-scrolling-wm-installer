@@ -140,6 +140,45 @@ has to happen per app. This installer does what's safely possible:
 > inject code into running apps and require disabling SIP — out of scope here,
 > the same reason this project never disables SIP.
 
+## Troubleshooting
+
+**Aegis is unresponsive / CPU pegged (~1000%).** Aegis spins in a busy loop if it
+starts before Rift's Mach service exists (`rift-cli subscribe mach *` dies,
+retries instantly, no backoff). The LaunchAgent this installer writes is wrapped
+by `scripts/start-aegis`, which waits up to 120 s for `rift-cli query workspaces`
+to succeed before launching Aegis, so this should not happen on a fresh install.
+If you hit it anyway:
+
+1. Check Rift is up: `rift-cli query workspaces` (should print `[]`, not a Mach error).
+2. `launchctl list | grep aegis` and `~/.config/aegis/start-aegis` exist if the wrapper was installed.
+3. Restart cleanly: `killall Aegis; rift service stop; rift service start; open -a Aegis`.
+
+**Rift won't start / instantly exits.** Rift hard-exits unless two conditions hold:
+
+- **"Displays have separate Spaces" is ON.** Rift probes the private windowserver
+  mode, not the legacy `defaults write com.apple.spaces spans-displays` knob —
+  on modern macOS (26) that knob no longer changes the live state. The installer's
+  `scripts/ensure-separate-spaces` enables it via the private SkyLight API and
+  persists it, then verifies. If it still fails, enable it manually in
+  System Settings → Desktop & Dock → "Displays have separate Spaces", then re-run
+  `bash scripts/ensure-separate-spaces set`. **On macOS 26, leaving this OFF risks
+  a WindowServer crash at next login (Apple bug 153570422).**
+- **`rift` has Accessibility.** Check System Settings → Privacy & Security →
+  Accessibility. Because `rift` is a CLI binary it's invisible there by default;
+  the installer grants it (and Borders/Aegis) via `tccutil-rs`. If grants failed,
+  the terminal running the installer needs **Full Disk Access** first, then
+  `bash scripts/grant-permissions`.
+
+Rift's own debug trail: `launchctl list | grep rift`, logs at `/tmp/rift_iv.out.log`
+and `/tmp/rift_iv.err.log`, and `sudo launchctl stop com.apple.tccd` after any
+grant. A quick health check of the whole stack:
+
+```sh
+bash scripts/ensure-separate-spaces check   # must print "enabled (mode 1)"
+rift-cli query workspaces                   # must print [] (Mach service up)
+ps -o %cpu -p $(pgrep -x Aegis)             # Aegis should be well under 10%
+```
+
 ## Multi-monitor
 
 - Rift's recommended "Displays have separate Spaces" = **on** gives each display
