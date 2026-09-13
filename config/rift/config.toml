@@ -35,14 +35,26 @@ mode = "scrolling"
 window_insertion_point = "end_of_tree"
 
 [settings.layout.scrolling]
-# Width of the focused column as a fraction of screen width
-column_width_ratio = 0.5
+# Niri-style "infinite horizontal canvas":
+# non-focused columns park beyond the viewport and glide in/out of the
+# screen edges as focus moves — nothing clamps inside the visible bounds.
+# macOS/Rift has no _NET_WM_STRUT/negative-strut concept (that is X11,
+# i3/sway); this wide-canvas feel comes purely from the scrolling layout +
+# niri focus navigation + animations, below.
+# Width of the focused column as a fraction of screen width (a wider
+# column = "big focus" feel, neighbours barely peek from the edges).
+# Overflow/canvas-scrolling begins the moment the combined column widths
+# exceed the monitor: with 0.7 that's already at 2+ windows (0.5 left two
+# windows at exactly 100% → static 50/50 tiling, no scroll). Note Rift
+# fills the whole screen for a single lone column by design.
+column_width_ratio = 0.7
 min_column_width_ratio = 0.3
 max_column_width_ratio = 0.9
 # Keep the focused column centered like niri
 alignment = "center"
 # niri-style reveal-on-navigate focus behaviour
 focus_navigation_style = "niri"
+# Always animate strip scrolls independently of the global toggle
 animate = true
 
 [settings.layout.scrolling.gestures]
@@ -187,6 +199,8 @@ comb1 = "Alt + Shift"
 # ─── Scroll the strip ───
 "Alt + BracketLeft"   = { scroll_strip = { delta = -0.5 } }
 "Alt + BracketRight"  = { scroll_strip = { delta = 0.5 } }
+"Alt + Shift + BracketLeft"  = "snap_strip"
+"Alt + Shift + BracketRight" = "snap_strip"
 "Alt + Space"         = "center_selection"
 
 # ─── Apps ───

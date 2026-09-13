@@ -60,6 +60,7 @@ Rift modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 | `Option` + `Ctrl` + Arrows | Resize (left/right width, up/down height) |
 | `Option` + `Tab` | Jump to last workspace |
 | `Option` + `[` / `]` | Scroll the strip by half a column |
+| `Option` + `Shift` + `[` / `]` | Snap the strip to a column boundary |
 
 ### Workspaces (1-9)
 
@@ -105,6 +106,37 @@ Rift modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 > (`Option+[`/`]`), per-Space tiling toggles are `Option+Z`, and workspace
 > switching is `Option+1..9`. The SketchyBar cheat sheet (`Cmd+Option+K`) is
 > gone — Aegis replaces the menu bar entirely.
+
+### The infinite horizontal canvas
+
+The niri-style scrolling strip behaves like a canvas **wider than the monitor**:
+unfocused columns park off-screen beyond the frame edge and glide in/out of the
+screen edges as focus moves, instead of being clamped or squeezed into the
+visible bounds.
+
+There's no secret trick in the config — this is what Rift's scrolling layout
+does natively:
+
+- `[settings.layout] mode = "scrolling"` + `focus_navigation_style = "niri"`
+  reveal columns on navigation, keeping neighbours staged beyond the edges.
+- `alignment = "center"` keeps the focused column centered, so the next/prev
+  columns visibly peek in from the left/right.
+- `column_width_ratio = 0.7` gives the "big focus + sliver peek" look: the
+  canvas starts overflowing as soon as column widths exceed the monitor —
+  with 0.7 that's already at **2+ windows**, so the scroll doesn't hide
+  behind a static 50/50 tiling (0.5 did exactly that). A single lone window
+  still fills the screen (Rift gives a one-column strip full width); open a
+  second or third window to see the strip spill past the edges.
+- `animate = true` plus the global `animate` / `animation_duration` /
+  `animation_fps` settings produce the smooth slide.
+- `scroll_strip` (`Alt+[`/`]`) half-steps, `snap_strip` (`Alt+Shift+[`/`]`)
+  settles on a column boundary, `center_selection` (`Alt+Space`) re-centers.
+
+> **Why not "negative struts"?** macOS/Rift has no `_NET_WM_STRUT` /
+> negative-strut API — that's an X11/i3/sway concept. And Rift `app_rules`
+> only control floating/workspace/size/position/manage, not canvas size. The
+> wide-canvas feel comes purely from the scrolling layout + niri focus
+> navigation + animations.
 
 ## The menu bar & notch
 
