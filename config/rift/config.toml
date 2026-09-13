@@ -50,7 +50,7 @@ window_insertion_point = "end_of_tree"
 column_width_ratio = 1
 min_column_width_ratio = 0.3
 # 1.0 lets Alt+W (below) pull the focused column to full width
-max_column_width_ratio = 0.9
+max_column_width_ratio = 1
 # Keep the focused column centered like niri
 alignment = "center"
 # niri-style reveal-on-navigate focus behaviour
@@ -207,6 +207,9 @@ comb1 = "Alt + Shift"
 "Alt + Shift + BracketLeft" = "snap_strip"
 "Alt + Shift + BracketRight" = "snap_strip"
 "Alt + Space" = "center_selection"
+
+# ─── Column width cycle (Option+W: 0.3 → 0.5 → 1) ───
+"Alt + W" = { "exec" = ["/bin/bash", "-c", "$HOME/.config/rift/cycle-column-width"] }
 
 # ─── Apps ───
 "Meta + Ctrl + T" = { "exec" = ["/bin/bash", "-c", "open -a Ghostty"] }
