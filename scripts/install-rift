@@ -37,6 +37,25 @@ if [ -f ~/.config/rift/config.toml ]; then
 fi
 
 cp "$REPO_ROOT/config/rift/config.toml" ~/.config/rift/config.toml
+
+# ─────────────────────────────────────────────────────────────
+# Aegis toolbar clearance: patch the outer top gap to match Aegis's
+# bar height (safeAreaInsets.top of the main display). Aegis's bar
+# replaces the hidden native menu bar; if Rift's top gap is smaller than
+# the bar, an app's transparent title bar/toolbar bleeds up behind Aegis.
+# Mirror Aegis's own expression so the values always agree.
+# ─────────────────────────────────────────────────────────────
+AEGIS_BAR_HEIGHT=37   # fallback: typical 14" MacBook Pro value
+if command -v swift >/dev/null 2>&1; then
+	computed="$(swift -e 'import AppKit; print(Int((NSScreen.main?.safeAreaInsets.top ?? 37).rounded()))' 2>/dev/null || true)"
+	case "$computed" in
+		''|*[!0-9]*) : ;;
+		*) AEGIS_BAR_HEIGHT="$computed" ;;
+	esac
+fi
+sed -i '' "s/^top = 37/top = $AEGIS_BAR_HEIGHT/" ~/.config/rift/config.toml
+note "Outer top gap set to ${AEGIS_BAR_HEIGHT}px (Aegis bar clearance)"
+
 ok "Rift config installed to ~/.config/rift/config.toml"
 
 # ─────────────────────────────────────────────────────────────

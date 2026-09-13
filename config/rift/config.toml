@@ -68,7 +68,14 @@ propagate_to_workspace_swipe = true
 [settings.layout.gaps]
 # Nord-friendly breathing room around windows
 [settings.layout.gaps.outer]
-top = 15
+# top is the clearance below Aegis's bar. Aegis's bar is
+# safeAreaInsets.top tall and replaces the hidden native menu bar; Rift only
+# auto-insets that notch area on the built-in display, so without a large
+# enough top gap an app's transparent title bar/toolbar bleeds up behind
+# Aegis. 37 = typical MacBook Pro 14" value (MB Air ~34, MBP 16" ~40-47);
+# scripts/install-rift overwrites this with your display's actual
+# safeAreaInsets.top at install time.
+top = 37
 left = 15
 bottom = 15
 right = 15

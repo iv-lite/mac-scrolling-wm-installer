@@ -148,6 +148,13 @@ does natively:
   notifications, and Bluetooth device events in the notch area — no more
   overflowing menu bar items.
 - Aegis auto-detects Rift on launch (Mach subscription) and needs no setup.
+- **Bar clearance:** the top gap is set so tiled windows start *below* Aegis's
+  bar. Aegis's bar is as tall as the display's `safeAreaInsets.top`; if the gap
+  is smaller, an app's **transparent title bar/toolbar** appears at the notch
+  line and bleeds up behind Aegis. `scripts/install-rift` writes your display's
+  actual `safeAreaInsets.top` (Aegis's own bar-height expression) into
+  `~/.config/rift/config.toml` → `[settings.layout.gaps.outer].top` at install
+  time. Tune that value for more/less breathing room.
 - Tune the top gap if you want more breathing room below Aegis's bar — see
   `~/.config/rift/config.toml` `[settings.layout.gaps.outer]`.
 
