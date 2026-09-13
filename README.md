@@ -141,10 +141,17 @@ aerospace` and `~/.config/borders`) to
 `rdrkr/tap`, `FelixKratz/formulae`, and `uinaf/tap` only when nothing kept
 depends on them, and re-enables "Displays have separate Spaces".
 
-## Testing in a macOS VM (Tart)
+## Testing in a macOS VM
 
-A full test workflow runs `./install` inside a real macOS guest VM, using
-Apple's Virtualization.framework for near-native performance:
+The `tests/preview` workflow runs `./install` inside a real macOS guest VM.
+The host OS is auto-detected and a matching hypervisor backend is used:
+
+| Host | Backend | Requirements |
+| --- | --- | --- |
+| macOS (Apple Silicon) | Tart (`tests/lib/backend_tart.sh`) | macOS 15+, Homebrew; `tart`/`sshpass` auto-installed |
+| Linux x86_64 | QEMU/KVM + OpenCore (`tests/lib/backend_qemu.sh`) | `/dev/kvm`, `qemu-system-x86`, `sshpass`, `rsync`, a macOS Sequoia disk |
+
+macOS host:
 
 ```sh
 ./tests/preview setup        # installs tart/sshpass (auto), clones host-matched base image
@@ -155,10 +162,31 @@ Apple's Virtualization.framework for near-native performance:
 ./tests/preview clean        # interactively remove VM, tart, sshpass, base image
 ```
 
-Dependencies (`tart`, `sshpass`) are installed automatically on demand and can
-be removed with `clean`. See `./tests/preview help` for the full command
-list. Limitations: single virtual display (multi-monitor can't be tested),
-Accessibility may need one manual grant inside the guest.
+Linux x86_64 host:
+
+```sh
+export TESTS_MACOS_DISK=/path/to/macos-sequoia.qcow2   # required (installed guest, admin/admin)
+./tests/preview setup        # validates the disk, fetches OpenCore, creates qcow2 overlays
+./tests/preview up           # boot the guest (watch the first boot once to confirm login)
+./tests/preview install      # rsyncs the repo into the guest, then runs ./install
+./tests/preview check
+./tests/preview shot
+./tests/preview clean
+```
+
+On Linux the provided `TESTS_MACOS_DISK` is never written to — the VM boots
+writable qcow2 overlays (`tests/.preview-qemu/bare.qcow2`,
+`provisioned.qcow2`). Bare/provisioned snapshots follow the same semantics as
+Tart: `snapshot` captures the current state into `provisioned`, `restore bare`
+resets to the golden baseline. Extra tunables are documented in
+`tests/lib/backend_qemu.sh` (`TESTS_OPENCORE`, `TESTS_OVMF_CODE`,
+`TESTS_OVMF_VARS`, `TESTS_SSH_PORT`, default 22222).
+
+On macOS, dependencies (`tart`, `sshpass`) are installed automatically on
+demand and can be removed with `clean`; on Linux, failing-check hints print
+the distro package install commands. See `./tests/preview help` for the full
+command list. Limitations: single virtual display (multi-monitor can't be
+tested), Accessibility may need one manual grant inside the guest.
 
 ## Project layout
 
@@ -168,7 +196,7 @@ uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
 config/aerospace/         AeroSpace config (tree layout, bindings, gaps)
 config/borders/bordersrc  JankyBorders focus-border config
-tests/                    Tart VM test workflow (tests/preview + lib/)
+tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
 Configs are installed to `~/.config/{aerospace,borders}`; existing files are
