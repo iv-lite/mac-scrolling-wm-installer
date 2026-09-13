@@ -27,7 +27,7 @@ run_step() {
 }
 
 # Fresh install vs. upgrade of an existing setup
-if command -v rift >/dev/null 2>&1 || [ -d /Applications/Aegis.app ]; then
+if command -v rift >/dev/null 2>&1; then
 	MODE="upgrade"
 else
 	MODE="install"
@@ -35,7 +35,7 @@ fi
 
 echo ""
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║   Rift + Aegis + JankyBorders + Ghostty installer   ║"
+echo "  ║   Rift + JankyBorders + Ghostty installer           ║"
 if [ "$MODE" = "upgrade" ]; then
 	echo "  ║              niri-like macOS setup (upgrade)       ║"
 else
@@ -48,7 +48,6 @@ run_step configure-system
 run_step install-ghostty
 run_step install-rift
 run_step install-borders
-run_step install-aegis
 run_step grant-permissions
 run_step enable-services
 
@@ -56,7 +55,7 @@ echo ""
 echo "  ${GREEN}══════════════════════════════════════════════${RESET}"
 if [ "$MODE" = "upgrade" ]; then
 	echo "  ${GREEN}  Upgrade complete — configs refreshed & services restarted${RESET}"
-	echo "  ${GREEN}  (Rift, Aegis, JankyBorders, Ghostty)${RESET}"
+	echo "  ${GREEN}  (Rift, JankyBorders, Ghostty)${RESET}"
 else
 	echo "  ${GREEN}  Installation complete!${RESET}"
 fi
@@ -76,8 +75,7 @@ else
 	echo "  ${YELLOW}⚠ After the next login:${RESET}"
 fi
 echo "     - Rift tiles windows in a niri-style scrolling strip"
-echo "     - Aegis draws the menu bar (workspace indicators + notch HUD)"
-echo "     - The native macOS menu bar is hidden (Aegis replaces it)"
+echo "     - Rift draws its workspace indicators in the native menu bar"
 echo "     - Ghostty runs frameless (title bar hidden)"
 echo "     - If accessibility grants failed above, grant them manually:"
 echo "       System Settings → Privacy & Security → Accessibility"

@@ -16,7 +16,7 @@ usage() {
   echo "  install    Sync the repo into the guest and run ./install"
   echo "  access     Re-run the accessibility grant script in the guest"
   echo "  login      Log out/in the GUI session to apply the separate-Spaces setting"
-  echo "  check      Query Rift state, separate-Spaces mode, Aegis CPU, installed formulae, and the Ghostty config in the guest"
+  echo "  check      Query Rift state, separate-Spaces mode, installed formulae, and the Ghostty config in the guest"
   echo "  shot       Capture a screenshot into tests/screenshots/"
   echo "  snapshot   Create 'bare' (fresh macOS) + 'provisioned' (after install) snapshots"
   echo "  restore    Restore a snapshot: './tests/preview restore bare'"
@@ -62,7 +62,7 @@ cmd_access() {
   sync_repo
   guest "bash '${GUEST_DIR}/scripts/grant-permissions'" || true
   warn "If grants failed above, open the VM window and grant manually:"
-  warn "System Settings → Privacy & Security → Accessibility → enable Rift, Borders, Aegis"
+  warn "System Settings → Privacy & Security → Accessibility → enable Rift, Borders"
 }
 
 cmd_login() {
@@ -84,11 +84,8 @@ cmd_check() {
   echo "── Installed formulae ──"
   guest "brew list | grep -Ei 'rift|aerospace|aerospacebar|borders|tccutil|ghostty' || echo '(none found)'"
   echo ""
-  echo "── Aegis.app (should be present) ──"
-  guest "ls -d /Applications/Aegis.app 2>&1 || echo '(not installed)'"
-  echo ""
-  echo "── Aegis CPU (should be < 10%) ──"
-  guest "ps -o %cpu -p \$(pgrep -x Aegis || echo 1) 2>/dev/null | tail -1" 2>&1 || echo "not running"
+  echo "── Aegis.app (should NOT be present) ──"
+  guest "ls -d /Applications/Aegis.app 2>&1 || echo '(not installed — correct)'"
   echo ""
   echo "── Ghostty frameless config (should be present) ──"
   guest "grep -q 'macos-titlebar-style = hidden' ~/.config/ghostty/config && echo '(configured)' || echo '(missing)'"

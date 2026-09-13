@@ -61,21 +61,17 @@ animate = true
 # Horizontal scroll (trackpad) switches columns
 enabled = true
 invert_horizontal = false
-fingers = 3
+fingers = 4
 # Scrolling past the end flows into the next/prev workspace
 propagate_to_workspace_swipe = true
 
 [settings.layout.gaps]
 # Nord-friendly breathing room around windows
 [settings.layout.gaps.outer]
-# top is the clearance below Aegis's bar. Aegis's bar is
-# safeAreaInsets.top tall and replaces the hidden native menu bar; Rift only
-# auto-insets that notch area on the built-in display, so without a large
-# enough top gap an app's transparent title bar/toolbar bleeds up behind
-# Aegis. 37 = typical MacBook Pro 14" value (MB Air ~34, MBP 16" ~40-47);
-# scripts/install-rift overwrites this with your display's actual
-# safeAreaInsets.top at install time.
-top = 37
+# top is the clearance above tiled windows. Rift's workspaces run in
+# fullscreen Spaces, so the (restored, native) macOS menu bar auto-hides —
+# no notch/menu-bar compensation needed. 15 matches the other edges.
+top = 15
 left = 15
 bottom = 15
 right = 15
@@ -95,10 +91,10 @@ vertical = 12
 #   horizontal = 8
 #   vertical = 8
 
-# Rift's built-in menu-bar indicators are DISABLED — Aegis is the bar now
-# (draws its own notch-safe menu bar + workspace indicators for Rift).
+# Rift draws its own workspace indicators in the (native, restored) menu bar.
+# The native macOS menu bar auto-hides in Rift's fullscreen Spaces.
 [settings.ui.menu_bar]
-enabled = false
+enabled = true
 
 [settings.gestures]
 # Trackpad swipes switch virtual workspaces (like native macOS)
@@ -122,9 +118,7 @@ reapply_app_rules_on_title_change = false
 
 workspace_rules = []
 # Named after their Alt+number. Rift workspace ids are 0-based.
-workspace_names = [
-  "1", "2", "3", "4", "5", "6", "7", "8", "9"
-]
+workspace_names = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
 # ─── App rules ───
 app_rules = [
@@ -144,22 +138,22 @@ comb1 = "Alt + Shift"
 "Alt + Z" = "toggle_space_activated"
 
 # ─── Window focus (Option+Arrows) ───
-"Alt + Up"    = { move_focus = "up" }
-"Alt + Down"  = { move_focus = "down" }
-"Alt + Left"  = { move_focus = "left" }
+"Alt + Up" = { move_focus = "up" }
+"Alt + Down" = { move_focus = "down" }
+"Alt + Left" = { move_focus = "left" }
 "Alt + Right" = { move_focus = "right" }
 
 # ─── Move window (Option+Shift+Arrows) ───
-"comb1 + Up"    = { move_node = "up" }
-"comb1 + Down"  = { move_node = "down" }
-"comb1 + Left"  = { move_node = "left" }
+"comb1 + Up" = { move_node = "up" }
+"comb1 + Down" = { move_node = "down" }
+"comb1 + Left" = { move_node = "left" }
 "comb1 + Right" = { move_node = "right" }
 
 # ─── Resize (Option+Ctrl+Arrows) ───
 "Alt + Ctrl + Right" = { resize_window_grow = "smart" }
-"Alt + Ctrl + Left"  = { resize_window_shrink = "smart" }
-"Alt + Ctrl + Up"    = { resize_window_grow = "vertical" }
-"Alt + Ctrl + Down"  = { resize_window_shrink = "vertical" }
+"Alt + Ctrl + Left" = { resize_window_shrink = "smart" }
+"Alt + Ctrl + Up" = { resize_window_grow = "vertical" }
+"Alt + Ctrl + Down" = { resize_window_shrink = "vertical" }
 
 # ─── Workspaces (Option+1-9) ───
 "Alt + 1" = { switch_to_workspace = 0 }
@@ -184,40 +178,37 @@ comb1 = "Alt + Shift"
 "comb1 + 9" = { move_window_to_workspace = 8 }
 
 # ─── Displays (Cmd+Option+Arrows) ───
-"Meta + Alt + Left"          = { focus_display = "left" }
-"Meta + Alt + Right"         = { focus_display = "right" }
-"Meta + Alt + Up"            = { focus_display = "up" }
-"Meta + Alt + Down"          = { focus_display = "down" }
-"Meta + Alt + Shift + Left"  = { move_window_to_display = { selector = "left" } }
+"Meta + Alt + Left" = { focus_display = "left" }
+"Meta + Alt + Right" = { focus_display = "right" }
+"Meta + Alt + Up" = { focus_display = "up" }
+"Meta + Alt + Down" = { focus_display = "down" }
+"Meta + Alt + Shift + Left" = { move_window_to_display = { selector = "left" } }
 "Meta + Alt + Shift + Right" = { move_window_to_display = { selector = "right" } }
-"Meta + Alt + Shift + Up"    = { move_window_to_display = { selector = "up" } }
-"Meta + Alt + Shift + Down"  = { move_window_to_display = { selector = "down" } }
+"Meta + Alt + Shift + Up" = { move_window_to_display = { selector = "up" } }
+"Meta + Alt + Shift + Down" = { move_window_to_display = { selector = "down" } }
 
 # ─── Misc navigation ───
 "Alt + Tab" = "switch_to_last_workspace"
 
 # ─── Window state ───
-"Alt + F"             = "toggle_fullscreen"
-"Alt + Shift + F"     = "toggle_fullscreen_within_gaps"
-"Alt + M"             = "toggle_fullscreen_within_gaps"
-"Alt + V"             = "toggle_window_floating"
-"Alt + Q"             = "close_window"
-"Alt + W"             = "toggle_stack"
-"Alt + Slash"         = "toggle_orientation"
-"Alt + Ctrl + E"      = "unjoin_windows"
+"Alt + F" = "toggle_fullscreen"
+"Alt + Shift + F" = "toggle_fullscreen_within_gaps"
+"Alt + M" = "toggle_fullscreen_within_gaps"
+"Alt + V" = "toggle_window_floating"
+"Alt + Q" = "close_window"
+"Alt + W" = "toggle_stack"
+"Alt + Slash" = "toggle_orientation"
+"Alt + Ctrl + E" = "unjoin_windows"
 
 # ─── Scroll the strip ───
-"Alt + BracketLeft"   = { scroll_strip = { delta = -0.5 } }
-"Alt + BracketRight"  = { scroll_strip = { delta = 0.5 } }
-"Alt + Shift + BracketLeft"  = "snap_strip"
+"Alt + BracketLeft" = { scroll_strip = { delta = -0.5 } }
+"Alt + BracketRight" = { scroll_strip = { delta = 0.5 } }
+"Alt + Shift + BracketLeft" = "snap_strip"
 "Alt + Shift + BracketRight" = "snap_strip"
-"Alt + Space"         = "center_selection"
+"Alt + Space" = "center_selection"
 
 # ─── Apps ───
-"Meta + Ctrl + T" = { "exec" = [
-  "/bin/bash", "-c",
-  "open -a Ghostty"
-] }
+"Meta + Ctrl + T" = { "exec" = ["/bin/bash", "-c", "open -a Ghostty"] }
 
 # ─── Misc ───
 "Alt + Shift + R" = "reload_config"

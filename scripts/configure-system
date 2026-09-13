@@ -20,14 +20,15 @@ if ! "${0%/*}/ensure-separate-spaces" set; then
 fi
 echo ""
 
-# Hide the native macOS menu bar — Aegis replaces it with its own
-# notch-safe bar (workspace indicators + notch HUD).
-if [ "$(defaults read NSGlobalDomain _HIHideMenuBar 2>/dev/null)" != "1" ]; then
-	note "Hiding the native menu bar (Aegis replaces it)..."
-	defaults write NSGlobalDomain _HIHideMenuBar -bool true
-	ok "_HIHideMenuBar set to on"
+# Show the native macOS menu bar again (Rift's `[settings.ui.menu_bar]` draws
+# workspace indicators in it, and it auto-hides in Rift's fullscreen Spaces).
+# Un-hides the bar even when upgrading from an Aegis-era install.
+if [ "$(defaults read NSGlobalDomain _HIHideMenuBar 2>/dev/null)" = "1" ]; then
+	note "Showing the native menu bar again (Rift draws its indicators there)..."
+	defaults write NSGlobalDomain _HIHideMenuBar -bool false
+	ok "_HIHideMenuBar set to off"
 else
-	ok "'Hide menu bar' already on"
+	ok "'Hide menu bar' already off"
 fi
 
 # Attempt to apply immediately. Separate Spaces is applied live via the

@@ -37,54 +37,6 @@ if command -v rift >/dev/null 2>&1; then
 fi
 
 # ─────────────────────────────────────────────────────────────
-# Aegis (LaunchAgent, gated so it only launches once Rift is up —
-# Aegis spins at ~1000% CPU if it starts before the Rift Mach port
-# exists, see scripts/start-aegis)
-# ─────────────────────────────────────────────────────────────
-AEGIS_PLIST="$HOME/Library/LaunchAgents/com.aegis.Aegis.plist"
-AEGIS_BIN="/Applications/Aegis.app/Contents/MacOS/Aegis"
-AEGIS_WRAPPER_OUT="$HOME/.config/aegis/start-aegis"
-
-launch_aegis_now() {
-	# Start Aegis immediately, but only if Rift is already serving its Mach
-	# service (installing the plist with RunAtLoad starts it regardless).
-	if command -v rift-cli >/dev/null 2>&1 && rift-cli query workspaces >/dev/null 2>&1; then
-		launchctl unload "$AEGIS_PLIST" >/dev/null 2>&1 || true
-		launchctl load "$AEGIS_PLIST" >/dev/null 2>&1 || true
-		ok "Aegis LaunchAgent installed + started"
-	else
-		ok "Aegis LaunchAgent installed (will start once Rift is up)"
-	fi
-}
-
-if [ -x "$AEGIS_BIN" ]; then
-	note "Installing Aegis LaunchAgent..."
-	mkdir -p "$HOME/.config/aegis"
-	cp "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/start-aegis" "$AEGIS_WRAPPER_OUT"
-	chmod +x "$AEGIS_WRAPPER_OUT"
-	cat > "$AEGIS_PLIST" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>Label</key>
-	<string>com.aegis.Aegis</string>
-	<key>ProgramArguments</key>
-	<array>
-		<string>$AEGIS_WRAPPER_OUT</string>
-		<string>$AEGIS_BIN</string>
-	</array>
-	<key>RunAtLoad</key>
-	<true/>
-</dict>
-</plist>
-EOF
-	launch_aegis_now
-else
-	warn "Aegis.app not found — skipping LaunchAgent (run: bash scripts/install-aegis)"
-fi
-
-# ─────────────────────────────────────────────────────────────
 # JankyBorders (brew services)
 # ─────────────────────────────────────────────────────────────
 if command -v borders >/dev/null 2>&1; then
