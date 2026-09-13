@@ -72,7 +72,11 @@ ok "Rift config installed to ~/.config/rift/config.toml"
 # launchd service (applies Accessibility before start)
 # ─────────────────────────────────────────────────────────────
 note "Installing Rift launchd service..."
-rift service install
-ok "Rift service installed"
+if [ -f "$HOME/Library/LaunchAgents/git.acsandmann.rift.plist" ]; then
+	ok "Rift launchd service already installed"
+else
+	rift service install
+	ok "Rift service installed"
+fi
 
 warn "Rift will be started by enable-services after permissions are granted."
