@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
-# Tart-based test workflow for the aerospace-installer project.
+# Test workflow for the aerospace-installer project. Runs the real ./install
+# inside a fresh macOS guest VM and lets you verify AeroSpace tiling +
+# AeroSpaceBar visually via screenshots.
 #
-# Runs the real ./install inside a fresh macOS guest VM and lets you
-# verify AeroSpace tiling + AeroSpaceBar visually via screenshots.
+# Host is auto-detected:
+#   macOS (Apple Silicon) -> Tart hypervisor  (requires macOS 15+, Homebrew)
+#   Linux x86_64          -> QEMU/KVM + OpenCore (requires TESTS_MACOS_DISK)
+# All commands behave identically on both backends.
 #
 # Known limits:
 #   - Single virtual display  -> multi-monitor bindings cannot be tested.
 #   - Accessibility grants    -> may need one manual GUI grant in the guest.
 #
-# Requires: Apple Silicon host, macOS 15+, Homebrew.
-# Requirements (tart, sshpass) are installed automatically on demand.
-# One-time:  ~25 GB base-image download on `setup`.
-#
 # Structure:
-#   tests/lib/common.sh    shared helpers (colours, SSH, VM lifecycle)
-#   tests/lib/commands.sh  per-subcommand implementations
+#   tests/lib/common.sh         host detection + shared helpers (colors, SSH, lifecycle)
+#   tests/lib/backend_tart.sh   Tart backend (macOS host)
+#   tests/lib/backend_qemu.sh   QEMU/KVM backend (Linux x86_64 host)
+#   tests/lib/commands.sh       per-subcommand implementations over the backend contract
 #
 # Usage: ./tests/preview {setup|up|install|access|login|check|shot|snapshot|restore|ssh|stop|delete|clean}
 

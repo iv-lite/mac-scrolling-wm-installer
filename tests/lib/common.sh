@@ -1,51 +1,52 @@
 #!/usr/bin/env bash
-# Shared helpers for the Tart test workflow.
+# Shared helpers for the preview test workflow.
 # Intended to be sourced by tests/preview only.
+#
+# Detects the host OS and sources the matching backend:
+#   Darwin -> backend_tart.sh  (Apple Silicon macOS host, Tart hypervisor)
+#   Linux  -> backend_qemu.sh (x86_64 Linux host, QEMU/KVM + OpenCore)
+# Every backend implements the same contract:
+#   ensure_deps, cmd_setup, vm_exists, vm_is_running, vm_ip, vm_start,
+#   vm_stop, vm_delete, sync_repo, backend_screenshot, backend_snapshot,
+#   backend_restore, backend_clean
 
 [ -n "${ROOT:-}" ] || { echo "error: ROOT not set — run via tests/preview" >&2; exit 1; }
 
-VM="aerospace-test"
-MOUNT_NAME="installer"
-GUEST_DIR="/Volumes/My Shared Files/${MOUNT_NAME}"
 GREEN=$'\033[0;32m'; YELLOW=$'\033[0;33m'; CYAN=$'\033[0;36m'; RED=$'\033[0;31m'; RESET=$'\033[0m'
-SSHAUTH="-p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
 
 note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 die()  { echo "  ${RED}✗ $*${RESET}"; exit 1; }
 
-base_image() {
-  local major
-  major="$(sw_vers -productVersion | cut -d. -f1)"
-  case "$major" in
-    26) echo "ghcr.io/cirruslabs/macos-tahoe-base:latest";;
-    15) echo "ghcr.io/cirruslabs/macos-sequoia-base:latest";;
-    14) echo "ghcr.io/cirruslabs/macos-sonoma-base:latest";;
-    13) echo "ghcr.io/cirruslabs/macos-ventura-base:latest";;
-    *)  die "cannot map host macOS major version '$major' to a Tart base image";;
-  esac
-}
+# Host OS detection — used to pick the backend below.
+HOST_OS="$(uname -s)"
 
-is_running() {
-  tart list 2>/dev/null | awk -v vm="$VM" '$1 ~ "^"vm"$" && $0 ~ /running/ { found=1 } END { exit !found }'
-}
+case "$HOST_OS" in
+  Darwin)
+    source "$ROOT/tests/lib/backend_tart.sh"
+    ;;
+  Linux)
+    [ "$(uname -m)" = "x86_64" ] || die "macOS guests are only possible on x86_64 Linux — ARM64 Linux is not supported"
+    source "$ROOT/tests/lib/backend_qemu.sh"
+    ;;
+  *)
+    die "unsupported host OS '$HOST_OS' (expected Darwin or Linux)"
+    ;;
+esac
 
-vm_exists() {
-  tart list 2>/dev/null | awk -v vm="$VM" '$1 ~ "^"vm"$" { found=1 } END { exit !found }'
-}
-
-vm_ip() {
-  tart ip "$VM" 2>/dev/null || echo ""
-}
+# Generic SSH options shared by every backend. Backends extend the ssh/scp
+# command lines via SSH_PORT_ARG (e.g. '-p <port>' for QEMU) and
+# SCP_PORT_ARG (scp needs '-P <port>').
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
 
 wait_ssh() {
   note "Waiting for guest SSH (up to 10 min)..."
   local tries=120 i=0 ip=""
   while [ "$i" -lt "$tries" ]; do
     ip="$(vm_ip)"
-    if [ -n "$ip" ] && sshpass -p admin ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-          -o ConnectTimeout=5 admin@"$ip" true 2>/dev/null; then
+    if [ -n "$ip" ] && sshpass -p admin ssh $SSH_PORT_ARG $SSH_OPTS \
+          admin@"$ip" true 2>/dev/null; then
       ok "guest is up at admin@$ip"
       return 0
     fi
@@ -55,17 +56,10 @@ wait_ssh() {
   die "guest did not become reachable over SSH in time"
 }
 
-run_vm() {
-  local extra=""
-  if [ "${1:-}" = "--no-graphics" ]; then extra="--no-graphics"; fi
-  if [ -n "$extra" ]; then warn "running headless — manual GUI grants will not be possible"; fi
-  nohup tart run "$VM" --dir "${MOUNT_NAME}:${ROOT}" $extra >"$ROOT/tests/.tart-run.log" 2>&1 &
-}
-
 ensure_running() {
-  if ! is_running; then
-    warn "VM '$VM' is not running — starting it"
-    run_vm
+  if ! vm_is_running; then
+    warn "VM is not running — starting it"
+    vm_start
     wait_ssh
   fi
 }
@@ -74,20 +68,19 @@ guest() {
   ensure_running
   local ip=""
   ip="$(vm_ip)"
-  sshpass $SSHAUTH admin@"$ip" "$@"
+  sshpass -p admin ssh $SSH_PORT_ARG $SSH_OPTS admin@"$ip" "$@"
 }
 
 guest_sudo() {
   ensure_running
   local ip=""
   ip="$(vm_ip)"
-  sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -o ConnectTimeout=10 admin@"$ip" "echo admin | sudo -S $*"
+  sshpass -p admin ssh $SSH_PORT_ARG $SSH_OPTS admin@"$ip" "echo admin | sudo -S $*"
 }
 
-stop_vm() {
-  if is_running; then
-    note "Stopping '$VM'..."
-    tart stop "$VM" || true
-  fi
+scp_from_guest() {
+  ensure_running
+  local ip=""
+  ip="$(vm_ip)"
+  sshpass -p admin scp $SCP_PORT_ARG $SSH_OPTS "admin@$ip:$1" "$2"
 }

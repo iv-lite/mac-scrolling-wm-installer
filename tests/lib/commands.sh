@@ -1,71 +1,45 @@
 #!/usr/bin/env bash
-# Subcommands for the Tart test workflow.
-# Intended to be sourced by tests/preview after lib/common.sh.
+# Subcommands for the preview test workflow.
+# Intended to be sourced by tests/preview after lib/common.sh (which loads
+# the host backend). All commands act through the backend contract, so the
+# same workflow runs on macOS hosts (Tart) and x86_64 Linux hosts (QEMU/KVM).
 
 usage() {
-  cat <<EOF
-Usage: ./tests/preview <command>
-
-  setup      Install tart+sshpass, clone the host-matched base image, tune resources
-  up         Boot the VM (GUI by default; --no-graphics for headless) and wait for SSH
-  install    Run install inside the guest (via live host mount)
-  access     Re-run the accessibility grant script in the guest
-  login      Log out/in the GUI session to apply the separate-Spaces setting
-  check      Query AeroSpace state and installed formulae in the guest
-  shot       Capture a screenshot into tests/screenshots/
-  snapshot   Create 'bare' (fresh macOS) + 'provisioned' (after install) snapshots
-  restore    Restore a snapshot: './tests/preview restore bare'
-  ssh        Open an interactive shell on the guest
-  stop       Gracefully stop the VM
-  delete     Stop and delete the VM entirely
-  clean      Interactively remove the test VM, tart, sshpass, and base image
-EOF
-}
-
-ensure_deps() {
-  if [ "${TART_DEPS_OK:-}" = "1" ]; then return 0; fi
-  if ! command -v brew >/dev/null 2>&1; then
-    die "Homebrew is required — install it first (./install can do this)"
-  fi
-  local need=""
-  if ! command -v tart >/dev/null 2>&1; then need="$need cirruslabs/cli/tart"; fi
-  if ! command -v sshpass >/dev/null 2>&1; then need="$need cirruslabs/cli/sshpass"; fi
-  if [ -n "$need" ]; then
-    note "Tapping and trusting cirruslabs/cli (required for tart/sshpass)..."
-    brew tap cirruslabs/cli
-    brew trust cirruslabs/cli 2>/dev/null || true
-    note "Installing missing requirements:$need"
-    brew install $need
-  fi
-  TART_DEPS_OK=1
-}
-
-cmd_setup() {
-  ensure_deps
-  local image
-  image="$(base_image)"
-  if ! vm_exists; then
-    note "Cloning $image (first run downloads ~25 GB)..."
-    tart clone "$image" "$VM"
-  else
-    ok "VM '$VM' already exists — skipping clone"
-  fi
-  note "Tuning resources (4 CPU / 8 GB)..."
-  tart set "$VM" --cpus 4 --memory 8192 2>/dev/null || true
-  ok "Setup done — run: ./tests/preview up"
+  echo "Usage: ./tests/preview <command>"
+  echo ""
+  echo "Host is auto-detected: macOS -> Tart hypervisor, Linux x86_64 -> QEMU/KVM."
+  echo ""
+  echo "  setup      Install deps, create the VM/disk layout (macOS: clones a"
+  echo "             base image; Linux: requires TESTS_MACOS_DISK + boots once)"
+  echo "  up         Boot the VM (GUI by default; --no-graphics for headless) and wait for SSH"
+  echo "  install    Sync the repo into the guest and run ./install"
+  echo "  access     Re-run the accessibility grant script in the guest"
+  echo "  login      Log out/in the GUI session to apply the separate-Spaces setting"
+  echo "  check      Query AeroSpace state and installed formulae in the guest"
+  echo "  shot       Capture a screenshot into tests/screenshots/"
+  echo "  snapshot   Create 'bare' (fresh macOS) + 'provisioned' (after install) snapshots"
+  echo "  restore    Restore a snapshot: './tests/preview restore bare'"
+  echo "  ssh        Open an interactive shell on the guest"
+  echo "  stop       Gracefully stop the VM"
+  echo "  delete     Stop and delete the VM entirely"
+  echo "  clean      Interactively remove the test VM and its tools"
+  echo ""
+  echo "Linux-only environment variables: TESTS_MACOS_DISK, TESTS_OPENCORE,"
+  echo "TESTS_OVMF_CODE, TESTS_OVMF_VARS, TESTS_SSH_PORT (default 22222)."
+  echo "See tests/lib/backend_qemu.sh and README.md for details."
 }
 
 cmd_up() {
   local headless="${1:-}"
-  if ! vm_exists; then die "VM '$VM' does not exist — run: ./tests/preview setup"; fi
-  if is_running; then
-    note "VM '$VM' is already running ($(tart ip "$VM"))"
+  if ! vm_exists; then die "VM does not exist — run: ./tests/preview setup"; fi
+  if vm_is_running; then
+    note "VM is already running ($(vm_ip))"
   else
-    run_vm "$headless"
+    vm_start "$headless"
     wait_ssh
   fi
   echo ""
-  ok "Connect anytime with:   ssh admin@$(vm_ip)"
+  ok "Connect anytime with:   ssh -p ${TESTS_SSH_PORT:-22} admin@$(vm_ip)"
 }
 
 cmd_install() {
@@ -73,7 +47,9 @@ cmd_install() {
   note "Enabling passwordless sudo for 'admin' in guest..."
   guest_sudo "sh -c 'echo \"admin ALL=(ALL) NOPASSWD: ALL\" > /etc/sudoers.d/100-admin && chmod 440 /etc/sudoers.d/100-admin'" || \
     warn "could not configure passwordless sudo — install may prompt for the admin password"
-  note "Running install inside the guest (live mount ${GUEST_DIR})..."
+  note "Syncing repo into the guest (${GUEST_DIR})..."
+  sync_repo
+  note "Running install inside the guest..."
   guest "cd '${GUEST_DIR}' && ./install"
   ok "install finished in guest"
   warn "Re-run grants if Accessibility failed:  ./tests/preview access"
@@ -82,6 +58,7 @@ cmd_install() {
 
 cmd_access() {
   ensure_running
+  sync_repo
   guest "bash '${GUEST_DIR}/scripts/grant-permissions'" || true
   warn "If grants failed above, open the VM window and grant manually:"
   warn "System Settings → Privacy & Security → Accessibility → enable AeroSpace, Borders"
@@ -123,53 +100,7 @@ ask_cleanup() {
 }
 
 cmd_clean() {
-  local yn=""
-  local has_tart="no"
-  command -v tart >/dev/null 2>&1 && has_tart="yes"
-
-  if [ "$has_tart" = "yes" ] && vm_exists 2>/dev/null; then
-    stop_vm
-    [ -t 0 ] && read -p "  Delete test VM '$VM' and its snapshots? [y/N] " yn || yn=""
-    case "$yn" in
-      y|Y) tart delete "$VM" && ok "test VM deleted";;
-      *)   note "kept VM '$VM'";;
-    esac
-  fi
-
-  if command -v tart >/dev/null 2>&1; then
-    [ -t 0 ] && read -p "  Uninstall tart? [y/N] " yn || yn=""
-    case "$yn" in
-      y|Y) brew uninstall tart; ok "tart uninstalled";;
-      *)   note "kept tart";;
-    esac
-  fi
-
-  if command -v sshpass >/dev/null 2>&1; then
-    [ -t 0 ] && read -p "  Uninstall sshpass? [y/N] " yn || yn=""
-    case "$yn" in
-      y|Y) brew uninstall sshpass; ok "sshpass uninstalled";;
-      *)   note "kept sshpass";;
-    esac
-  fi
-
-  if command -v tart >/dev/null 2>&1; then
-    local image=""
-    image="$(base_image)" 2>/dev/null || true
-    [ -t 0 ] && read -p "  Also delete base image '$image' (~25 GB, re-download needed later)? [y/N] " yn || yn=""
-    case "$yn" in
-      y|Y) tart delete "$image" 2>/dev/null && ok "base image deleted" || warn "could not delete base image (does it exist?)";;
-      *)   note "kept base image";;
-    esac
-  fi
-
-  if brew tap 2>/dev/null | grep -q "^cirruslabs/cli$"; then
-    [ -t 0 ] && read -p "  Untap cirruslabs/cli? [y/N] " yn || yn=""
-    case "$yn" in
-      y|Y) brew untap cirruslabs/cli >/dev/null 2>&1; brew untrust cirruslabs/cli >/dev/null 2>&1 || true; ok "tap cirruslabs/cli removed";;
-      *)   note "kept tap cirruslabs/cli";;
-    esac
-  fi
-
+  backend_clean
   echo ""
   ok "Cleanup finished."
 }
@@ -179,44 +110,32 @@ cmd_shot() {
   local outdir="$ROOT/tests/screenshots"
   mkdir -p "$outdir"
   local out="$outdir/shot-$(date +%Y%m%d-%H%M%S).png"
-  tart screenshot "$VM" "$out"
+  backend_screenshot "$out"
   ok "screenshot saved: $out"
 }
 
 cmd_snapshot() {
-  stop_vm
-  for snap in bare provisioned; do
-    if tart snapshot "$VM" "$snap" 2>/dev/null; then
-      ok "snapshot '$snap' created"
-    else
-      warn "snapshot '$snap' failed (may already exist)"
-    fi
-  done
+  backend_snapshot
 }
 
 cmd_restore() {
-  local snap="${1:-bare}"
-  if [ "$snap" != "bare" ] && [ "$snap" != "provisioned" ]; then die "snapshot must be 'bare' or 'provisioned'"; fi
-  stop_vm
-  tart restore "$VM" "$snap"
-  ok "restored to '$snap' — run: ./tests/preview up"
+  backend_restore "${1:-bare}"
 }
 
 cmd_ssh() {
   ensure_running
   local ip=""
   ip="$(vm_ip)"
-  exec sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    admin@"$ip"
+  exec sshpass -p admin ssh $SSH_PORT_ARG $SSH_OPTS admin@"$ip"
 }
 
 cmd_stop() {
-  stop_vm
+  vm_stop
   ok "VM stopped"
 }
 
 cmd_delete() {
-  stop_vm
-  tart delete "$VM"
+  vm_stop
+  vm_delete
   ok "VM deleted"
 }
