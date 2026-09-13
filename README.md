@@ -1,15 +1,16 @@
-# aerospace-installer
+# rift-wm-installer
 
-An i3-like window management setup for macOS, built on **AeroSpace** (tree-based
-tiler with plain-text TOML config and virtual workspaces), **AeroSpaceBar**
-(SwiftUI menu-bar companion showing your workspaces), **JankyBorders** (window
-focus borders), and **Ghostty** (terminal). Driven by Option-key shortcuts that
-don't fight macOS defaults.
+A niri-like window management setup for macOS, built on **Rift** (niri-style
+scrolling-strip tiler with hot-reloadable TOML config and virtual workspaces),
+**Rift's native menu-bar workspace indicators** (no bar app needed),
+**JankyBorders** (window focus borders), and **Ghostty** (terminal). Driven by
+Option-key shortcuts that don't fight macOS defaults.
 
 ## Requirements
 
-- macOS 15+ (required by AeroSpaceBar; AeroSpace itself runs on 13+)
+- macOS 13+ (Rift; tested on Sequoia and later)
 - Apple Silicon or Intel; Homebrew installed or auto-installed
+- "Displays have separate Spaces" enabled (Rift-recommended; the installer sets it)
 - No Karabiner, no disable of System Integrity Protection
 
 ## Quick start
@@ -23,29 +24,27 @@ The installer runs these steps from `scripts/`:
 | Script | Purpose |
 |---|---|
 | `install-deps` | Install Homebrew if missing, tccutil-rs, Ghostty |
-| `configure-system` | Disable "Displays have separate Spaces" (AeroSpace-recommended) |
-| `install-aerospace` | Install AeroSpace + write `~/.config/aerospace/aerospace.toml` |
-| `install-aerospacebar` | Install AeroSpaceBar (menu-bar workspace switcher) |
+| `configure-system` | Enable "Displays have separate Spaces" (Rift-recommended) |
+| `install-rift` | Install Rift + write `~/.config/rift/config.toml` + install its launchd service |
 | `install-borders` | Install JankyBorders + write `~/.config/borders/bordersrc` |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
-| `enable-services` | Start AeroSpace, AeroSpaceBar, and the `borders` service |
+| `enable-services` | Start Rift and the `borders` service |
 
 ### After install
 
-1. **Log out and back in** (Cmd+Shift+Q) — applies the disabled
+1. **Log out and back in** (Cmd+Shift+Q) — applies the enabled
    separate-Spaces setting.
-2. AeroSpace tiles in the **i3-style tree layout**; workspaces `1..9` are
-   persistent. `Option+Shift+R` reloads the config (auto-reload is also on).
-3. **AeroSpaceBar** shows the workspace badges in the native menu bar — click a
-   badge to switch, hover to preview windows. Enable "start at login" in its
-   Settings if you want it always on.
+2. Rift tiles in a **niri-style scrolling strip**; workspaces `1..9` are
+   persistent. `Option+Shift+R` reloads the config (hot reload is also on).
+3. Rift draws **workspace badges in the native menu bar** — click a badge to
+   switch, and the Rift menu-bar icon opens a workspace/layout menu. No extra
+   bar app to install or configure.
 4. If Accessibility grants failed, grant them manually:
-   System Settings → Privacy & Security → Accessibility (enable AeroSpace,
-   Borders).
+   System Settings → Privacy & Security → Accessibility (enable Rift, Borders).
 
 ## Keybindings
 
-AeroSpace modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
+Rift modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 
 ### Navigation & layout
 
@@ -55,15 +54,16 @@ AeroSpace modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 | `Option` + `Shift` + Arrows | Move window in the tree |
 | `Option` + `Ctrl` + Arrows | Resize (left/right width, up/down height) |
 | `Option` + `Tab` | Jump to last workspace |
-| `Option` + `Shift` + `Tab` | Move workspace to next display |
+| `Option` + `[` / `]` | Scroll the strip by half a column |
 
 ### Workspaces (1-9)
 
 | Shortcut | Action |
 |---|---|
-| `Option` + `1..9` | Switch AeroSpace workspace |
+| `Option` + `1..9` | Switch Rift workspace |
 | `Option` + `Shift` + `1..9` | Move window to workspace |
-| `Option` + `Shift` + `;` | Enter `service` mode (reset layout, balance, etc.) |
+| `Option` + `Z` | Toggle tiling on the current macOS Space |
+| 3-finger swipe | Switch workspaces (trackpad) |
 
 ### Displays (multi-monitor)
 
@@ -72,61 +72,53 @@ AeroSpace modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 | `Cmd` + `Option` + Arrows | Move focus to a display |
 | `Cmd` + `Option` + `Shift` + Arrows | Move window to a display |
 
-> AeroSpace workspaces are **not** 1:1 with macOS Spaces — each workspace is a
-> virtual container you can move between monitors. Moves across the tree still
-> respect physical display layout.
+> Rift workspaces are **not** 1:1 with macOS Spaces — each macOS Space has its
+> own set of virtual workspaces. With "Displays have separate Spaces" on, each
+> display is fully isolated.
 
 ### Window state
 
 | Shortcut | Action |
 |---|---|
-| `Option` + `F` | Toggle fullscreen (with outer gaps) |
+| `Option` + `F` | Toggle fullscreen |
+| `Option` + `Shift` + `F` | Toggle fullscreen (keeping outer gaps) |
 | `Option` + `V` | Toggle floating/tiling |
 | `Option` + `Q` | Close window |
-| `Option` + `W` | Accordion (stack-like) layout |
+| `Option` + `W` | Stack windows in the column |
 | `Option` + `/` | Toggle orientation |
-| `Option` + `Ctrl` + `E` | Flatten/reset the layout tree |
+| `Option` + `Ctrl` + `E` | Un-join the layout tree |
+| `Option` + `Space` | Center the focused column |
 
 ### Apps & misc
 
 | Shortcut | Action |
 |---|---|
 | `Ctrl` + `Cmd` + `T` | Open Ghostty |
-| `Option` + `Shift` + `R` | Reload AeroSpace config (auto-reload also on) |
-| `Option` + `Tab` | Jump to last workspace |
+| `Option` + `Shift` + `R` | Reload Rift config (hot reload also on) |
 
-> **Moved/removed vs. the old Rift setup:** the scrolling strip (`Option+[`
-> `]`), per-Space tiling toggle (`Option+Z`), and the SketchyBar cheat sheet
-> (`Cmd+Option+K`) don't map to AeroSpace's tree model and are gone. Workspace
-> switching via macOS Spaces (`Ctrl+Left/Right`) is replaced by `Option+1..9`.
+> **Moved/removed vs. the AeroSpace setup:** the scrollable strip is back
+> (`Option+[`/`]`), per-Space tiling toggles are `Option+Z`, and workspace
+> switching is `Option+1..9`. The SketchyBar cheat sheet (`Cmd+Option+K`) is
+> gone — Rift's own menu bar replaces SketchyBar entirely.
 
-## The notch
+## The menu bar & notch
 
-Two sides to it:
-
-- **AeroSpaceBar** is a native menu-bar app — macOS already lays the menu bar
-  around the notch, so there is **no notch configuration** needed.
-- **AeroSpace** measures the top gap from the bottom of the notch on notched
-  displays and from the very top of un-notched ones. If you mix a notched MacBook
-  with an external display, set a per-monitor top gap (commented template in
-  `~/.config/aerospace/aerospace.toml`):
-
-  ```toml
-  gaps.outer.top = [{ monitor.main = 8 }, 15]
-  ```
-
-  `monitor.main` is the display holding the menu bar (usually the laptop).
-  Get your identifiers with `aerospace list-monitors`.
+- **Workspace indicators** live in the **native menu bar** (Rift's
+  `[settings.ui.menu_bar]`): badges for every workspace, click to switch, with a
+  menu-bar icon for layout and workspace controls. macOS already lays the menu
+  bar around the notch, so there's no notch configuration needed.
+- Tune the top gap if the menu bar extends over the notch area on a notched
+  display — see `~/.config/rift/config.toml` `[settings.layout.gaps.outer]`.
 
 ## Multi-monitor
 
-- AeroSpace's recommended "Displays have separate Spaces" = **off** means fewer
-  macOS Spaces and more stable window tracking. Trade-off: with native macOS
-  fullscreen, a second display shows a black screen.
-- Workspaces are virtual; keep them on your preferred monitor with
-  `workspace-to-monitor-force-assignment` in the config, or move them live with
-  `Option+Shift+Tab`.
-- Per-monitor gap overrides are supported (see the notch section above).
+- Rift's recommended "Displays have separate Spaces" = **on** gives each display
+  its own independent tiling layout and workspace set.
+- The scrolling strip works best when displays are arranged **vertically**
+  (System Settings → Displays); side-by-side layouts can cause windows to leak
+  between strips.
+- Per-display gap overrides are supported in the config (commented template).
+  Get your display UUIDs with `rift-cli query displays`.
 
 ## Uninstall
 
@@ -134,12 +126,12 @@ Two sides to it:
 ./uninstall
 ```
 
-Stops and removes the apps and services, moves configs (from `~/.config/
-aerospace` and `~/.config/borders`) to
-`~/.config/backups/uninstall-<timestamp>/`, then asks you which formulae to
-**keep** (interactive numbered menu). Untaps `nikitabobko/tap`,
-`rdrkr/tap`, `FelixKratz/formulae`, and `uinaf/tap` only when nothing kept
-depends on them, and re-enables "Displays have separate Spaces".
+Stops and removes Rift (launchd service) and borders, moves configs (from
+`~/.config/rift` and `~/.config/borders`, plus any legacy `~/.config/aerospace`)
+to `~/.config/backups/uninstall-<timestamp>/`, then asks you which formulae to
+**keep** (interactive numbered menu). Untaps `acsandmann/tap`,
+`FelixKratz/formulae`, `uinaf/tap` (and legacy `nikitabobko/tap`, `rdrkr/tap`
+only when nothing kept depends on them), and leaves separate Spaces enabled.
 
 ## Testing in a macOS VM
 
@@ -157,7 +149,7 @@ macOS host:
 ./tests/preview setup        # installs tart/sshpass (auto), clones host-matched base image
 ./tests/preview up           # boot guest, live-mount the repo, wait for SSH
 ./tests/preview install      # run ./install in the guest (asks to clean up afterwards)
-./tests/preview check        # query AeroSpace workspaces + installed formulae
+./tests/preview check        # query Rift workspaces + installed formulae
 ./tests/preview shot         # screenshot the tiling into tests/screenshots/
 ./tests/preview clean        # interactively remove VM, tart, sshpass, base image
 ```
@@ -194,15 +186,16 @@ tested), Accessibility may need one manual grant inside the guest.
 install                   Main installer (runs scripts/*)
 uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
-config/aerospace/         AeroSpace config (tree layout, bindings, gaps)
+config/rift/              Rift config (scrolling strip, bindings, gaps, menu bar)
 config/borders/bordersrc  JankyBorders focus-border config
 tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
-Configs are installed to `~/.config/{aerospace,borders}`; existing files are
-backed up (`.bak`) before overwriting, and AeroSpace has `auto-reload-config`,
-so editing `~/.config/aerospace/aerospace.toml` applies live.
+Configs are installed to `~/.config/{rift,borders}`; existing files are backed
+up (`.bak`) before overwriting, and Rift has `hot_reload`, so editing
+`~/.config/rift/config.toml` applies live.
 
-> **Note on Rift:** an earlier version of this installer set up Rift (a
-> niri-style scrolling-strip tiler). This version switched to AeroSpace (tree
-> tiler) with AeroSpaceBar in the menu bar.
+> **Note on AeroSpace:** an intermediate version of this installer targeted
+> AeroSpace (i3-style tree tiler) with AeroSpaceBar in the menu bar. This
+> version is back on Rift (niri-style scrolling strip) with Rift's own native
+> menu-bar workspace indicators as the bar.
