@@ -10,28 +10,23 @@ note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
-# Enable "Displays have separate Spaces".
-# Counterintuitive: spans-displays = false ⇔ separate Spaces ON (macOS default).
-if [ "$(defaults read com.apple.spaces spans-displays 2>/dev/null)" != "0" ]; then
-	note "Enabling 'Displays have separate Spaces'..."
-	defaults write com.apple.spaces "spans-displays" -bool false
-	ok "spans-displays set to false (separate Spaces)"
+# Disable "Displays have separate Spaces" — AeroSpace's recommended setting.
+# Counterintuitive: spans-displays = true ⇔ separate Spaces OFF.
+# AeroSpace manages its own virtual workspaces; having fewer macOS Spaces makes
+# the public APIs it relies on more stable (focus, cross-monitor moves).
+if [ "$(defaults read com.apple.spaces spans-displays 2>/dev/null)" != "1" ]; then
+	note "Disabling 'Displays have separate Spaces' (AeroSpace-recommended)..."
+	defaults write com.apple.spaces "spans-displays" -bool true
+	ok "spans-displays set to true (spaces span all displays)"
 else
-	ok "'Displays have separate Spaces' already enabled"
+	ok "'Displays have separate Spaces' already disabled"
 fi
 
-# Hide the native menu bar — SketchyBar replaces it.
-if [ "$(defaults read NSGlobalDomain _HIHideMenuBar 2>/dev/null)" != "1" ]; then
-	note "Hiding native menu bar..."
-	defaults write NSGlobalDomain _HIHideMenuBar -bool true
-	defaults write NSGlobalDomain AppleMenuBarVisibleInFullscreen -bool true
-	ok "menu bar hidden"
-else
-	ok "menu bar already hidden"
-fi
+# The native menu bar stays visible — AeroSpaceBar lives inside it.
+# (No need to touch the menu bar visibility settings at all.)
 
 # Attempt to apply immediately (logout/login still recommended for the Spaces setting).
 killall SystemUIServer 2>/dev/null || true
 killall Finder 2>/dev/null || true
 
-warn "A logout/login is still required for these settings to fully take effect."
+warn "A logout/login is still required for the Spaces setting to fully take effect."

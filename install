@@ -28,14 +28,14 @@ run_step() {
 
 echo ""
 echo "  ╔══════════════════════════════════════════════╗"
-echo "  ║   Rift + SketchyBar + JankyBorders installer ║"
-echo "  ║            niri-like macOS setup              ║"
+echo "  ║   AeroSpace + AeroSpaceBar + JankyBorders    ║"
+echo "  ║            i3-like macOS setup                ║"
 echo "  ╚══════════════════════════════════════════════╝"
 
 run_step install-deps
 run_step configure-system
-run_step install-rift
-run_step install-sketchybar
+run_step install-aerospace
+run_step install-aerospacebar
 run_step install-borders
 run_step grant-permissions
 run_step enable-services
@@ -45,28 +45,26 @@ echo "  ${GREEN}═════════════════════�
 echo "  ${GREEN}  Installation complete!${RESET}"
 echo "  ${GREEN}══════════════════════════════════════════════${RESET}"
 echo ""
-echo "  ${YELLOW}⚠ A logout/login is required for these to take effect:${RESET}"
-echo "     - Displays have separate Spaces"
-echo "     - Hidden native menu bar (SketchyBar replaces it)"
+echo "  ${YELLOW}⚠ A logout/login is required for this to take effect:${RESET}"
+echo "     - 'Displays have separate Spaces' disabled (AeroSpace-recommended)"
 echo ""
 echo "  ${YELLOW}⚠ After the next login:${RESET}"
-echo "     - Rift tiles every Space automatically (press Option+Z to",
-echo "       toggle tiling on a Space if you ever want it unmanaged)"
+echo "     - AeroSpace tiles windows in i3-style tree layout"
+echo "     - AeroSpaceBar shows your 1-9 workspaces in the menu bar"
 echo "     - If accessibility grants failed above, grant them manually:"
 echo "       System Settings → Privacy & Security → Accessibility"
 echo ""
 echo "  ${CYAN}Usage:${RESET}"
 echo "     Option+Arrows        move focus between windows"
 echo "     Option+Shift+Arrows  move windows"
-echo "     Option+1..9          switch Rift workspace"
+echo "     Option+1..9          switch workspace"
 echo "     Option+Shift+1..9    move window to workspace"
-echo "     Ctrl+Left/Right      switch macOS Spaces (system default)"
 echo "     Cmd+Option+Arrows    focus display"
-echo "     Cmd+Option+Shift+Arrows  move window to display"
+echo "     Cmd+Option+Shift+Arrows  move window/workspace to display"
 echo "     Option+F             toggle fullscreen"
 echo "     Option+V             toggle floating"
 echo "     Option+Q             close window"
 echo "     Ctrl+Cmd+T           open Ghostty"
-echo "     Cmd+Option+K         toggle shortcut cheat sheet"
+echo "     Option+Shift+R       reload AeroSpace config"
 echo ""
 echo "  Log out now, then back in (Cmd+Shift+Q)."

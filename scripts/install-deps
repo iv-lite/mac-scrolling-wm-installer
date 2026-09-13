@@ -35,19 +35,8 @@ command -v brew >/dev/null 2>&1 || eval "$(/opt/homebrew/bin/brew shellenv 2>/de
 command -v brew >/dev/null 2>&1 || eval "$(/usr/local/bin/brew shellenv 2>/dev/null || true)"
 
 # ─────────────────────────────────────────────────────────────
-# Core CLI deps
-# ─────────────────────────────────────────────────────────────
-note "Installing core CLI tools (jq, tccutil-rs, nowplaying-cli)..."
-for pkg in jq; do
-	if brew list "$pkg" >/dev/null 2>&1; then
-		ok "$pkg already installed"
-	else
-		brew install "$pkg"
-		ok "$pkg installed"
-	fi
-done
-
 # tccutil-rs (user TCC db grants, no SIP disable needed)
+# ─────────────────────────────────────────────────────────────
 if command -v tccutil-rs >/dev/null 2>&1; then
 	ok "tccutil-rs already installed"
 else
@@ -55,28 +44,6 @@ else
 	brew tap uinaf/tap
 	brew install tccutil-rs
 	ok "tccutil-rs installed"
-fi
-
-# nowplaying-cli (media widget). Non-fatal: media widget silently disabled if missing.
-if command -v nowplaying-cli >/dev/null 2>&1 || brew list nowplaying-cli >/dev/null 2>&1; then
-	ok "nowplaying-cli already installed"
-else
-	if brew install nowplaying-cli; then
-		ok "nowplaying-cli installed"
-	else
-		warn "nowplaying-cli install failed — media widget will show placeholder"
-	fi
-fi
-
-# ─────────────────────────────────────────────────────────────
-# Nerd Font (icons for SketchyBar)
-# ─────────────────────────────────────────────────────────────
-note "Installing Hack Nerd Font (SketchyBar icons)..."
-if brew list --cask font-hack-nerd-font >/dev/null 2>&1; then
-	ok "Hack Nerd Font already installed"
-else
-	brew install --cask font-hack-nerd-font
-	ok "Hack Nerd Font installed"
 fi
 
 # ─────────────────────────────────────────────────────────────

@@ -20,7 +20,8 @@ fail() { echo "  ${RED}✗ $*${RESET}"; }
 # ─────────────────────────────────────────────────────────────
 grant() {
 	local bin="$1"
-	if [ ! -x "$bin" ]; then
+	if [ -z "$bin" ]; then return 0; fi
+	if [ ! -e "$bin" ]; then
 		warn "$bin not found — skipping"
 		return 0
 	fi
@@ -29,10 +30,10 @@ grant() {
 			ok "Accessibility granted to $bin (user db)"
 			return 0
 		fi
-		if sudo -n tccutil-rs grant Accessibility "$bin" >/dev/null 2>&1; then
+		sudo -n tccutil-rs grant Accessibility "$bin" >/dev/null 2>&1 && {
 			ok "Accessibility granted to $bin (system db via sudo)"
 			return 0
-		fi
+		}
 	fi
 	fail "Could not grant Accessibility to $bin automatically."
 	echo "     Grant manually: System Settings → Privacy & Security →"
@@ -41,8 +42,8 @@ grant() {
 
 note "Granting Accessibility permissions..."
 
-grant "$(command -v rift 2>/dev/null || true)"
-grant "$(command -v sketchybar 2>/dev/null || true)"
+grant "/Applications/AeroSpace.app/Contents/MacOS/AeroSpace"
+grant "/Applications/AeroSpace.app"
 grant "$(command -v borders 2>/dev/null || true)"
 
 # The terminal itself needs Full Disk Access for tccutil-rs to open TCC.db.
