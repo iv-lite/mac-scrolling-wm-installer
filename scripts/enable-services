@@ -15,7 +15,12 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 # ─────────────────────────────────────────────────────────────
 if command -v rift >/dev/null 2>&1; then
 	if pgrep -qx rift >/dev/null 2>&1; then
-		note "Restarting Rift (applies upgraded binary + config)..."
+		note "Restarting Rift (refreshes launchd plist + applies upgraded binary)..."
+		# `service start` regenerates a stale git.acsandmann.rift.plist in place
+		# (Rift compares it to what the current binary would generate, rewrites
+		# atomically, and re-bootstraps if it changed) — then `service restart`
+		# (kickstart -k) relaunches the (new) binary.
+		rift service start >/dev/null 2>&1 || true
 		if rift service restart; then
 			ok "Rift restarted"
 		else

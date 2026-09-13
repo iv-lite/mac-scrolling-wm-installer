@@ -73,7 +73,7 @@ ok "Rift config installed to ~/.config/rift/config.toml"
 # ─────────────────────────────────────────────────────────────
 note "Installing Rift launchd service..."
 if [ -f "$HOME/Library/LaunchAgents/git.acsandmann.rift.plist" ]; then
-	ok "Rift launchd service already installed"
+	ok "Rift launchd service already installed (plist refreshed on 'rift service start')"
 else
 	rift service install
 	ok "Rift service installed"
