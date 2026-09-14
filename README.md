@@ -51,7 +51,8 @@ The installer runs these steps from `scripts/`:
 
 ## Keybindings
 
-Paneru modifiers: **Cmd+Option**, **Cmd+Ctrl**, **Shift**, **Ctrl**.
+Paneru modifiers: **Cmd+Option** (columns), **Cmd+Ctrl** (displays), **Shift**
+(**moves** the focused window in the same lane), **Ctrl**.
 
 ### Navigation & layout
 
@@ -75,10 +76,12 @@ Paneru modifiers: **Cmd+Option**, **Cmd+Ctrl**, **Shift**, **Ctrl**.
 |---|---|
 | `Cmd` + `Option` + `1..9` | Switch virtual workspace |
 | `Cmd` + `Option` + `Shift` + `1..9` | Move window to virtual workspace |
-| `Cmd` + `Ctrl` + `↑`/`↓` | Switch to previous/next virtual workspace |
-| `Cmd` + `Ctrl` + `Shift` + `↑`/`↓` | Move window to prev/next virtual workspace (and follow) |
 | 3-finger swipe (↑ / ↓) | Switch virtual workspace rows (trackpad) |
 | `Cmd` + `Option` + `Tab` | Focus the last-focused window on this workspace |
+
+> Keyboard cycling between *adjacent* virtual workspaces was dropped when
+> `Cmd+Ctrl` became the display lane; switch directly with `1..9` or swipe
+> vertically.
 
 > Paneru virtual workspaces are stacks of horizontal strips *inside* a native
 > macOS workspace. Each native Space (per display, with separate Spaces on) has
@@ -88,10 +91,11 @@ Paneru modifiers: **Cmd+Option**, **Cmd+Ctrl**, **Shift**, **Ctrl**.
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Option` + `Ctrl` + `→` | Move focused window to the next display (and follow) |
-| `Cmd` + `Option` + `Ctrl` + `←` | Move focused window to the next display (stay here) |
-| `Cmd` + `Option` + `Ctrl` + `↑` | Warp the mouse to the next display |
-| `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
+| `Cmd` + `Ctrl` + `→` | Focus the next display (moves the focused window there and follows) |
+| `Cmd` + `Ctrl` + `Shift` + `→` | Move the focused window to the next display (stay here) |
+| `Cmd` + `Ctrl` + `↑` | Warp the mouse to the next display |
+| `Cmd` + `Option` + `↑`/`↓` | Focus a column above/below — crosses displays when no window is there |
+| `Cmd` + `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
 
 ### Window state
 
@@ -211,8 +215,8 @@ paneru query state --json                   # must print a JSON snapshot (servic
   windows to a neighbouring display. If you must run side-by-side, the
   `horizontal_mouse_warp` option makes a vertical arrangement of displays
   "feel" horizontal for the mouse.
-- A window can be sent to another display with `Cmd+Option+Ctrl+→` (follow) or
-  `Cmd+Option+Ctrl+←` (stay), and `Cmd+Option+Ctrl+↑` warps the mouse there.
+- A window can be sent to another display with `Cmd+Ctrl+→` (follow) or
+  `Cmd+Ctrl+Shift+→` (stay), and `Cmd+Ctrl+↑` warps the mouse there.
 
 ## Uninstall
 
