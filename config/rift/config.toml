@@ -44,10 +44,13 @@ window_insertion_point = "end_of_tree"
 # Width of the focused column as a fraction of screen width (a wider
 # column = "big focus" feel, neighbours barely peek from the edges).
 # Overflow/canvas-scrolling begins the moment the combined column widths
-# exceed the monitor: with 0.7 that's already at 2+ windows (0.5 left two
-# windows at exactly 100% → static 50/50 tiling, no scroll). Note Rift
-# fills the whole screen for a single lone column by design.
-column_width_ratio = 1
+# exceed the monitor: 0.7 keeps two+ columns overflowing so neighbour
+# windows visibly peek from the edges and the strip pans visually instead
+# of parking full-width columns off-screen stacked at the frame edge.
+# (0.5 left two windows at exactly 100% → static 50/50 tiling, no scroll.)
+# Alt+W cycles the focused column through 0.3 / 0.5 / full width on demand.
+# Note Rift fills the whole screen for a single lone column by design.
+column_width_ratio = 0.7
 min_column_width_ratio = 0.3
 # 1.0 lets Alt+W (below) pull the focused column to full width
 max_column_width_ratio = 1
