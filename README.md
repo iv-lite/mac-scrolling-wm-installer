@@ -1,17 +1,17 @@
-# paneru-wm-installer
+# omniwm-installer
 
-A niri-like window management setup for macOS, built on **Paneru** (sliding
-infinite-strip tiler with hot-reloadable TOML config, native macOS workspaces
-+ virtual workspaces, and a workspace status popup), and **Ghostty**
-(terminal). Driven by Cmd+Option-key shortcuts that don't fight macOS defaults.
+A niri-like window management setup for macOS, built on **OmniWM** (Swift
+tiling WM with niri-style sliding strips, hot-reloadable TOML config, virtual
+workspaces, window borders, and IPC via `omniwmctl`) and **Ghostty**
+(terminal). Driven by **Cmd+Option**-key shortcuts that don't fight macOS
+defaults. Requires **Apple Silicon + macOS 26+ (Tahoe)**.
 
 ## Requirements
 
-- macOS 14+ (Paneru)
-- Apple Silicon
+- macOS 26+ (Tahoe) — Apple Silicon (OmniWM cask depends on both)
 - Homebrew installed or auto-installed
-- "Displays have separate Spaces" enabled (Paneru-recommended; the installer sets it)
-- No Karabiner, no disable of System Integrity Protection
+- "Displays have separate Spaces" enabled (OmniWM requires it; the installer sets it)
+- No Karabiner, no SIP disable
 
 ## Quick start
 
@@ -20,8 +20,8 @@ infinite-strip tiler with hot-reloadable TOML config, native macOS workspaces
 ```
 
 Re-running `./install` **upgrades** an existing setup: Homebrew components
-(Paneru, Ghostty, tccutil-rs) are updated (no-op when current), configs are
-refreshed from this repo (previous copies kept as `*.bak`), and the service is
+(OmniWM, Ghostty, tccutil-rs) are updated, configs are refreshed from this
+repo (existing copies backed up as `*.bak`), and the launchd service is
 restarted so the new binary/config apply immediately.
 
 The installer runs these steps from `scripts/`:
@@ -29,136 +29,131 @@ The installer runs these steps from `scripts/`:
 | Script | Purpose |
 |---|---|
 | `install-deps` | Install Homebrew if missing, tccutil-rs |
-| `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Paneru draws its indicator in it) |
+| `configure-system` | Enable "Displays have separate Spaces" (OmniWM requires it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
-| `install-paneru` | Install Paneru (Homebrew core) + write `~/.config/paneru/paneru.toml` + install its launchd service |
-| `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
-| `enable-services` | Start Paneru |
+| `install-omniwm` | Install OmniWM (Homebrew cask), remove any leftover Paneru, write config + launchd agent |
+| `grant-permissions` | Grant Accessibility to OmniWM.app (best-effort) + open Input Monitoring pane |
+| `enable-services` | Bootstrap the OmniWM launchd agent (`launchctl bootstrap`) |
 
 ### After install
 
 1. **Log out and back in** (Cmd+Shift+Q) — applies the enabled
    separate-Spaces setting.
-2. Paneru tiles in an **niri-style sliding strip**; new windows are appended at
-   the end of the strip and **never resize existing windows**. Virtual
-   workspaces `1..9` are created on demand.
-3. **Paneru** shows the active virtual workspace in a brief popup on switch.
-4. If the Accessibility grant failed, grant it manually:
-   System Settings → Privacy & Security → Accessibility (enable `paneru`,
-   usually shown as `paneru` `/opt/homebrew/bin/paneru`).
+2. OmniWM tiles in an **niri-style sliding strip**; new windows are appended
+   at the end and **never resize existing windows**.
+3. Virtual workspaces are global entities each pinned to a **Home Monitor**.
+   The main display hosts workspaces **1–9**; a second display hosts
+   **10–18**, reachable via per-display next/prev cycling or the workspace
+   bar — not by number keys.
+4. If Accessibility or Input Monitoring grants failed, grant them manually:
+   System Settings → Privacy & Security → Accessibility (toggle OmniWM on)
+   and Privacy & Security → Input Monitoring (toggle OmniWM on).
 5. Ghostty opens **frameless** (`macos-titlebar-style = hidden` in
    `~/.config/ghostty/config`) — drag its window edge with `Option+Click`.
 
 ## Keybindings
 
-Paneru modifiers: **Cmd+Option**, **Cmd+Ctrl**, **Shift**, **Ctrl**.
+Modifiers: **Cmd+Option**, **Cmd+Ctrl+Option**, **Cmd+Ctrl**, **Cmd+Option+Shift**.
 
 ### Navigation & layout
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Option` + Arrows | Move focus between windows |
-| 3-finger swipe (← / →) | Page through windows — one full-width window per swipe, snapping on release (`rift-swipe` is gone; Paneru snaps + focuses natively) |
-| `Cmd` + `Option` + `Shift` + Arrows | Move window (swap) |
-| `Cmd` + `Option` + `W` | Cycle the focused column width (0.3 / 0.5 / 1) |
-| `Cmd` + `Option` + `Shift` + `W` | Cycle width backwards |
-| `Cmd` + `Option` + `Space` | Center the focused window/viewport |
-| `Cmd` + `Option` + `Shift` + `Space` | Snap an overflowing window into the viewport |
-| `Cmd` + `Option` + `M` | Toggle full-width for the focused window |
+| `Cmd` + `Option` + ←/↓/↑/→ | Move focus between windows |
+| `Cmd` + `Option` + `Shift` + ←/↓/↑/→ | Move window (swap) |
+| `Cmd` + `Option` + `W` | Cycle column width forward (0.3 / 0.5 / 1) |
+| `Cmd` + `Option` + `Shift` + `W` | Cycle column width backward |
+| `Cmd` + `Option` + `M` | Toggle full-width |
+| `Cmd` + `Option` + `Space` | Center column |
+| `Cmd` + `Option` + `Shift` + `Space` | Center all visible columns |
+| `Cmd` + `Option` + `V` | Toggle floating |
+| `Cmd` + `Option` + `B` | Balance sizes |
+| `Cmd` + `Option` + `Tab` | Focus last-focused window |
+| 3-finger vertical swipe | Switch workspaces (trackpad) |
 
 > Focus **follows the mouse**, and keyboard navigation warps the cursor to the
-> focused window (`focus_follows_mouse` / `mouse_follows_focus` in `[options]`).
+> focused window (`followsWindowToMonitor` / `moveMouseToFocusedWindow`).
 
-### Workspaces (1-9)
-
-| Shortcut | Action |
-|---|---|
-| `Cmd` + `Option` + `1..9` | Switch virtual workspace |
-| `Cmd` + `Option` + `Shift` + `1..9` | Move window to virtual workspace |
-| `Cmd` + `Ctrl` + `↑`/`↓` | Switch to previous/next virtual workspace |
-| `Cmd` + `Ctrl` + `Shift` + `↑`/`↓` | Move window to prev/next virtual workspace (and follow) |
-| 3-finger swipe (↑ / ↓) | Switch virtual workspace rows (trackpad) |
-| `Cmd` + `Option` + `Tab` | Focus the last-focused window on this workspace |
-
-> Paneru virtual workspaces are stacks of horizontal strips *inside* a native
-> macOS workspace. Each native Space (per display, with separate Spaces on) has
-> its own strip and its own set of virtual workspaces.
-
-### Displays (multi-monitor)
+### Workspaces
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Option` + `Ctrl` + `→` | Move focused window to the next display (and follow) |
-| `Cmd` + `Option` + `Ctrl` + `←` | Move focused window to the next display (stay here) |
-| `Cmd` + `Option` + `Ctrl` + `↑` | Warp the mouse to the next display |
-| `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
+| `Cmd` + `Option` + `1..9` | Jump to global workspaces 1–9 (main display's stack) |
+| `Cmd` + `Option` + `Shift` + `1..9` | Move window to global workspaces 1–9 |
+| `Cmd` + `Control` + `↓` / `↑` | Next / previous workspace **on this display** |
+| `Cmd` + `Control` + `Shift` + `↓` / `↑` | Move window to next / previous workspace on this display |
+| `Cmd` + `Option` + `Tab` | Focus previous window |
+
+> OmniWM workspaces are global: number keys always refer to a global name
+> (workspace "3" lives on the main display). Use `Cmd+Control+↑/↓` to cycle
+> the current display's own stack (workspaces 1–9 on main, 10–18 on a second
+> display). The workspace bar pills are clickable for direct access.
+
+### Multi-monitor
+
+| Shortcut | Action |
+|---|---|
+| `Cmd` + `Option` + `Ctrl` + `→` | Move focused window to the next display (round-robin) |
+| `Cmd` + `Option` + `Ctrl` + `←` | Move focused window to the previous display |
+
+> A workspace belongs to a Home Monitor — it follows you when you move to it.
+> Every connected display needs at least one workspace assigned (the shipped
+> config does this: 1–9 on main, 10–18 on secondary).
 
 ### Window state
 
 | Shortcut | Action |
 |---|---|
 | `Cmd` + `Option` + `V` | Toggle floating/tiled |
-| `Cmd` + `Option` + `O` | Stack the window into the neighbouring column |
-| `Cmd` + `Option` + `Shift` + `O` | Pull a window out of a stack |
-| `Cmd` + `Option` + `B` | Balance all columns to the focused window's width |
-| `Cmd` + `Option` + `Shift` + `E` | Equalize the heights in a stack |
-| `Cmd` + `Option` + `Shift` + `C` | Copy a Paneru window rule for the focused window |
-| `Cmd` + `Option` + `Ctrl` + `Q` | Quit Paneru |
+| `Cmd` + `Option` + `B` | Balance all columns to the focused column's width |
+| `Cmd` + `Option` + `Space` | Center the focused column in the viewport |
 
-### Apps & misc
+### Not available in OmniWM
 
-| Shortcut | Action |
-|---|---|
-| `Cmd` + `Option` + `Shift` + `R` | Restart Paneru (config also live-reloads on save) |
+These Paneru features have no OmniWM equivalent and were not mapped:
 
-> **Removed vs. the Rift/AeroSpace setups:** fine-grained resizing
-> (`Option+Ctrl+arrows` step-resize), fullscreen toggles, per-Space tiling
-> toggles (`Alt+Z`), strip scroll half-steps (`Alt+[`/`]`), and an
-> `open-terminal` shortcut have no Paneru equivalent and were dropped. The
-> SketchyBar cheat sheet is long gone — Paneru draws the workspace indicator in
-> the (native) menu bar.
+- Inactive-window dim (use the native blue border as a focus cue instead)
+- Stack commands (consume/expel — done via niri-style automation in OmniWM)
+- Copy-window-rule shortcut
+- Restart/quit hotkeys (`Ctrl+Cmd+Shift+R`, `Ctrl+Cmd+Shift+Q` — use
+  `omniwmctl save` to persist config, or `pkill -x OmniWM` to quit; the
+  launchd agent restarts it automatically)
 
-### The infinite horizontal canvas
+## The infinite horizontal canvas
 
-The niri-style sliding strip behaves like a canvas **wider than the monitor**:
-unfocused windows park off-screen and glide in/out of the screen edges as focus
-moves. Two things make it feel native:
+The niri layout behaves like a canvas **wider than the monitor**: unfocused
+windows park off-screen and glide in/out as focus moves. Two things make it
+feel native:
 
-- Paneru keeps a thin **sliver** of each off-screen window visible at the
-  screen edge (`sliver_width` / `sliver_height` in the config) — a workaround
-  for macOS relocating windows that move fully off-screen, not a design choice.
-- `[swipe] continuous = false` bounds the strip to its left/right-most window,
-  so a full 3-finger swipe lands exactly on the next full-width window
-  (page-flip).
-- `[options] preset_column_widths = [0.3, 0.5, 1.0]` cycling and
-  `window_fullwidth` (Cmd+Option+M) cover on-demand sizing; new windows are
-  appended at the end and never resize existing ones.
+- OmniWM keeps a thin **sliver** of each off-screen window visible at the
+  screen edge — a workaround for macOS relocating windows that move fully
+  off-screen.
+- The workspace bar shows which display is active and which workspace it is
+  on, with green-highlighted pills for the focused display.
+- `[niri.containerPrimarySpanPresets]` cycling and
+  `toggleContainerFullPrimarySpan` (Cmd+Option+M) cover on-demand sizing;
+  new windows are appended at the end and never resize existing ones.
 
-## The menu bar
+## Borders & workspace bar
 
-- The **native macOS menu bar** is kept. The menu-bar workspace indicator is
-  **disabled by default** (`[decorations]` in `~/.config/paneru/paneru.toml`,
-  `workspace_menu_status = false`) because Paneru < the fix in
-  [karinushka/paneru#390](https://github.com/karinushka/paneru/issues/390)
-  hosts a live view in the status item, and its AppKit redraw loop starves the
-  run loop that services Paneru's `CGEventTap` — keybindings silently die after
-  leaving native fullscreen. A brief status popup still announces the active
-  workspace on switch; re-enable the indicator once a Paneru release ships #390.
-- **Focus cues**: an active-window border (`[decorations.active.border]`, Nord
-  blue) replaces JankyBorders — no extra bar process needed. Inactive-window
-  dimming uses native macOS (`[decorations.inactive.dim]`).
-- **Top gap:** `[padding].top` defaults to 15px in the config.
+- **Active-window border**: a 4px Nord blue (`#88ACE4`) border replaces
+  JankyBorders — no extra process needed.
+- **Workspace bar**: an overlay drawn by OmniWM at the top of each display,
+  showing workspace pills. Green-highlighted pills mark the active workspace
+  and the current display. Labels are shown (`showLabels = true`); pill
+  radius, inset, and top padding are tuned in the shipped config.
 
 ## No title bars (the macOS reality)
 
-macOS tiling window managers (Paneru included — same as yabai/AeroSpace) cannot
+macOS tiling window managers (OmniWM included — same as yabai/AeroSpace) cannot
 hide a window's title bar or toolbar: each app draws its own chrome, so removal
 has to happen per app. This installer does what's safely possible:
 
 - **Ghostty is frameless by default** — `~/.config/ghostty/config` sets
-  `macos-titlebar-style = hidden` and `macos-window-buttons = hidden` (keeps
-  rounded corners and borders). Drag the window by its edge with `Option+Click`.
-- **Other apps:** use each app's native toggle:
+  `macos-titlebar-style = hidden` and `macos-window-buttons = hidden`. Drag
+  the window by its edge with `Option+Click`.
+- **Other apps**: use each app's native toggle:
+
   | App | How |
   |---|---|
   | Finder, Mail, Notes, Safari, Chrome, Slack | `View → Hide Toolbar` (often `Cmd+Option+T`) |
@@ -170,49 +165,82 @@ has to happen per app. This installer does what's safely possible:
 > inject code into running apps and require disabling SIP — out of scope here,
 > the same reason this project never disables SIP.
 
-## Troubleshooting
+## IPC & config live-reload
 
-**Shortcuts become unresponsive after toggling off full screen.** Upstream bug
-[karinushka/paneru#390](https://github.com/karinushka/paneru/issues/390): the
-menu-bar workspace indicator's live view starves the run loop that services
-Paneru's `CGEventTap`, so macOS disables the tap and keybindings (clicks and
-swipes too) silently stop working. This repo works around it by shipping
-`workspace_menu_status = false` (workspace switches are still announced by the
-popup). Immediate recourse: `paneru restart`. Re-enable the indicator once a
-Paneru release includes the #390 fix; concurrently, keep Paneru at ≥ 0.5.0 so
-the event-tap watchdog (karinushka/paneru#350) is present.
-
-**Paneru won't start / instantly exits.** Paneru hard-exits unless it has
-Accessibility and "Displays have separate Spaces" is **ON**. The installer's
-`configure-system` / `ensure-separate-spaces` handles the latter. If grants
-failed, give the terminal **Full Disk Access** first, then:
+OmniWM supports **IPC** (enabled in the shipped config): the `omniwmctl`
+binary lets you inspect and control the WM at any time.
 
 ```sh
-bash scripts/grant-permissions
-paneru restart
+omniwmctl query active-workspace   # show current workspace + display
+omniwmctl query workspaces          # list all workspaces + their displays
+omniwmctl query displays            # list connected displays
+omniwmctl log                       # tail OmniWM logs
+omniwmctl save                      # persist the live config to disk
 ```
 
-Paneru's own debug trail: `paneru printstate` (via `paneru send-cmd printstate`),
-logs from its LaunchAgent, and the interactive `paneru` front-run for the same
-output. A quick health check of the whole stack:
-
-```sh
-bash scripts/ensure-separate-spaces check   # must print "enabled (mode 1)"
-paneru query state --json                   # must print a JSON snapshot (service up)
-```
+`settings.toml` live-reloads on save — edit `~/.config/omniwm/settings.toml`
+and the changes apply instantly (no restart needed). The schema is strict:
+all required keys must be present and each hotkey action must appear exactly
+once. Use `omniwmctl save` from OmniWM's own UI to export the canonical file,
+then edit values in place.
 
 ## Multi-monitor
 
-- Paneru gives each display its **own independent window strip** and its own
-  set of native workspaces (with "Displays have separate Spaces" on).
+- OmniWM workspaces are **global entities**, each assigned to a **Home
+  Monitor** (not per-display stacks like Paneru's native Spaces).
+- The main display hosts workspaces **1–9** (reachable by number keys).
+  A second display hosts **10–18**, reachable by `Cmd+Control+↑/↓` cycling
+  or the workspace bar pills — not by number keys (OmniWM cannot give each
+  display an independent "1..9").
+- A window can be moved to the next/previous display with
+  `Cmd+Option+Ctrl+→` / `←` (round-robin by monitor count).
 - The sliding strip works best when displays are arranged **vertically**
-  (laptop above/below the external monitor, System Settings → Displays);
-  side-by-side layouts can confuse Paneru when macOS relocates fully off-screen
-  windows to a neighbouring display. If you must run side-by-side, the
-  `horizontal_mouse_warp` option makes a vertical arrangement of displays
-  "feel" horizontal for the mouse.
-- A window can be sent to another display with `Cmd+Option+Ctrl+→` (follow) or
-  `Cmd+Option+Ctrl+←` (stay), and `Cmd+Option+Ctrl+↑` warps the mouse there.
+  (laptop above/below the external monitor, System Settings → Displays).
+
+## Troubleshooting
+
+**OmniWM won't start / instantly exits.** OmniWM requires Accessibility and
+Input Monitoring permissions, plus "Displays have separate Spaces" **ON**.
+The installer's `configure-system` / `ensure-separate-spaces` handles the
+latter. If grants failed, give the terminal **Full Disk Access** first, then:
+
+```sh
+bash scripts/grant-permissions
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.barut.OmniWM.plist
+```
+
+Check the OmniWM logs for errors:
+
+```sh
+omniwmctl log
+```
+
+**IPC not working (`omniwmctl` gives errors).** The shipped config sets
+`general.ipcEnabled = true`. If it was changed, restore it and save:
+
+```sh
+# Edit ~/.config/omniwm/settings.toml and set general.ipcEnabled = true
+# Then restart OmniWM or press the save keybind to live-reload
+pkill -x OmniWM   # launchd will restart it automatically
+```
+
+**Config won't load / validation errors.** OmniWM's `settings.toml` is a
+strict canonical schema — all required keys must be present and each hotkey
+action must appear exactly once. Never delete entries; only edit values. To
+export the current valid config from OmniWM itself: save from the OmniWM UI
+or run `omniwmctl save`. The shipped `config/omniwm/settings.toml` in this
+repo is the full validated canonical config.
+
+**Accessibility grants failed.** The terminal app running this installer needs
+**Full Disk Access** (System Settings → Privacy & Security → Full Disk Access),
+then quit and reopen the terminal and re-run:
+
+```sh
+bash scripts/grant-permissions
+```
+
+Input Monitoring **cannot** be granted programmatically — you must toggle
+OmniWM on manually in System Settings → Privacy & Security → Input Monitoring.
 
 ## Uninstall
 
@@ -220,15 +248,13 @@ paneru query state --json                   # must print a JSON snapshot (servic
 ./uninstall
 ```
 
-Stops and removes Paneru (launchd service) and its app launcher, cleans up any
-**legacy** Rift / `rift-swipe` / JankyBorders / AeroSpace / AeroSpaceBar / Aegis
-residue (services, LaunchAgents, apps), moves configs (from `~/.config/paneru`,
-`~/.config/ghostty`, plus any legacy `~/.config/rift`, `~/.config/borders`,
-`~/.config/aerospace`, `~/.config/aegis`, `~/.paneru*`, and Paneru's state dir)
-to `~/.config/backups/uninstall-<timestamp>/`, then asks you which formulae to
-**keep** (interactive numbered menu). Untaps `acsandmann/tap`,
-`FelixKratz/formulae` (and legacy `nikitabobko/tap`, `rdrkr/tap` only when
-nothing kept depends on them), and restores the native menu bar.
+Stops and removes OmniWM (launchd agent + app), cleans up any leftover Paneru
+(from the previous stack) plus any **legacy** Rift / `rift-swipe` /
+JankyBorders / AeroSpace / AeroSpaceBar / Aegis residue (services,
+LaunchAgents, apps), moves configs (from `~/.config/omniwm`, `~/.config/ghostty`,
+plus legacy dirs) to `~/.config/backups/uninstall-<timestamp>/`, then asks
+which brew packages to **keep** (interactive numbered menu). Untaps unused
+repos and restores system defaults.
 
 ## Testing in a macOS VM
 
@@ -238,7 +264,7 @@ The host OS is auto-detected and a matching hypervisor backend is used:
 | Host | Backend | Requirements |
 | --- | --- | --- |
 | macOS (Apple Silicon) | Tart (`tests/lib/backend_tart.sh`) | macOS 15+, Homebrew; `tart`/`sshpass` auto-installed |
-| Linux x86_64 | QEMU/KVM + OpenCore (`tests/lib/backend_qemu.sh`) | `/dev/kvm`, `qemu-system-x86`, `sshpass`, `rsync`, a macOS Sequoia disk |
+| Linux x86_64 | QEMU/KVM + OpenCore (`tests/lib/backend_qemu.sh`) | `/dev/kvm`, `qemu-system-x86`, `sshpass`, `rsync`, a **Tahoe (macOS 26)** disk |
 
 macOS host:
 
@@ -246,7 +272,7 @@ macOS host:
 ./tests/preview setup        # installs tart/sshpass (auto), clones host-matched base image
 ./tests/preview up           # boot guest, live-mount the repo, wait for SSH
 ./tests/preview install      # run ./install in the guest (asks to clean up afterwards)
-./tests/preview check        # query Paneru state + installed formulae
+./tests/preview check        # query omniwmctl state + installed formulae
 ./tests/preview shot         # screenshot the tiling into tests/screenshots/
 ./tests/preview clean        # interactively remove VM, tart, sshpass, base image
 ```
@@ -254,7 +280,7 @@ macOS host:
 Linux x86_64 host:
 
 ```sh
-export TESTS_MACOS_DISK=/path/to/macos-sequoia.qcow2   # required (installed guest, admin/admin)
+export TESTS_MACOS_DISK=/path/to/macos-tahoe.qcow2   # required (admin/admin)
 ./tests/preview setup        # validates the disk, fetches OpenCore, creates qcow2 overlays
 ./tests/preview up           # boot the guest (watch the first boot once to confirm login)
 ./tests/preview install      # rsyncs the repo into the guest, then runs ./install
@@ -283,20 +309,24 @@ tested), Accessibility may need one manual grant inside the guest.
 install                   Main installer (runs scripts/*)
 uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
-config/paneru/            Paneru config (sliding strip, bindings, rules)
+config/omniwm/            OmniWM config (canonical settings.toml)
 config/ghostty/           Ghostty config (frameless title bar)
 tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
-Configs are installed to `~/.config/{paneru,ghostty}`;
-existing files are backed up (`.bak`) before overwriting, and Paneru
-hot-reloads `~/.config/paneru/paneru.toml`, so edits apply live.
+Configs are installed to `~/.config/{omniwm,ghostty}`; existing files are
+backed up (`.bak`) before overwriting. OmniWM live-reloads
+`~/.config/omniwm/settings.toml` on save, and a launchd agent
+(`~/Library/LaunchAgents/com.barut.OmniWM.plist`) keeps OmniWM running.
 
 > **Note on the history:** an early version of this installer targeted
 > AeroSpace (i3-style tree tiler) with AeroSpaceBar in the menu bar; a later
 > version used **Rift** (niri-style scrolling strip) plus a custom `rift-swipe`
-> C helper repurposing Rift's pan-only gesture. This version is on **Paneru**
-> (niri-style sliding strip), which pages windows + snaps + focuses on gesture
-> release natively — so the Rift-era helper, its LaunchAgent, JankyBorders, and
-> the `cycle-column-width` Python helper are all gone, and BSP/border chromes
-> come from Paneru itself.
+> C helper; the most recent version used **Paneru** (niri-style sliding strip
+> with native per-Space virtual workspaces). This version is on **OmniWM**
+> (Swift, niri-style sliding strips, global virtual workspaces, window borders,
+> workspace bar overlay, and `omniwmctl` IPC), which retains the niri layout
+> and cursor-warp focus model while adding a workspace bar overlay and native
+> IPC — the Rift-era helper, its LaunchAgent, JankyBorders, Paneru's menu-bar
+> workspace indicator workaround, and the `cycle-column-width` Python helper
+> are all gone.
