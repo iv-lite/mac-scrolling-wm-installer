@@ -4,7 +4,7 @@
 [settings]
 # ─── Animations ───
 animate = true
-animation_duration = 0.3
+animation_duration = 0.15
 animation_fps = 120.0
 
 # ─── Mouse/Focus behavior (keyboard-driven, no focus-follows-mouse) ───
@@ -63,6 +63,12 @@ animate = true
 enabled = true
 invert_horizontal = true
 fingers = 3
+# Horizontal travel (fraction of a swipe) that emits one scroll step.
+# Lower = steps trigger sooner = less "stop-and-step" feel.
+distance_pct = 0.04
+# Overscroll (in strip steps) before handing off to the workspace swipe.
+# Lower = scrolling past the end flows into the next/prev workspace sooner.
+workspace_switch_threshold = 0.1
 # Scrolling past the end flows into the next/prev workspace
 propagate_to_workspace_swipe = true
 
