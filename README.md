@@ -96,7 +96,7 @@ auto-removed when emptied. Each display seeds one (main "1", second "10").
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Ctrl` + ←/↓/↑/→ | Move the current workspace to the adjacent display |
+| `Cmd` + `Ctrl` + `→` / `←` | Focus next / previous display |
 | `Cmd` + `Ctrl` + `Shift` + ←/↓/↑/→ | Move the focused window to the adjacent display |
 
 > A workspace belongs to a Home Monitor — it follows you when you move to it.
@@ -196,8 +196,8 @@ then edit values in place.
   `Cmd+Option+↑/↓` overflows; empty ones are cleaned up automatically. The
   shipped config only seeds "1" on the main display and "10" on a second
   display.
-- `Cmd+Ctrl+←/↓/↑/→` moves the current workspace to an adjacent display;
-  `Cmd+Ctrl+Shift+←/↓/↑/→` moves just the focused window.
+- `Cmd+Ctrl+→` / `Cmd+Ctrl+←` cycles focus between displays (round-robin);
+  `Cmd+Ctrl+Shift+←/↓/↑/→` moves just the focused window to a display.
 - The sliding strip works best when displays are arranged **vertically**
   (laptop above/below the external monitor, System Settings → Displays).
 

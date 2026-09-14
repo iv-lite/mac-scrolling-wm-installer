@@ -1294,7 +1294,7 @@ id = "expelWindowFromColumn"
 
 [[hotkeys]]
 
-binding = "Control+Command+Tab"
+binding = "Command+Control+Right Arrow"
 
 id = "focusMonitorNext"
 
@@ -1302,7 +1302,7 @@ id = "focusMonitorNext"
 
 [[hotkeys]]
 
-binding = "Unassigned"
+binding = "Command+Control+Left Arrow"
 
 id = "focusMonitorPrevious"
 
@@ -1318,7 +1318,7 @@ id = "focusMonitorLast"
 
 [[hotkeys]]
 
-binding = "Command+Control+Left Arrow"
+binding = "Unassigned"
 
 id = "moveWorkspaceToMonitor.left"
 
@@ -1326,7 +1326,7 @@ id = "moveWorkspaceToMonitor.left"
 
 [[hotkeys]]
 
-binding = "Command+Control+Right Arrow"
+binding = "Unassigned"
 
 id = "moveWorkspaceToMonitor.right"
 
@@ -1334,7 +1334,7 @@ id = "moveWorkspaceToMonitor.right"
 
 [[hotkeys]]
 
-binding = "Command+Control+Up Arrow"
+binding = "Unassigned"
 
 id = "moveWorkspaceToMonitor.up"
 
@@ -1342,7 +1342,7 @@ id = "moveWorkspaceToMonitor.up"
 
 [[hotkeys]]
 
-binding = "Command+Control+Down Arrow"
+binding = "Unassigned"
 
 id = "moveWorkspaceToMonitor.down"
 
