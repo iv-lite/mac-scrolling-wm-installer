@@ -64,9 +64,12 @@ animate = true
 enabled = true
 invert_horizontal = true
 fingers = 3
-# Horizontal travel (fraction of a swipe) that emits one scroll step.
-# Lower = steps trigger sooner = less "stop-and-step" feel.
-distance_pct = 0.04
+# A fraction of a swipe that emits one scroll step. 1.0 = a full sweep is
+# required, so each complete swipe advances exactly one maximized window
+# (page-flip feel) — a partial swipe never leaves the strip mid-window.
+# Per-window stepping comes from the drag-mouse panning only; Rift has no
+# snap-on-release yet (see docs/rift-features/snap-on-release.md).
+distance_pct = 1.0
 # Overscroll (in strip steps) before handing off to the workspace swipe.
 # Lower = scrolling past the end flows into the next/prev workspace sooner.
 workspace_switch_threshold = 0.1
