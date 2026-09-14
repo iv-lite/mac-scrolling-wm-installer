@@ -222,7 +222,7 @@ red = 0.4
 
 [overview.windowBorders.normal]
 
-alpha = 0.5
+alpha = 0.0
 
 blue = 0.35
 
@@ -678,7 +678,7 @@ id = "assignFocusedWindowToScratchpad.10"
 
 [[hotkeys]]
 
-binding = "Command+Option+1"
+binding = "Unassigned"
 
 id = "switchWorkspace.0"
 
@@ -686,7 +686,7 @@ id = "switchWorkspace.0"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+1"
+binding = "Unassigned"
 
 id = "moveToWorkspace.0"
 
@@ -694,7 +694,7 @@ id = "moveToWorkspace.0"
 
 [[hotkeys]]
 
-binding = "Command+Option+2"
+binding = "Unassigned"
 
 id = "switchWorkspace.1"
 
@@ -702,7 +702,7 @@ id = "switchWorkspace.1"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+2"
+binding = "Unassigned"
 
 id = "moveToWorkspace.1"
 
@@ -710,7 +710,7 @@ id = "moveToWorkspace.1"
 
 [[hotkeys]]
 
-binding = "Command+Option+3"
+binding = "Unassigned"
 
 id = "switchWorkspace.2"
 
@@ -718,7 +718,7 @@ id = "switchWorkspace.2"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+3"
+binding = "Unassigned"
 
 id = "moveToWorkspace.2"
 
@@ -726,7 +726,7 @@ id = "moveToWorkspace.2"
 
 [[hotkeys]]
 
-binding = "Command+Option+4"
+binding = "Unassigned"
 
 id = "switchWorkspace.3"
 
@@ -734,7 +734,7 @@ id = "switchWorkspace.3"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+4"
+binding = "Unassigned"
 
 id = "moveToWorkspace.3"
 
@@ -742,7 +742,7 @@ id = "moveToWorkspace.3"
 
 [[hotkeys]]
 
-binding = "Command+Option+5"
+binding = "Unassigned"
 
 id = "switchWorkspace.4"
 
@@ -750,7 +750,7 @@ id = "switchWorkspace.4"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+5"
+binding = "Unassigned"
 
 id = "moveToWorkspace.4"
 
@@ -758,7 +758,7 @@ id = "moveToWorkspace.4"
 
 [[hotkeys]]
 
-binding = "Command+Option+6"
+binding = "Unassigned"
 
 id = "switchWorkspace.5"
 
@@ -766,7 +766,7 @@ id = "switchWorkspace.5"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+6"
+binding = "Unassigned"
 
 id = "moveToWorkspace.5"
 
@@ -774,7 +774,7 @@ id = "moveToWorkspace.5"
 
 [[hotkeys]]
 
-binding = "Command+Option+7"
+binding = "Unassigned"
 
 id = "switchWorkspace.6"
 
@@ -782,7 +782,7 @@ id = "switchWorkspace.6"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+7"
+binding = "Unassigned"
 
 id = "moveToWorkspace.6"
 
@@ -790,7 +790,7 @@ id = "moveToWorkspace.6"
 
 [[hotkeys]]
 
-binding = "Command+Option+8"
+binding = "Unassigned"
 
 id = "switchWorkspace.7"
 
@@ -798,7 +798,7 @@ id = "switchWorkspace.7"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+8"
+binding = "Unassigned"
 
 id = "moveToWorkspace.7"
 
@@ -806,7 +806,7 @@ id = "moveToWorkspace.7"
 
 [[hotkeys]]
 
-binding = "Command+Option+9"
+binding = "Unassigned"
 
 id = "switchWorkspace.8"
 
@@ -814,7 +814,7 @@ id = "switchWorkspace.8"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+9"
+binding = "Unassigned"
 
 id = "moveToWorkspace.8"
 
@@ -974,7 +974,7 @@ id = "workspaceBackAndForth"
 
 [[hotkeys]]
 
-binding = "Command+Control+Down Arrow"
+binding = "Command+Option+Down Arrow"
 
 id = "switchWorkspace.next"
 
@@ -982,7 +982,7 @@ id = "switchWorkspace.next"
 
 [[hotkeys]]
 
-binding = "Command+Control+Up Arrow"
+binding = "Command+Option+Up Arrow"
 
 id = "switchWorkspace.previous"
 
@@ -990,7 +990,7 @@ id = "switchWorkspace.previous"
 
 [[hotkeys]]
 
-binding = "Command+Option+Left Arrow"
+binding = "Command+Left Arrow"
 
 id = "focus.left"
 
@@ -998,7 +998,7 @@ id = "focus.left"
 
 [[hotkeys]]
 
-binding = "Command+Option+Down Arrow"
+binding = "Command+Down Arrow"
 
 id = "focus.down"
 
@@ -1006,7 +1006,7 @@ id = "focus.down"
 
 [[hotkeys]]
 
-binding = "Command+Option+Up Arrow"
+binding = "Command+Up Arrow"
 
 id = "focus.up"
 
@@ -1014,7 +1014,7 @@ id = "focus.up"
 
 [[hotkeys]]
 
-binding = "Command+Option+Right Arrow"
+binding = "Command+Right Arrow"
 
 id = "focus.right"
 
@@ -1110,7 +1110,7 @@ id = "centerVisibleColumns"
 
 [[hotkeys]]
 
-binding = "Command+Control+Shift+Up Arrow"
+binding = "Command+Option+Shift+Up Arrow"
 
 id = "moveWindowToWorkspaceUp"
 
@@ -1118,7 +1118,7 @@ id = "moveWindowToWorkspaceUp"
 
 [[hotkeys]]
 
-binding = "Command+Control+Shift+Down Arrow"
+binding = "Command+Option+Shift+Down Arrow"
 
 id = "moveWindowToWorkspaceDown"
 
@@ -1214,7 +1214,7 @@ id = "moveColumnToWorkspace.8"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+Left Arrow"
+binding = "Command+Shift+Left Arrow"
 
 id = "move.left"
 
@@ -1222,7 +1222,7 @@ id = "move.left"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+Down Arrow"
+binding = "Command+Shift+Down Arrow"
 
 id = "move.down"
 
@@ -1230,7 +1230,7 @@ id = "move.down"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+Up Arrow"
+binding = "Command+Shift+Up Arrow"
 
 id = "move.up"
 
@@ -1238,7 +1238,7 @@ id = "move.up"
 
 [[hotkeys]]
 
-binding = "Command+Option+Shift+Right Arrow"
+binding = "Command+Shift+Right Arrow"
 
 id = "move.right"
 
@@ -1318,7 +1318,7 @@ id = "focusMonitorLast"
 
 [[hotkeys]]
 
-binding = "Unassigned"
+binding = "Command+Control+Left Arrow"
 
 id = "moveWorkspaceToMonitor.left"
 
@@ -1326,7 +1326,7 @@ id = "moveWorkspaceToMonitor.left"
 
 [[hotkeys]]
 
-binding = "Unassigned"
+binding = "Command+Control+Right Arrow"
 
 id = "moveWorkspaceToMonitor.right"
 
@@ -1334,7 +1334,7 @@ id = "moveWorkspaceToMonitor.right"
 
 [[hotkeys]]
 
-binding = "Unassigned"
+binding = "Command+Control+Up Arrow"
 
 id = "moveWorkspaceToMonitor.up"
 
@@ -1342,7 +1342,7 @@ id = "moveWorkspaceToMonitor.up"
 
 [[hotkeys]]
 
-binding = "Unassigned"
+binding = "Command+Control+Down Arrow"
 
 id = "moveWorkspaceToMonitor.down"
 
@@ -1350,7 +1350,7 @@ id = "moveWorkspaceToMonitor.down"
 
 [[hotkeys]]
 
-binding = "Command+Option+Control+Left Arrow"
+binding = "Command+Control+Shift+Left Arrow"
 
 id = "moveWindowToMonitor.left"
 
@@ -1358,7 +1358,7 @@ id = "moveWindowToMonitor.left"
 
 [[hotkeys]]
 
-binding = "Command+Option+Control+Right Arrow"
+binding = "Command+Control+Shift+Right Arrow"
 
 id = "moveWindowToMonitor.right"
 
@@ -1366,7 +1366,7 @@ id = "moveWindowToMonitor.right"
 
 [[hotkeys]]
 
-binding = "Unassigned"
+binding = "Command+Control+Shift+Up Arrow"
 
 id = "moveWindowToMonitor.up"
 
@@ -1374,7 +1374,7 @@ id = "moveWindowToMonitor.up"
 
 [[hotkeys]]
 
-binding = "Unassigned"
+binding = "Command+Control+Shift+Down Arrow"
 
 id = "moveWindowToMonitor.down"
 
@@ -1830,7 +1830,7 @@ id = "toggleSplit"
 
 [[hotkeys]]
 
-binding = "Option+J"
+binding = "Unassigned"
 
 id = "swapSplit"
 
@@ -2038,136 +2038,6 @@ type = "main"
 
 [[workspaces]]
 
-id = "454CECD4-5E9D-4ED1-95D7-979D48817F5F"
-
-layoutType = "niri"
-
-name = "2"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "main"
-
-
-
-[[workspaces]]
-
-id = "BEB842B5-E894-4791-9FD1-397C3CDD3538"
-
-layoutType = "niri"
-
-name = "3"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "main"
-
-
-
-[[workspaces]]
-
-id = "248AA883-2261-4D45-943C-79C0E46A232B"
-
-layoutType = "niri"
-
-name = "4"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "main"
-
-
-
-[[workspaces]]
-
-id = "8B8C45D6-CE9E-41D9-BD50-BE4989D5E3DE"
-
-layoutType = "niri"
-
-name = "5"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "main"
-
-
-
-[[workspaces]]
-
-displayName = "❤️"
-
-id = "5953F2BF-A378-4266-91B2-287174C4FA4D"
-
-layoutType = "niri"
-
-name = "6"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "main"
-
-
-
-[[workspaces]]
-
-displayName = "🚀"
-
-id = "A7D5E104-6985-4516-8ED5-07F144F2A33D"
-
-layoutType = "niri"
-
-name = "7"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "main"
-
-
-
-[[workspaces]]
-
-id = "0E18F6B0-345A-4078-8B21-33641F07A861"
-
-layoutType = "niri"
-
-name = "8"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "main"
-
-
-
-[[workspaces]]
-
-id = "8D4D711C-2B2F-4FEC-86BF-FA952037738A"
-
-layoutType = "niri"
-
-name = "9"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "main"
-
-[[workspaces]]
-
 id = "8d05c101-0d85-4fde-9cf5-2581187b14e5"
 
 layoutType = "niri"
@@ -2182,128 +2052,3 @@ type = "secondary"
 
 
 
-[[workspaces]]
-
-id = "ed7f362c-1021-4035-9b3a-ec9185a7cd5a"
-
-layoutType = "niri"
-
-name = "11"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "secondary"
-
-
-
-[[workspaces]]
-
-id = "a8505336-50f0-44cd-9945-aaae88a10f7d"
-
-layoutType = "niri"
-
-name = "12"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "secondary"
-
-
-
-[[workspaces]]
-
-id = "b78c275f-3378-4e93-a1bb-2b8ca0921de3"
-
-layoutType = "niri"
-
-name = "13"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "secondary"
-
-
-
-[[workspaces]]
-
-id = "4ee9384b-f2bf-4dc1-b870-4b10fd403966"
-
-layoutType = "niri"
-
-name = "14"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "secondary"
-
-
-
-[[workspaces]]
-
-id = "14e64b38-e45f-43eb-b18e-6a6490f044e3"
-
-layoutType = "niri"
-
-name = "15"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "secondary"
-
-
-
-[[workspaces]]
-
-id = "835cb755-d74d-4457-b387-9b3e05d8e661"
-
-layoutType = "niri"
-
-name = "16"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "secondary"
-
-
-
-[[workspaces]]
-
-id = "ff00f7b0-0343-4523-b901-db9a06d95d3c"
-
-layoutType = "niri"
-
-name = "17"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "secondary"
-
-
-
-[[workspaces]]
-
-id = "b9395537-ba8a-465a-9405-49ff87f4c1ed"
-
-layoutType = "niri"
-
-name = "18"
-
-
-
-[workspaces.monitorAssignment]
-
-type = "secondary"

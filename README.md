@@ -3,8 +3,9 @@
 A niri-like window management setup for macOS, built on **OmniWM** (Swift
 tiling WM with niri-style sliding strips, hot-reloadable TOML config, virtual
 workspaces, window borders, and IPC via `omniwmctl`) and **Ghostty**
-(terminal). Driven by **Cmd+Option**-key shortcuts that don't fight macOS
-defaults. Requires **Apple Silicon + macOS 26+ (Tahoe)**.
+(terminal). Driven by **Cmd**-layered arrow chords — Cmd to focus,
+Cmd+Shift to move, Cmd+Option for workspaces, Cmd+Ctrl for displays — that
+don't fight macOS defaults. Requires **Apple Silicon + macOS 26+ (Tahoe)**.
 
 ## Requirements
 
@@ -41,10 +42,10 @@ The installer runs these steps from `scripts/`:
    separate-Spaces setting.
 2. OmniWM tiles in an **niri-style sliding strip**; new windows are appended
    at the end and **never resize existing windows**.
-3. Virtual workspaces are global entities each pinned to a **Home Monitor**.
-   The main display hosts workspaces **1–9**; a second display hosts
-   **10–18**, reachable via per-display next/prev cycling or the workspace
-   bar — not by number keys.
+3. Workspaces are **dynamic**: they appear on demand and vanish when empty.
+   Each display seeds one workspace (main "1", a second display "10").
+   `Cmd+Option+↑/↓` navigates the current display's stack; left/right arrows
+   handle windows within it.
 4. If Accessibility or Input Monitoring grants failed, grant them manually:
    System Settings → Privacy & Security → Accessibility (toggle OmniWM on)
    and Privacy & Security → Input Monitoring (toggle OmniWM on).
@@ -53,14 +54,15 @@ The installer runs these steps from `scripts/`:
 
 ## Keybindings
 
-Modifiers: **Cmd+Option**, **Cmd+Ctrl+Option**, **Cmd+Ctrl**, **Cmd+Option+Shift**.
+Arrow-key hierarchy — **Cmd** (focus), **Cmd+Shift** (move), **Cmd+Option**
+(workspaces), **Cmd+Ctrl** (displays).
 
 ### Navigation & layout
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Option` + ←/↓/↑/→ | Move focus between windows |
-| `Cmd` + `Option` + `Shift` + ←/↓/↑/→ | Move window (swap) |
+| `Cmd` + ←/↓/↑/→ | Move focus between windows |
+| `Cmd` + `Shift` + ←/↓/↑/→ | Move window (swap) |
 | `Cmd` + `Option` + `W` | Cycle column width forward (0.3 / 0.5 / 1) |
 | `Cmd` + `Option` + `Shift` + `W` | Cycle column width backward |
 | `Cmd` + `Option` + `M` | Toggle full-width |
@@ -76,29 +78,31 @@ Modifiers: **Cmd+Option**, **Cmd+Ctrl+Option**, **Cmd+Ctrl**, **Cmd+Option+Shift
 
 ### Workspaces
 
+Dynamic: workspaces are created on demand at the ends of the stack and
+auto-removed when emptied. Each display seeds one (main "1", second "10").
+
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Option` + `1..9` | Jump to global workspaces 1–9 (main display's stack) |
-| `Cmd` + `Option` + `Shift` + `1..9` | Move window to global workspaces 1–9 |
-| `Cmd` + `Control` + `↓` / `↑` | Next / previous workspace **on this display** |
-| `Cmd` + `Control` + `Shift` + `↓` / `↑` | Move window to next / previous workspace on this display |
+| `Cmd` + `Option` + `↓` / `↑` | Next / previous workspace **on this display** |
+| `Cmd` + `Option` + `Shift` + `↓` / `↑` | Move window to next / previous workspace on this display |
 | `Cmd` + `Option` + `Tab` | Focus previous window |
 
-> OmniWM workspaces are global: number keys always refer to a global name
-> (workspace "3" lives on the main display). Use `Cmd+Control+↑/↓` to cycle
-> the current display's own stack (workspaces 1–9 on main, 10–18 on a second
-> display). The workspace bar pills are clickable for direct access.
+> Workspaces are global but each belongs to a **Home Monitor** — cycling with
+> `Cmd+Option+↑/↓` stays within the current display's own stack. Numeric
+> workspace shortcuts are disabled because workspace numbers are assigned
+> dynamically. The workspace bar pills are clickable for direct access.
 
 ### Multi-monitor
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Option` + `Ctrl` + `→` | Move focused window to the next display (round-robin) |
-| `Cmd` + `Option` + `Ctrl` + `←` | Move focused window to the previous display |
+| `Cmd` + `Ctrl` + ←/↓/↑/→ | Move the current workspace to the adjacent display |
+| `Cmd` + `Ctrl` + `Shift` + ←/↓/↑/→ | Move the focused window to the adjacent display |
 
 > A workspace belongs to a Home Monitor — it follows you when you move to it.
-> Every connected display needs at least one workspace assigned (the shipped
-> config does this: 1–9 on main, 10–18 on secondary).
+> Every connected display needs at least one seed workspace (the shipped
+> config assigns "1" to main and "10" to a second display; the rest are
+> created dynamically).
 
 ### Window state
 
@@ -188,12 +192,12 @@ then edit values in place.
 
 - OmniWM workspaces are **global entities**, each assigned to a **Home
   Monitor** (not per-display stacks like Paneru's native Spaces).
-- The main display hosts workspaces **1–9** (reachable by number keys).
-  A second display hosts **10–18**, reachable by `Cmd+Control+↑/↓` cycling
-  or the workspace bar pills — not by number keys (OmniWM cannot give each
-  display an independent "1..9").
-- A window can be moved to the next/previous display with
-  `Cmd+Option+Ctrl+→` / `←` (round-robin by monitor count).
+- Workspaces are **dynamic**: a new one is created at the stack edges when
+  `Cmd+Option+↑/↓` overflows; empty ones are cleaned up automatically. The
+  shipped config only seeds "1" on the main display and "10" on a second
+  display.
+- `Cmd+Ctrl+←/↓/↑/→` moves the current workspace to an adjacent display;
+  `Cmd+Ctrl+Shift+←/↓/↑/→` moves just the focused window.
 - The sliding strip works best when displays are arranged **vertically**
   (laptop above/below the external monitor, System Settings → Displays).
 
