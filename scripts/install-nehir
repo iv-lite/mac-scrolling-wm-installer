@@ -62,7 +62,7 @@ install_nehir() {
 			cask="guria/tap/$cask_short"
 			brew upgrade --cask "$cask" >/dev/null 2>&1 && ok "Nehir upgraded via Homebrew ($cask_short)" \
 				|| warn "Nehir upgrade failed (network?) — keeping installed version"
-		elif command -v brew >/dev/null 2>&1 && brew tap guria/tap 2>/dev/null && [ -n "$(installed_cask)" ]; then
+		elif command -v brew >/dev/null 2>&1 && brew trust guria/tap 2>/dev/null && brew tap guria/tap 2>/dev/null && [ -n "$(installed_cask)" ]; then
 			cask_short="$(installed_cask)"
 			brew upgrade --cask "guria/tap/$cask_short" >/dev/null 2>&1 && ok "Nehir upgraded via Homebrew ($cask_short)" \
 				|| warn "Nehir upgrade failed (network?) — keeping installed version"
@@ -73,7 +73,8 @@ install_nehir() {
 	fi
 
 	if command -v brew >/dev/null 2>&1; then
-		note "Tapping guria/tap (Nehir cask repository)..."
+		note "Trusting and tapping guria/tap (Nehir cask repository)..."
+		brew trust guria/tap
 		brew tap guria/tap
 		ok "guria/tap tapped"
 
