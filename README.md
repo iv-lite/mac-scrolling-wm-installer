@@ -1,18 +1,16 @@
-# rift-wm-installer
+# paneru-wm-installer
 
-A niri-like window management setup for macOS, built on **Rift** (niri-style
-scrolling-strip tiler with hot-reloadable TOML config and virtual workspaces),
-**JankyBorders** (window focus borders), and **Ghostty** (terminal).
-Driven by Option-key shortcuts that don't fight macOS defaults.
+A niri-like window management setup for macOS, built on **Paneru** (sliding
+infinite-strip tiler with hot-reloadable TOML config, native macOS workspaces
++ virtual workspaces, and a native menu-bar indicator), and **Ghostty**
+(terminal). Driven by Option-key shortcuts that don't fight macOS defaults.
 
 ## Requirements
 
-- macOS 14+ (Rift)
-- Apple Silicon (notch recommended; Rift's menu-bar indicators are notch-safe)
+- macOS 14+ (Paneru)
+- Apple Silicon
 - Homebrew installed or auto-installed
-- Apple Command Line Tools (or Xcode) — the installer compiles the
-  `rift-swipe` helper with `cc`
-- "Displays have separate Spaces" enabled (Rift-recommended; the installer sets it)
+- "Displays have separate Spaces" enabled (Paneru-recommended; the installer sets it)
 - No Karabiner, no disable of System Integrity Protection
 
 ## Quick start
@@ -21,177 +19,131 @@ Driven by Option-key shortcuts that don't fight macOS defaults.
 ./install
 ```
 
-`./install --HEAD` additionally builds **Rift from git main** (source build;
-needs Rust, takes a few minutes) — required until the next release for the
-PR #320 multi-monitor fix (see [Multi-monitor](#multi-monitor)).
-
 Re-running `./install` **upgrades** an existing setup: Homebrew components
-(Rift, JankyBorders, Ghostty, tccutil-rs) are updated (no-op when current),
-configs are refreshed from
-this repo (previous copies kept as `*.bak`), and the services are restarted so
-the new binaries/config apply immediately.
+(Paneru, Ghostty, tccutil-rs) are updated (no-op when current), configs are
+refreshed from this repo (previous copies kept as `*.bak`), and the service is
+restarted so the new binary/config apply immediately.
 
 The installer runs these steps from `scripts/`:
 
 | Script | Purpose |
 |---|---|
 | `install-deps` | Install Homebrew if missing, tccutil-rs |
-| `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Rift draws its indicators in it) |
+| `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Paneru draws its indicator in it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
-| `install-rift` | Install Rift + write `~/.config/rift/config.toml` + install its launchd service |
-| `install-rift-swipe` | Compile the `rift-swipe` helper (3-finger swipe → window paging) + install its LaunchAgent |
-| `install-borders` | Install JankyBorders + write `~/.config/borders/bordersrc` |
+| `install-paneru` | Install Paneru (Homebrew core) + write `~/.config/paneru/paneru.toml` + install its launchd service |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
-| `enable-services` | Start Rift, start `borders` |
+| `enable-services` | Start Paneru |
 
 ### After install
 
 1. **Log out and back in** (Cmd+Shift+Q) — applies the enabled
    separate-Spaces setting.
-2. Rift tiles in a **niri-style scrolling strip**; workspaces `1..9` are
-   persistent. `Option+Shift+R` reloads the config (hot reload is also on).
-3. **Rift** draws its workspace indicators in the native macOS menu bar
-   (click a badge to switch). The menu bar auto-hides in Rift's fullscreen
-   Spaces — move the cursor to the top edge to reveal it.
-4. If Accessibility grants failed, grant them manually:
-   System Settings → Privacy & Security → Accessibility (enable Rift, Borders,
-   and `rift-swipe` if you want the 3-finger window paging).
+2. Paneru tiles in an **niri-style sliding strip**; new windows are appended at
+   the end of the strip and **never resize existing windows**. Virtual
+   workspaces `1..9` are created on demand.
+3. **Paneru** draws the active virtual workspace in the native macOS menu bar.
+4. If the Accessibility grant failed, grant it manually:
+   System Settings → Privacy & Security → Accessibility (enable `paneru`,
+   usually shown as `paneru` `/opt/homebrew/bin/paneru`).
 5. Ghostty opens **frameless** (`macos-titlebar-style = hidden` in
    `~/.config/ghostty/config`) — drag its window edge with `Option+Click`.
 
 ## Keybindings
 
-Rift modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
+Paneru modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd**.
 
 ### Navigation & layout
 
 | Shortcut | Action |
 |---|---|
 | `Option` + Arrows | Move focus between windows |
-| 3-finger horizontal scroll (← / →) | Page through windows — one maximized window per swipe (`rift-swipe`) |
-| `Option` + `Shift` + Arrows | Move window in the tree |
-| `Option` + `Ctrl` + Arrows | Resize (left/right width, up/down height) |
-| `Option` + `Tab` | Jump to last workspace |
-| `Option` + `[` / `]` | Scroll the strip by half a column |
-| `Option` + `Shift` + `[` / `]` | Snap the strip to a column boundary |
+| 3-finger swipe (← / →) | Page through windows — one full-width window per swipe, snapping on release (`rift-swipe` is gone; Paneru snaps + focuses natively) |
+| `Option` + `Shift` + Arrows | Move window (swap) |
+| `Option` + `Ctrl` + `←`/`→` | Cycle the focused column width (grow/shrink) |
+| `Option` + `W` | Cycle the focused column width (0.3 / 0.5 / 1) |
+| `Option` + `Shift` + `W` | Cycle width backwards |
+| `Option` + `Space` | Center the focused window/viewport |
+| `Option` + `Shift` + `Space` | Snap an overflowing window into the viewport |
+| `Option` + `M` | Toggle full-width for the focused window |
 
 ### Workspaces (1-9)
 
 | Shortcut | Action |
 |---|---|
-| `Option` + `1..9` | Switch Rift workspace |
-| `Option` + `Shift` + `1..9` | Move window to workspace |
-| `Option` + `Z` | Toggle tiling on the current macOS Space |
-| 3-finger swipe | Switch workspaces (trackpad; distinct from the 3-finger *scroll* that pages windows) |
+| `Option` + `1..9` | Switch virtual workspace |
+| `Option` + `Shift` + `1..9` | Move window to virtual workspace |
+| 3-finger swipe (↑ / ↓) | Switch virtual workspace rows (trackpad) |
+| `Option` + `Tab` | Focus the last-focused window on this workspace |
+
+> Paneru virtual workspaces are stacks of horizontal strips *inside* a native
+> macOS workspace. Each native Space (per display, with separate Spaces on) has
+> its own strip and its own set of virtual workspaces.
 
 ### Displays (multi-monitor)
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Option` + Arrows | Move focus to a display |
-| `Cmd` + `Option` + `Shift` + Arrows | Move window to a display |
-
-> Rift workspaces are **not** 1:1 with macOS Spaces — each macOS Space has its
-> own set of virtual workspaces. With "Displays have separate Spaces" on, each
-> display is fully isolated.
+| `Cmd` + `Option` + `→` | Move focused window to the next display (and follow) |
+| `Cmd` + `Option` + `←` | Move focused window to the next display (stay here) |
+| `Cmd` + `Option` + `↑` | Warp the mouse to the next display |
+| `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
 
 ### Window state
 
 | Shortcut | Action |
 |---|---|
-| `Option` + `F` | Toggle fullscreen |
-| `Option` + `Shift` + `F` | Toggle fullscreen (keeping outer gaps) |
-| `Option` + `M` | Maximize a window (fullscreen within outer gaps) |
-| `Option` + `V` | Toggle floating/tiling |
-| `Option` + `Q` | Close window |
-| `Option` + `O` | Stack windows in the column |
-| `Option` + `W` | Cycle the focused column width (0.3 / 0.5 / 1) |
-| `Option` + `/` | Toggle orientation |
-| `Option` + `Ctrl` + `E` | Un-join the layout tree |
-| `Option` + `Space` | Center the focused column |
+| `Option` + `V` | Toggle floating/tiled |
+| `Option` + `O` | Stack the window into the neighbouring column |
+| `Option` + `Shift` + `O` | Pull a window out of a stack |
+| `Option` + `B` | Balance all columns to the focused window's width |
+| `Option` + `Shift` + `E` | Equalize the heights in a stack |
+| `Option` + `Shift` + `C` | Copy a Paneru window rule for the focused window |
+| `Option` + `Ctr` + `Q` | Quit Paneru |
 
 ### Apps & misc
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl` + `Cmd` + `T` | Open Ghostty |
-| `Option` + `Shift` + `R` | Reload Rift config (hot reload also on) |
+| `Option` + `Shift` + `R` | Restart Paneru (config also live-reloads on save) |
 
-> **Moved/removed vs. the AeroSpace setup:** the scrollable strip is back
-> (`Option+[`/`]`), per-Space tiling toggles are `Option+Z`, and workspace
-> switching is `Option+1..9`. The SketchyBar cheat sheet (`Cmd+Option+K`) is
-> gone — Rift draws workspace indicators in the (native) menu bar instead.
+> **Removed vs. the Rift/AeroSpace setups:** fine-grained resizing
+> (`Option+Ctrl+arrows` step-resize), fullscreen toggles, per-Space tiling
+> toggles (`Alt+Z`), strip scroll half-steps (`Alt+[`/`]`), and an
+> `open-terminal` shortcut have no Paneru equivalent and were dropped. The
+> SketchyBar cheat sheet is long gone — Paneru draws the workspace indicator in
+> the (native) menu bar.
 
 ### The infinite horizontal canvas
 
-The niri-style scrolling strip behaves like a canvas **wider than the monitor**:
-unfocused columns park off-screen beyond the frame edge and glide in/out of the
-screen edges as focus moves, instead of being clamped or squeezed into the
-visible bounds.
+The niri-style sliding strip behaves like a canvas **wider than the monitor**:
+unfocused windows park off-screen and glide in/out of the screen edges as focus
+moves. Two things make it feel native:
 
-There's no secret trick in the config — this is what Rift's scrolling layout
-does natively:
-
-- `[settings.layout] mode = "scrolling"` + `focus_navigation_style = "niri"`
-  reveal columns on navigation, keeping neighbours staged beyond the edges.
-- `alignment = "center"` keeps the focused column centered, so the next/prev
-  columns visibly peek in from the left/right.
-- `column_width_ratio = 1` makes every column **full-screen**: each window is
-  maximized (a "page"), so a swipe pans exactly one window with zero mid-window
-  rest. `Option+W` still cycles 0.3 / 0.5 / 1 on demand, and a single lone
-  window fills the screen by design.
-- `animate = true` plus the global `animate` / `animation_duration` /
-  `animation_fps` settings produce the smooth slide.
-- `scroll_strip` (`Alt+[`/`]`) half-steps, `snap_strip` (`Alt+Shift+[`/`]`)
-  settles on a column boundary, `center_selection` (`Alt+Space`) re-centers.
-
-### Swiping between windows (`rift-swipe`)
-
-Rift's built-in scroll gesture only *pans* the strip — it doesn't change focus
-and leaves you mid-window at release, so the config disables it
-(`[settings.layout.scrolling.gestures] enabled = false`) and a small helper,
-`scripts/rift-swipe/rift-swipe.c`, takes over:
-
-- It watches the same low-level HID gesture events Rift decodes (a CGEvent
-  type-29 tap + the multi-touch digitizer), and a deliberate **3-finger
-  horizontal swipe** becomes `rift-cli window next/prev`.
-- Rift then reveals + focuses the next maximized window, **centered** and
-  animated at `animation_duration` — one window per swipe, exactly like paging.
-- Finger count is decoded from the event's `IOHIDEvent` (paths marked
-  touching), so 2-finger scrolling in apps is untouched; the tap is
-  listen-only (never consumes), so Rift's own 3-finger *swipe* → workspace
-  switching still works.
-
-Built by the installer with `cc` (Command Line Tools only, no Xcode needed) to
-`~/.config/rift/bin/rift-swipe`, run by the `io.rift-swipe` LaunchAgent, and
-granted Accessibility via `grant-permissions`. Tuning (only if needed):
-`RIFT_SWIPE_THRESHOLD` (default 0.45 of a full sweep), `RIFT_SWIPE_INVERT`
-(default 1, matches `invert_horizontal`), `RIFT_SWIPE_QUIET_MS` (default 150),
-`RIFT_SWIPE_CLI`. Direction: fingers **left** → next window, **right** →
-previous (the same feel the pan had).
-
-> **Why not "negative struts"?** macOS/Rift has no `_NET_WM_STRUT` /
-> negative-strut API — that's an X11/i3/sway concept. And Rift `app_rules`
-> only control floating/workspace/size/position/manage, not canvas size. The
-> wide-canvas feel comes purely from the scrolling layout + niri focus
-> navigation + animations.
+- Paneru keeps a thin **sliver** of each off-screen window visible at the
+  screen edge (`sliver_width` / `sliver_height` in the config) — a workaround
+  for macOS relocating windows that move fully off-screen, not a design choice.
+- `[swipe] continuous = false` bounds the strip to its left/right-most window,
+  so a full 3-finger swipe lands exactly on the next full-width window
+  (page-flip), and `auto_center = true` keeps the focused window centered.
+- `[options] preset_column_widths = [0.3, 0.5, 1.0]` cycling and
+  `window_fullwidth` (Option+M) cover on-demand sizing; new windows are
+  appended at the end and never resize existing ones.
 
 ## The menu bar
 
-- The **native macOS menu bar** is kept — Rift draws its workspace indicators
-  in it (`[settings.ui.menu_bar] enabled = true`). In Rift's fullscreen
-  Spaces the menu bar auto-hides; move the cursor to the top edge to reveal it,
-  or it stays visible on the desktop Space.
-- **Workspace indicators**: click a badge in the menu bar to switch
-  workspaces; the currently focused workspace is highlighted.
-- **Top gap:** the outer top gap defaults to 15px (matching the other edges) —
-  since the menu bar auto-hides in fullscreen Spaces, no menu-bar clearance is
-  needed. Tune `[settings.layout.gaps.outer]` in `~/.config/rift/config.toml`
-  for more/less breathing room.
+- The **native macOS menu bar** is kept — Paneru draws a small indicator for
+  the active virtual workspace in it (`[decorations]` in
+  `~/.config/paneru/paneru.toml`, `workspace_menu_status = true`), plus a brief
+  status popup on switch.
+- **Focus cues**: an active-window border (`[decorations.active.border]`, Nord
+  blue) replaces JankyBorders — no extra bar process needed. Inactive-window
+  dimming uses native macOS (`[decorations.inactive.dim]`).
+- **Top gap:** `[padding].top` defaults to 15px in the config.
 
 ## No title bars (the macOS reality)
 
-macOS tiling window managers (Rift included — same as yabai/AeroSpace) cannot
+macOS tiling window managers (Paneru included — same as yabai/AeroSpace) cannot
 hide a window's title bar or toolbar: each app draws its own chrome, so removal
 has to happen per app. This installer does what's safely possible:
 
@@ -212,50 +164,37 @@ has to happen per app. This installer does what's safely possible:
 
 ## Troubleshooting
 
-**Rift won't start / instantly exits.** Rift hard-exits unless two conditions hold:
+**Paneru won't start / instantly exits.** Paneru hard-exits unless it has
+Accessibility and "Displays have separate Spaces" is **ON**. The installer's
+`configure-system` / `ensure-separate-spaces` handles the latter. If grants
+failed, give the terminal **Full Disk Access** first, then:
 
-- **"Displays have separate Spaces" is ON.** Rift probes the private windowserver
-  mode, not the legacy `defaults write com.apple.spaces spans-displays` knob —
-  on modern macOS (26) that knob no longer changes the live state. The installer's
-  `scripts/ensure-separate-spaces` enables it via the private SkyLight API and
-  persists it, then verifies. If it still fails, enable it manually in
-  System Settings → Desktop & Dock → "Displays have separate Spaces", then re-run
-  `bash scripts/ensure-separate-spaces set`. **On macOS 26, leaving this OFF risks
-  a WindowServer crash at next login (Apple bug 153570422).**
-- **`rift` has Accessibility.** Check System Settings → Privacy & Security →
-  Accessibility. Because `rift` is a CLI binary it's invisible there by default;
-  the installer grants it (and Borders) via `tccutil-rs`. If grants failed,
-  the terminal running the installer needs **Full Disk Access** first, then
-  `bash scripts/grant-permissions`.
+```sh
+bash scripts/grant-permissions
+paneru restart
+```
 
-Rift's own debug trail: `launchctl list | grep rift`, logs at `/tmp/rift_iv.out.log`
-and `/tmp/rift_iv.err.log`, and `sudo launchctl stop com.apple.tccd` after any
-grant. A quick health check of the whole stack:
+Paneru's own debug trail: `paneru printstate` (via `paneru send-cmd printstate`),
+logs from its LaunchAgent, and the interactive `paneru` front-run for the same
+output. A quick health check of the whole stack:
 
 ```sh
 bash scripts/ensure-separate-spaces check   # must print "enabled (mode 1)"
-rift-cli query workspaces                   # must print [] (Mach service up)
+paneru query state --json                   # must print a JSON snapshot (service up)
 ```
 
 ## Multi-monitor
 
-- Rift's recommended "Displays have separate Spaces" = **on** gives each display
-  its own independent tiling layout and workspace set.
-- The scrolling strip works best when displays are arranged **vertically**
-  (System Settings → Displays); side-by-side layouts can cause windows to leak
-  between strips.
-- Releases before PR #320 (currently `v0.5.8.1`) have two known multi-monitor
-  bugs in the scrolling layout on side-by-side displays:
-  1. `Alt+Arrow` at the strip's first/last column **jumps focus** to the
-     adjacent display's workspace instead of stopping at the boundary.
-  2. Fully off-screen (parked) full-width columns sit far outside the visible
-     strip and can **spill onto the adjacent monitor** — the "windows keep
-     switching / scroll to the monitor" symptom.
-  The fix is merged into `main`. Until the next release ships it, install Rift
-  from git main with **`./install --HEAD`** (source build; needs Rust, takes a
-  few minutes). The installer prints a warning when it detects a pre-#320 build.
-- Per-display gap overrides are supported in the config (commented template).
-  Get your display UUIDs with `rift-cli query displays`.
+- Paneru gives each display its **own independent window strip** and its own
+  set of native workspaces (with "Displays have separate Spaces" on).
+- The sliding strip works best when displays are arranged **vertically**
+  (laptop above/below the external monitor, System Settings → Displays);
+  side-by-side layouts can confuse Paneru when macOS relocates fully off-screen
+  windows to a neighbouring display. If you must run side-by-side, the
+  `horizontal_mouse_warp` option makes a vertical arrangement of displays
+  "feel" horizontal for the mouse.
+- A window can be sent to another display with `Cmd+Option+→` (follow) or
+  `Cmd+Option+←` (stay), and `Cmd+Option+↑` warps the mouse there.
 
 ## Uninstall
 
@@ -263,14 +202,15 @@ rift-cli query workspaces                   # must print [] (Mach service up)
 ./uninstall
 ```
 
-Stops and removes Rift (launchd service) and borders, cleans up any **legacy**
-Aegis residue (LaunchAgent, `/Applications/Aegis.app`, preferences), moves
-configs (from `~/.config/rift`, `~/.config/borders`, plus any legacy
-`~/.config/aegis`, `~/.config/aerospace`) to `~/.config/backups/uninstall-<timestamp>/`, then asks
-you which formulae to **keep** (interactive numbered menu). Untaps
-`acsandmann/tap`, `FelixKratz/formulae`, `uinaf/tap` (and legacy
-`nikitabobko/tap`, `rdrkr/tap` only when nothing kept depends on them), and
-restores the native menu bar (`_HIHideMenuBar` off).
+Stops and removes Paneru (launchd service) and its app launcher, cleans up any
+**legacy** Rift / `rift-swipe` / JankyBorders / AeroSpace / AeroSpaceBar / Aegis
+residue (services, LaunchAgents, apps), moves configs (from `~/.config/paneru`,
+`~/.config/ghostty`, plus any legacy `~/.config/rift`, `~/.config/borders`,
+`~/.config/aerospace`, `~/.config/aegis`, `~/.paneru*`, and Paneru's state dir)
+to `~/.config/backups/uninstall-<timestamp>/`, then asks you which formulae to
+**keep** (interactive numbered menu). Untaps `acsandmann/tap`,
+`FelixKratz/formulae` (and legacy `nikitabobko/tap`, `rdrkr/tap` only when
+nothing kept depends on them), and restores the native menu bar.
 
 ## Testing in a macOS VM
 
@@ -288,7 +228,7 @@ macOS host:
 ./tests/preview setup        # installs tart/sshpass (auto), clones host-matched base image
 ./tests/preview up           # boot guest, live-mount the repo, wait for SSH
 ./tests/preview install      # run ./install in the guest (asks to clean up afterwards)
-./tests/preview check        # query Rift workspaces + installed formulae
+./tests/preview check        # query Paneru state + installed formulae
 ./tests/preview shot         # screenshot the tiling into tests/screenshots/
 ./tests/preview clean        # interactively remove VM, tart, sshpass, base image
 ```
@@ -325,19 +265,20 @@ tested), Accessibility may need one manual grant inside the guest.
 install                   Main installer (runs scripts/*)
 uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
-scripts/rift-swipe/       rift-swipe.c helper + io.rift-swipe.plist template
-config/rift/              Rift config (scrolling strip, bindings, gaps)
+config/paneru/            Paneru config (sliding strip, bindings, rules)
 config/ghostty/           Ghostty config (frameless title bar)
-config/borders/bordersrc  JankyBorders focus-border config
 tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
-Configs are installed to `~/.config/{rift,ghostty,borders}`;
-existing files are backed up (`.bak`) before overwriting, and Rift has
-`hot_reload`, so editing `~/.config/rift/config.toml` applies live.
+Configs are installed to `~/.config/{paneru,ghostty}`;
+existing files are backed up (`.bak`) before overwriting, and Paneru
+hot-reloads `~/.config/paneru/paneru.toml`, so edits apply live.
 
-> **Note on AeroSpace:** an intermediate version of this installer targeted
-> AeroSpace (i3-style tree tiler) with AeroSpaceBar in the menu bar. A later
-> version used **Aegis** (a notch-safe menu bar replacement). This version is
-> back on Rift (niri-style scrolling strip) with the native macOS menu bar,
-> where Rift's own `[settings.ui.menu_bar]` draws the workspace indicators.
+> **Note on the history:** an early version of this installer targeted
+> AeroSpace (i3-style tree tiler) with AeroSpaceBar in the menu bar; a later
+> version used **Rift** (niri-style scrolling strip) plus a custom `rift-swipe`
+> C helper repurposing Rift's pan-only gesture. This version is on **Paneru**
+> (niri-style sliding strip), which pages windows + snaps + focuses on gesture
+> release natively — so the Rift-era helper, its LaunchAgent, JankyBorders, and
+> the `cycle-column-width` Python helper are all gone, and BSP/border chromes
+> come from Paneru itself.
