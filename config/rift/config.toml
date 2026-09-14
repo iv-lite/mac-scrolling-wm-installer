@@ -207,7 +207,7 @@ comb1 = "Alt + Shift"
 "Alt + V" = "toggle_window_floating"
 "Alt + Q" = "close_window"
 "Alt + O" = "toggle_stack"
-"Alt + Slash" = "toggle_orientation"
+"Alt + Shift + O" = "toggle_orientation"
 "Alt + Ctrl + E" = "unjoin_windows"
 
 # ─── Scroll the strip ───
