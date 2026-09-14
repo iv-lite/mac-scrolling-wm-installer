@@ -70,6 +70,14 @@ if command -v borders >/dev/null 2>&1; then
 	ok "JankyBorders service stopped"
 fi
 
+# rift-swipe: stop + remove LaunchAgent (binary lives in ~/.config/rift,
+# removed with the configs below)
+if [ -f ~/Library/LaunchAgents/io.rift-swipe.plist ]; then
+	launchctl bootout "gui/$(id -u)/io.rift-swipe" >/dev/null 2>&1 || true
+	rm -f ~/Library/LaunchAgents/io.rift-swipe.plist
+	ok "rift-swipe LaunchAgent stopped + removed"
+fi
+
 # Aegis: stop + remove LaunchAgent
 if [ -f ~/Library/LaunchAgents/com.aegis.Aegis.plist ]; then
 	launchctl unload ~/Library/LaunchAgents/com.aegis.Aegis.plist >/dev/null 2>&1 || true
@@ -90,6 +98,7 @@ if command -v tccutil-rs >/dev/null 2>&1; then
 	for bin in "$(command -v rift 2>/dev/null || true)" \
 	           "/Applications/AeroSpace.app/Contents/MacOS/AeroSpace" \
 	           "$(command -v borders 2>/dev/null || true)" \
+	           "$HOME/.config/rift/bin/rift-swipe" \
 	           "/Applications/Aegis.app/Contents/MacOS/Aegis"; do
 		if [ -n "$bin" ]; then
 			tccutil-rs revoke --user Accessibility "$bin" >/dev/null 2>&1 || true

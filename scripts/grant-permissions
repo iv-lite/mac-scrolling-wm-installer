@@ -44,6 +44,7 @@ note "Granting Accessibility permissions..."
 
 grant "$(command -v rift 2>/dev/null || true)"
 grant "$(command -v borders 2>/dev/null || true)"
+grant "$HOME/.config/rift/bin/rift-swipe"
 
 # ─────────────────────────────────────────────────────────────
 # Post-grant verification: check the TCC database via tccutil-rs
@@ -71,8 +72,14 @@ verify_grant() {
 if command -v tccutil-rs >/dev/null 2>&1; then
 	verify_grant "$(command -v rift 2>/dev/null || true)"
 	verify_grant "$(command -v borders 2>/dev/null || true)"
+	verify_grant "$HOME/.config/rift/bin/rift-swipe"
 else
 	warn "tccutil-rs not found — skipping verification"
+fi
+
+# Restart rift-swipe so a fresh grant applies to the running event tap.
+if [ -f "$HOME/Library/LaunchAgents/io.rift-swipe.plist" ]; then
+	launchctl kickstart -k "gui/$(id -u)/io.rift-swipe" >/dev/null 2>&1 || true
 fi
 
 # The terminal itself needs Full Disk Access for tccutil-rs to open TCC.db.

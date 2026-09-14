@@ -14,26 +14,106 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
+# Rift PR #320 check (2026-09-14): "Hide off-screen scrolling
+# columns and stop boundary focus jumps".
+# v0.5.8.1 (and anything older) predates it: in the scrolling
+# layout, focus-left/right at the strip edge JUMPED to the
+# adjacent display's workspace, and fully off-screen columns sat
+# far outside the visible strip (spilling onto side-by-side
+# monitors). This caused exactly the "windows keep switching when
+# they scroll to monitor" multi-monitor bug.
+# ─────────────────────────────────────────────────────────────
+rift_has_p320_fix() {
+	local ver
+	ver="$(rift_version)"
+	[ -z "$ver" ] && return 0  # unknown → assume fixed (e.g. unusual HEAD name)
+	case "$ver" in
+		*HEAD*) return 0 ;;  # built from git main (--HEAD) → includes #320
+	esac
+	case "$ver" in
+		0.5.8.1|0.5.8|0.5.7*|0.5.[0-6]*|0.4*|0.3*|0.2*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+
+rift_version() {
+	# The rift binary has no --version flag, so ask Homebrew.
+	brew list --versions acsandmann/tap/rift 2>/dev/null | tr ' ' '\n' | tail -1
+}
+
+# ─────────────────────────────────────────────────────────────
 # Install Rift
 # ─────────────────────────────────────────────────────────────
+HEAD_MODE="${RIFT_INSTALL_HEAD:-0}"
+
 if command -v rift >/dev/null 2>&1; then
-	before="$(rift --version 2>/dev/null || echo 'unknown')"
-	note "Rift already installed ($before) — upgrading..."
-	brew trust acsandmann/tap 2>/dev/null || true
-	brew tap acsandmann/tap
-	brew upgrade acsandmann/tap/rift 2>/dev/null || warn "Rift upgrade failed (network?) — keeping $before"
-	after="$(rift --version 2>/dev/null || echo 'unknown')"
-	if [ "$before" = "$after" ]; then
-		ok "Rift is up to date ($after)"
+	before="$(rift_version)"
+	if [ "$HEAD_MODE" = "1" ]; then
+		note "Rift already installed ($before) — rebuilding from git main (--HEAD)..."
+		if ! command -v cargo >/dev/null 2>&1; then
+			note "rust/cargo not found — installing Rust (large; one-time)..."
+			brew install rust 2>/dev/null || {
+				warn "Rust install failed — HEAD build needs cargo. Keeping $before."
+				exit 1
+			}
+		fi
+		brew trust acsandmann/tap 2>/dev/null || true
+		brew tap acsandmann/tap
+		if brew reinstall --HEAD acsandmann/tap/rift; then
+			ok "Rift rebuilt from git main"
+		else
+			warn "Rift HEAD build failed — keeping $before"
+		fi
 	else
-		ok "Rift upgraded: $before → $after"
+		note "Rift already installed ($before) — upgrading..."
+		brew trust acsandmann/tap 2>/dev/null || true
+		brew tap acsandmann/tap
+		brew upgrade acsandmann/tap/rift 2>/dev/null || warn "Rift upgrade failed (network?) — keeping $before"
+	fi
+
+	after="$(rift_version)"
+	if [ "$before" = "$after" ]; then
+		ok "Rift is at $after"
+	else
+		ok "Rift updated: $before → $after"
+	fi
+
+	if ! rift_has_p320_fix; then
+		warn "Rift $after lacks the PR #320 multi-monitor fix"
+		echo "     Alt+Arrow at the strip edge can jump focus to the adjacent display,"
+		echo "     and parked full-width columns can spill onto a side-by-side monitor"
+		echo "     ('windows keep switching'). Re-run as:  ./install --HEAD"
+		echo "     (builds Rift from git main, which contains the fix) — or wait for"
+		echo "     the next release, which 'brew upgrade' will pick up automatically."
 	fi
 else
-	note "Installing Rift via Homebrew..."
-	brew trust acsandmann/tap 2>/dev/null || true
-	brew tap acsandmann/tap
-	brew install acsandmann/tap/rift
-	ok "Rift installed"
+	if [ "$HEAD_MODE" = "1" ]; then
+		note "Installing Rift from git main (--HEAD build)..."
+		if ! command -v cargo >/dev/null 2>&1; then
+			note "rust/cargo not found — installing Rust (large; one-time)..."
+			brew install rust 2>/dev/null || {
+				warn "Rust install failed — HEAD build needs cargo. Falling back to bottled release."
+				HEAD_MODE=0
+			}
+		fi
+	fi
+	if [ "$HEAD_MODE" = "1" ]; then
+		brew trust acsandmann/tap 2>/dev/null || true
+		brew tap acsandmann/tap
+		brew install --HEAD acsandmann/tap/rift
+		ok "Rift installed (built from git main)"
+	else
+		note "Installing Rift via Homebrew..."
+		brew trust acsandmann/tap 2>/dev/null || true
+		brew tap acsandmann/tap
+		brew install acsandmann/tap/rift
+		ok "Rift installed"
+	fi
+	if [ "$HEAD_MODE" != "1" ] && ! rift_has_p320_fix; then
+		warn "Installed Rift $(rift_version) lacks the PR #320 multi-monitor fix."
+		echo "     For the scrolling-layout boundary-focus + off-screen-column fix,"
+		echo "     re-run as:  ./install --HEAD"
+	fi
 fi
 
 # ─────────────────────────────────────────────────────────────

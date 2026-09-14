@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+
+LABEL="io.rift-swipe"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+SRC="$REPO_ROOT/scripts/rift-swipe/rift-swipe.c"
+BIN="$HOME/.config/rift/bin/rift-swipe"
+
+# ─────────────────────────────────────────────────────────────
+# Build the helper (Command Line Tools only — cc + SDK headers)
+# ─────────────────────────────────────────────────────────────
+if ! command -v cc >/dev/null 2>&1; then
+	warn "No C compiler found — rift-swipe not built (3-finger swipe left unhandled)."
+	exit 0
+fi
+
+note "Building rift-swipe (3-finger swipe → window paging)..."
+mkdir -p "$(dirname "$BIN")"
+cc -std=c11 -O2 -Wall -Wextra -o "$BIN.tmp" "$SRC" \
+	-framework CoreFoundation -framework CoreGraphics -framework IOKit
+mv "$BIN.tmp" "$BIN"
+chmod 755 "$BIN"
+
+# Ad-hoc signing gives the binary a stable-enough identity without a dev cert.
+codesign --force --sign - "$BIN" >/dev/null 2>&1 || true
+ok "rift-swipe built at $BIN"
+
+# ─────────────────────────────────────────────────────────────
+# LaunchAgent (starts at login, restarts on crash)
+# ─────────────────────────────────────────────────────────────
+note "Installing $LABEL LaunchAgent..."
+mkdir -p "$HOME/Library/LaunchAgents"
+sed "s|__RIFT_SWIPE_BIN__|$BIN|g" \
+	"$REPO_ROOT/scripts/rift-swipe/$LABEL.plist.template" > "$PLIST"
+
+# Environment overrides the user may have exported (threshold/invert/quiet).
+ENVS=()
+[ -n "${RIFT_SWIPE_THRESHOLD:-}" ] && ENVS+=(RIFT_SWIPE_THRESHOLD)
+[ -n "${RIFT_SWIPE_INVERT:-}" ] && ENVS+=(RIFT_SWIPE_INVERT)
+[ -n "${RIFT_SWIPE_QUIET_MS:-}" ] && ENVS+=(RIFT_SWIPE_QUIET_MS)
+[ -n "${RIFT_SWIPE_CLI:-}" ] && ENVS+=(RIFT_SWIPE_CLI)
+if [ ${#ENVS[@]} -gt 0 ]; then
+	/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables dict" "$PLIST" >/dev/null
+	for var in "${ENVS[@]}"; do
+		/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:$var string '${!var}'" \
+			"$PLIST" >/dev/null
+		note "rift-swipe env: $var=${!var}"
+	done
+fi
+
+launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
+launchctl bootstrap "gui/$(id -u)" "$PLIST"
+launchctl kickstart -k "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
+ok "rift-swipe LaunchAgent installed + started"
+
+warn "grant Accessibility to $BIN to enable the swipe"
+echo "     (the installer's grant-permissions step attempts this automatically)"

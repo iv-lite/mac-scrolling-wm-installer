@@ -60,16 +60,17 @@ focus_navigation_style = "niri"
 animate = true
 
 [settings.layout.scrolling.gestures]
-# Horizontal scroll (trackpad) switches columns
-enabled = true
+# Handed over to the `rift-swipe` helper: Rift's standard scroll gesture only
+# *pans* the strip (no focus change, no snap on release), so it's disabled and
+# `rift-swipe` (scripts/rift-swipe) turns a deliberate 3-finger horizontal
+# scroll into `rift-cli window next/prev`, so a swipe lands on the next
+# maximized window, focused and centered, one per swipe.
+enabled = false
 invert_horizontal = true
 fingers = 3
-# A fraction of a swipe that emits one scroll step. 1.0 = a full sweep is
-# required, so each complete swipe advances exactly one maximized window
-# (page-flip feel) — a partial swipe never leaves the strip mid-window.
-# Per-window stepping comes from the drag-mouse panning only; Rift has no
-# snap-on-release yet (see docs/rift-features/snap-on-release.md).
-distance_pct = 1.0
+# The drift helpers below are inert while `enabled = false`; kept so re-enabling
+# the pan restores the tuned values.
+distance_pct = 0.04
 # Overscroll (in strip steps) before handing off to the workspace swipe.
 # Lower = scrolling past the end flows into the next/prev workspace sooner.
 workspace_switch_threshold = 0.1

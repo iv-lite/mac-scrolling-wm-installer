@@ -10,6 +10,8 @@ Driven by Option-key shortcuts that don't fight macOS defaults.
 - macOS 14+ (Rift)
 - Apple Silicon (notch recommended; Rift's menu-bar indicators are notch-safe)
 - Homebrew installed or auto-installed
+- Apple Command Line Tools (or Xcode) — the installer compiles the
+  `rift-swipe` helper with `cc`
 - "Displays have separate Spaces" enabled (Rift-recommended; the installer sets it)
 - No Karabiner, no disable of System Integrity Protection
 
@@ -18,6 +20,10 @@ Driven by Option-key shortcuts that don't fight macOS defaults.
 ```sh
 ./install
 ```
+
+`./install --HEAD` additionally builds **Rift from git main** (source build;
+needs Rust, takes a few minutes) — required until the next release for the
+PR #320 multi-monitor fix (see [Multi-monitor](#multi-monitor)).
 
 Re-running `./install` **upgrades** an existing setup: Homebrew components
 (Rift, JankyBorders, Ghostty, tccutil-rs) are updated (no-op when current),
@@ -33,6 +39,7 @@ The installer runs these steps from `scripts/`:
 | `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Rift draws its indicators in it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
 | `install-rift` | Install Rift + write `~/.config/rift/config.toml` + install its launchd service |
+| `install-rift-swipe` | Compile the `rift-swipe` helper (3-finger swipe → window paging) + install its LaunchAgent |
 | `install-borders` | Install JankyBorders + write `~/.config/borders/bordersrc` |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
 | `enable-services` | Start Rift, start `borders` |
@@ -47,7 +54,8 @@ The installer runs these steps from `scripts/`:
    (click a badge to switch). The menu bar auto-hides in Rift's fullscreen
    Spaces — move the cursor to the top edge to reveal it.
 4. If Accessibility grants failed, grant them manually:
-   System Settings → Privacy & Security → Accessibility (enable Rift, Borders).
+   System Settings → Privacy & Security → Accessibility (enable Rift, Borders,
+   and `rift-swipe` if you want the 3-finger window paging).
 5. Ghostty opens **frameless** (`macos-titlebar-style = hidden` in
    `~/.config/ghostty/config`) — drag its window edge with `Option+Click`.
 
@@ -60,6 +68,7 @@ Rift modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 | Shortcut | Action |
 |---|---|
 | `Option` + Arrows | Move focus between windows |
+| 3-finger horizontal scroll (← / →) | Page through windows — one maximized window per swipe (`rift-swipe`) |
 | `Option` + `Shift` + Arrows | Move window in the tree |
 | `Option` + `Ctrl` + Arrows | Resize (left/right width, up/down height) |
 | `Option` + `Tab` | Jump to last workspace |
@@ -73,7 +82,7 @@ Rift modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd** (Meta).
 | `Option` + `1..9` | Switch Rift workspace |
 | `Option` + `Shift` + `1..9` | Move window to workspace |
 | `Option` + `Z` | Toggle tiling on the current macOS Space |
-| 3-finger swipe | Switch workspaces (trackpad) |
+| 3-finger swipe | Switch workspaces (trackpad; distinct from the 3-finger *scroll* that pages windows) |
 
 ### Displays (multi-monitor)
 
@@ -127,16 +136,39 @@ does natively:
   reveal columns on navigation, keeping neighbours staged beyond the edges.
 - `alignment = "center"` keeps the focused column centered, so the next/prev
   columns visibly peek in from the left/right.
-- `column_width_ratio = 0.7` gives the "big focus + sliver peek" look: the
-  canvas starts overflowing as soon as column widths exceed the monitor —
-  with 0.7 that's already at **2+ windows**, so the scroll doesn't hide
-  behind a static 50/50 tiling (0.5 did exactly that). A single lone window
-  still fills the screen (Rift gives a one-column strip full width); open a
-  second or third window to see the strip spill past the edges.
+- `column_width_ratio = 1` makes every column **full-screen**: each window is
+  maximized (a "page"), so a swipe pans exactly one window with zero mid-window
+  rest. `Option+W` still cycles 0.3 / 0.5 / 1 on demand, and a single lone
+  window fills the screen by design.
 - `animate = true` plus the global `animate` / `animation_duration` /
   `animation_fps` settings produce the smooth slide.
 - `scroll_strip` (`Alt+[`/`]`) half-steps, `snap_strip` (`Alt+Shift+[`/`]`)
   settles on a column boundary, `center_selection` (`Alt+Space`) re-centers.
+
+### Swiping between windows (`rift-swipe`)
+
+Rift's built-in scroll gesture only *pans* the strip — it doesn't change focus
+and leaves you mid-window at release, so the config disables it
+(`[settings.layout.scrolling.gestures] enabled = false`) and a small helper,
+`scripts/rift-swipe/rift-swipe.c`, takes over:
+
+- It watches the same low-level HID gesture events Rift decodes (a CGEvent
+  type-29 tap + the multi-touch digitizer), and a deliberate **3-finger
+  horizontal swipe** becomes `rift-cli window next/prev`.
+- Rift then reveals + focuses the next maximized window, **centered** and
+  animated at `animation_duration` — one window per swipe, exactly like paging.
+- Finger count is decoded from the event's `IOHIDEvent` (paths marked
+  touching), so 2-finger scrolling in apps is untouched; the tap is
+  listen-only (never consumes), so Rift's own 3-finger *swipe* → workspace
+  switching still works.
+
+Built by the installer with `cc` (Command Line Tools only, no Xcode needed) to
+`~/.config/rift/bin/rift-swipe`, run by the `io.rift-swipe` LaunchAgent, and
+granted Accessibility via `grant-permissions`. Tuning (only if needed):
+`RIFT_SWIPE_THRESHOLD` (default 0.45 of a full sweep), `RIFT_SWIPE_INVERT`
+(default 1, matches `invert_horizontal`), `RIFT_SWIPE_QUIET_MS` (default 150),
+`RIFT_SWIPE_CLI`. Direction: fingers **left** → next window, **right** →
+previous (the same feel the pan had).
 
 > **Why not "negative struts"?** macOS/Rift has no `_NET_WM_STRUT` /
 > negative-strut API — that's an X11/i3/sway concept. And Rift `app_rules`
@@ -212,6 +244,16 @@ rift-cli query workspaces                   # must print [] (Mach service up)
 - The scrolling strip works best when displays are arranged **vertically**
   (System Settings → Displays); side-by-side layouts can cause windows to leak
   between strips.
+- Releases before PR #320 (currently `v0.5.8.1`) have two known multi-monitor
+  bugs in the scrolling layout on side-by-side displays:
+  1. `Alt+Arrow` at the strip's first/last column **jumps focus** to the
+     adjacent display's workspace instead of stopping at the boundary.
+  2. Fully off-screen (parked) full-width columns sit far outside the visible
+     strip and can **spill onto the adjacent monitor** — the "windows keep
+     switching / scroll to the monitor" symptom.
+  The fix is merged into `main`. Until the next release ships it, install Rift
+  from git main with **`./install --HEAD`** (source build; needs Rust, takes a
+  few minutes). The installer prints a warning when it detects a pre-#320 build.
 - Per-display gap overrides are supported in the config (commented template).
   Get your display UUIDs with `rift-cli query displays`.
 
@@ -283,6 +325,7 @@ tested), Accessibility may need one manual grant inside the guest.
 install                   Main installer (runs scripts/*)
 uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
+scripts/rift-swipe/       rift-swipe.c helper + io.rift-swipe.plist template
 config/rift/              Rift config (scrolling strip, bindings, gaps)
 config/ghostty/           Ghostty config (frameless title bar)
 config/borders/bordersrc  JankyBorders focus-border config

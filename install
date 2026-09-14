@@ -26,6 +26,30 @@ run_step() {
 	echo "  ${GREEN}✓ done${RESET}"
 }
 
+# ─────────────────────────────────────────────────────────────
+# Flags: --HEAD  build Rift from git main (includes PR #320 fixes)
+#        --help
+# ─────────────────────────────────────────────────────────────
+HEAD_MODE=0
+for arg in "$@"; do
+	case "$arg" in
+		--HEAD) HEAD_MODE=1 ;;
+		--help|-h)
+			echo "Usage: ./install [--HEAD]"
+			echo ""
+			echo "  --HEAD   Build Rift from git main instead of the bottled"
+			echo "           release (needed for the PR #320 multi-monitor fix"
+			echo "           until the next release; requires Rust, slower)."
+			exit 0
+			;;
+		*)
+			echo "Unknown option: $arg (run './install --help')" >&2
+			exit 1
+			;;
+	esac
+done
+export RIFT_INSTALL_HEAD="$HEAD_MODE"
+
 # Fresh install vs. upgrade of an existing setup
 if command -v rift >/dev/null 2>&1; then
 	MODE="upgrade"
@@ -41,12 +65,16 @@ if [ "$MODE" = "upgrade" ]; then
 else
 	echo "  ║              niri-like macOS setup                 ║"
 fi
+if [ "$HEAD_MODE" = "1" ]; then
+	echo "  ║    --HEAD: Rift built from git main                ║"
+fi
 echo "  ╚══════════════════════════════════════════════════════╝"
 
 run_step install-deps
 run_step configure-system
 run_step install-ghostty
 run_step install-rift
+run_step install-rift-swipe
 run_step install-borders
 run_step grant-permissions
 run_step enable-services
@@ -82,6 +110,7 @@ echo "       System Settings → Privacy & Security → Accessibility"
 echo ""
 echo "  ${CYAN}Usage:${RESET}"
 echo "     Option+Arrows        move focus between windows"
+echo "     3-finger swipe (←/→) page through windows (full-width)"
 echo "     Option+Shift+Arrows  move windows"
 echo "     Option+1..9          switch Rift workspace"
 echo "     Option+Shift+1..9    move window to workspace"
