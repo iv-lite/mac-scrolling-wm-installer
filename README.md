@@ -66,6 +66,9 @@ Paneru modifiers: **Cmd+Option**, **Cmd+Ctrl**, **Shift**, **Ctrl**.
 | `Cmd` + `Option` + `Shift` + `Space` | Snap an overflowing window into the viewport |
 | `Cmd` + `Option` + `M` | Toggle full-width for the focused window |
 
+> Focus **follows the mouse**, and keyboard navigation warps the cursor to the
+> focused window (`focus_follows_mouse` / `mouse_follows_focus` in `[options]`).
+
 ### Workspaces (1-9)
 
 | Shortcut | Action |

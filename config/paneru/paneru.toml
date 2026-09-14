@@ -3,9 +3,9 @@
 
 # ─── Global options ───
 [options]
-# Keyboard-driven focus: no focus-follows-mouse, no cursor warping
-focus_follows_mouse = false
-mouse_follows_focus = false
+# Focus follows the mouse; keyboard focus warps the cursor to the focused window
+focus_follows_mouse = true
+mouse_follows_focus = true
 
 # Screen-width ratios the resize bindings cycle through (replaces Rift's
 # Alt+W 0.3 / 0.5 / 1.0). 1.0 = a full-width "page".
