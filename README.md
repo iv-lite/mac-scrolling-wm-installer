@@ -2,7 +2,7 @@
 
 A niri-like window management setup for macOS, built on **Paneru** (sliding
 infinite-strip tiler with hot-reloadable TOML config, native macOS workspaces
-+ virtual workspaces, and a native menu-bar indicator), and **Ghostty**
++ virtual workspaces, and a workspace status popup), and **Ghostty**
 (terminal). Driven by Cmd+Option-key shortcuts that don't fight macOS defaults.
 
 ## Requirements
@@ -42,7 +42,7 @@ The installer runs these steps from `scripts/`:
 2. Paneru tiles in an **niri-style sliding strip**; new windows are appended at
    the end of the strip and **never resize existing windows**. Virtual
    workspaces `1..9` are created on demand.
-3. **Paneru** draws the active virtual workspace in the native macOS menu bar.
+3. **Paneru** shows the active virtual workspace in a brief popup on switch.
 4. If the Accessibility grant failed, grant it manually:
    System Settings → Privacy & Security → Accessibility (enable `paneru`,
    usually shown as `paneru` `/opt/homebrew/bin/paneru`).
@@ -133,10 +133,14 @@ moves. Two things make it feel native:
 
 ## The menu bar
 
-- The **native macOS menu bar** is kept — Paneru draws a small indicator for
-  the active virtual workspace in it (`[decorations]` in
-  `~/.config/paneru/paneru.toml`, `workspace_menu_status = true`), plus a brief
-  status popup on switch.
+- The **native macOS menu bar** is kept. The menu-bar workspace indicator is
+  **disabled by default** (`[decorations]` in `~/.config/paneru/paneru.toml`,
+  `workspace_menu_status = false`) because Paneru < the fix in
+  [karinushka/paneru#390](https://github.com/karinushka/paneru/issues/390)
+  hosts a live view in the status item, and its AppKit redraw loop starves the
+  run loop that services Paneru's `CGEventTap` — keybindings silently die after
+  leaving native fullscreen. A brief status popup still announces the active
+  workspace on switch; re-enable the indicator once a Paneru release ships #390.
 - **Focus cues**: an active-window border (`[decorations.active.border]`, Nord
   blue) replaces JankyBorders — no extra bar process needed. Inactive-window
   dimming uses native macOS (`[decorations.inactive.dim]`).
@@ -164,6 +168,16 @@ has to happen per app. This installer does what's safely possible:
 > the same reason this project never disables SIP.
 
 ## Troubleshooting
+
+**Shortcuts become unresponsive after toggling off full screen.** Upstream bug
+[karinushka/paneru#390](https://github.com/karinushka/paneru/issues/390): the
+menu-bar workspace indicator's live view starves the run loop that services
+Paneru's `CGEventTap`, so macOS disables the tap and keybindings (clicks and
+swipes too) silently stop working. This repo works around it by shipping
+`workspace_menu_status = false` (workspace switches are still announced by the
+popup). Immediate recourse: `paneru restart`. Re-enable the indicator once a
+Paneru release includes the #390 fix; concurrently, keep Paneru at ≥ 0.5.0 so
+the event-tap watchdog (karinushka/paneru#350) is present.
 
 **Paneru won't start / instantly exits.** Paneru hard-exits unless it has
 Accessibility and "Displays have separate Spaces" is **ON**. The installer's

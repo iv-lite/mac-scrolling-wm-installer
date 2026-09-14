@@ -36,6 +36,21 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
+# Version floor: < 0.5.0 lacks the event-tap watchdog (karinushka/paneru#350)
+# that revives keybindings after fullscreen/workspace toggles
+# ─────────────────────────────────────────────────────────────
+version="$(paneru --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+case "${version:-0.0.0}" in
+	0.5*|0.6*|0.7*|0.8*|0.9*|[1-9]*)
+		ok "Paneru ${version} ≥ 0.5.0 (event-tap watchdog present)"
+		;;
+	*)
+		warn "Paneru ${version:-unknown} is older than 0.5.0 — it lacks the event-tap watchdog"
+		warn "that revives keybindings after fullscreen/space toggles. Run 'brew update && brew upgrade paneru'."
+		;;
+esac
+
+# ─────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────
 mkdir -p ~/.config/paneru
@@ -47,6 +62,8 @@ fi
 
 cp "$REPO_ROOT/config/paneru/paneru.toml" ~/.config/paneru/paneru.toml
 ok "Paneru config installed to ~/.config/paneru/paneru.toml"
+note "Menu-bar workspace indicator is off (upstream event-tap starvation bug, karinushka/paneru#390);"
+note "the popup still shows the active workspace. Re-enable after a Paneru release ships the fix."
 
 # ─────────────────────────────────────────────────────────────
 # launchd service (applies Accessibility before start)

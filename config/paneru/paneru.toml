@@ -52,8 +52,15 @@ modifier = "cmd + alt"
 
 # ─── Decorations ───
 [decorations]
-# Show the active virtual workspace in the native macOS menu bar
-workspace_menu_status = true
+# Menu-bar workspace indicator is OFF by default: the status item hosts a live
+# NSView, and AppKit's menu-bar "replicant" redraw loop starves the run loop
+# that services Paneru's CGEventTap, so macOS disables the tap and keybindings
+# silently stop working — most noticeably right after leaving native fullscreen
+# (when the menu bar re-shows). Upstream fix: karinushka/paneru#390 (draw an
+# image instead of a live view), merged to main after v0.5.0 and not yet in any
+# release. Keep workspace_menu_status = false until a Paneru release ships that
+# fix; note that flipping it to true needs a `paneru restart` to take effect.
+workspace_menu_status = false
 # Brief status popup on virtual workspace switch
 workspace_popup_status = true
 

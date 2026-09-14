@@ -93,7 +93,7 @@ else
 	echo "  ${YELLOW}⚠ After the next login:${RESET}"
 fi
 echo "     - Paneru tiles windows on niri-style horizontal strips"
-echo "     - Paneru draws the active workspace in the native menu bar"
+echo "     - Paneru pops up the active workspace on switch"
 echo "     - Ghostty runs frameless (title bar hidden)"
 echo "     - If accessibility grants failed above, grant them manually:"
 echo "       System Settings → Privacy & Security → Accessibility"
