@@ -41,16 +41,14 @@ window_insertion_point = "end_of_tree"
 # macOS/Rift has no _NET_WM_STRUT/negative-strut concept (that is X11,
 # i3/sway); this wide-canvas feel comes purely from the scrolling layout +
 # niri focus navigation + animations, below.
-# Width of the focused column as a fraction of screen width (a wider
-# column = "big focus" feel, neighbours barely peek from the edges).
-# Overflow/canvas-scrolling begins the moment the combined column widths
-# exceed the monitor: 0.7 keeps two+ columns overflowing so neighbour
-# windows visibly peek from the edges and the strip pans visually instead
-# of parking full-width columns off-screen stacked at the frame edge.
-# (0.5 left two windows at exactly 100% → static 50/50 tiling, no scroll.)
-# Alt+W cycles the focused column through 0.3 / 0.5 / full width on demand.
-# Note Rift fills the whole screen for a single lone column by design.
-column_width_ratio = 0.7
+# Width of the focused column as a fraction of screen width.
+# 1.0 maximizes every window: each column is full-screen, and a full
+# trackpad swipe pans exactly one window (page-flip feel). Off-screen
+# windows park just past the frame edge and glide in smoothly as you
+# swipe (see the gesture settings below).
+# Alt+W still cycles the focused column through 0.3 / 0.5 / full width
+# on demand. Note Rift fills the whole screen for a single lone column.
+column_width_ratio = 1
 min_column_width_ratio = 0.3
 # 1.0 lets Alt+W (below) pull the focused column to full width
 max_column_width_ratio = 1
