@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+
+LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.barut.OmniWM.plist"
+
+# ─────────────────────────────────────────────────────────────
+# Install OmniWM (Homebrew cask — Apple Silicon, macOS 26+)
+# ─────────────────────────────────────────────────────────────
+if [ -d /Applications/OmniWM.app ]; then
+	note "OmniWM already installed — upgrading..."
+	if brew upgrade --cask omniwm >/dev/null 2>&1; then
+		ok "OmniWM upgraded"
+	else
+		warn "OmniWM upgrade failed (network?) — keeping installed version"
+	fi
+else
+	note "Installing OmniWM via Homebrew (cask omniwm)..."
+	brew install --cask omniwm
+	ok "OmniWM installed"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Remove any leftover Paneru from the previous stack
+# ─────────────────────────────────────────────────────────────
+if command -v paneru >/dev/null 2>&1 || [ -f "$HOME/Library/LaunchAgents/com.github.karinushka.paneru.plist" ]; then
+	note "A previous Paneru install was found — removing it..."
+
+	if command -v paneru >/dev/null 2>&1; then
+		paneru stop >/dev/null 2>&1 || true
+		paneru uninstall >/dev/null 2>&1 || true
+		paneru uninstall-app >/dev/null 2>&1 || true
+	fi
+	if [ -f "$HOME/Library/LaunchAgents/com.github.karinushka.paneru.plist" ]; then
+		launchctl bootout "gui/$(id -u)/com.github.karinushka.paneru" >/dev/null 2>&1 || true
+		rm -f "$HOME/Library/LaunchAgents/com.github.karinushka.paneru.plist"
+	fi
+	if [ -d "$HOME/Applications/Paneru.app" ]; then
+		rm -rf "$HOME/Applications/Paneru.app"
+	fi
+
+	if command -v brew >/dev/null 2>&1; then
+		brew uninstall paneru >/dev/null 2>&1 || true
+	fi
+
+	BACKUP_DIR="$HOME/.config/backups/migrate-omniwm-$(date +%Y%m%d-%H%M%S)"
+	mkdir -p "$BACKUP_DIR"
+	for p in ~/.config/paneru ~/.paneru ~/.paneru.toml "$HOME/.local/state/paneru"; do
+		if [ -e "$p" ]; then
+			mv "$p" "$BACKUP_DIR/" 2>/dev/null || true
+		fi
+	done
+
+	if command -v tccutil-rs >/dev/null 2>&1; then
+		tccutil-rs revoke --user Accessibility "$(command -v paneru 2>/dev/null || true)" >/dev/null 2>&1 || true
+	fi
+
+	ok "Paneru removed (config kept in $BACKUP_DIR)"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Config (canonical strict settings.toml)
+# ─────────────────────────────────────────────────────────────
+mkdir -p ~/.config/omniwm
+
+if [ -f ~/.config/omniwm/settings.toml ]; then
+	note "Existing config found at ~/.config/omniwm/settings.toml — backing up"
+	cp ~/.config/omniwm/settings.toml ~/.config/omniwm/settings.toml.bak
+fi
+
+cp "$REPO_ROOT/config/omniwm/settings.toml" ~/.config/omniwm/settings.toml
+ok "OmniWM config installed to ~/.config/omniwm/settings.toml"
+note "The schema is strict — edit values in place, never delete hotkey entries."
+
+# ─────────────────────────────────────────────────────────────
+# launchd agent (autostart at login, keep alive, applies config)
+# ─────────────────────────────────────────────────────────────
+note "Installing OmniWM launchd agent ($LAUNCH_AGENT)..."
+cat > "$LAUNCH_AGENT" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.barut.OmniWM</string>
+	<key>Program</key>
+	<string>/Applications/OmniWM.app/Contents/MacOS/OmniWM</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+</dict>
+</plist>
+EOF
+ok "LaunchAgent written (started by enable-services)"
+
+warn "OmniWM will be launched by enable-services after permissions are granted."
+echo "     (grant Accessibility + Input Monitoring to OmniWM; see grant-permissions)"
