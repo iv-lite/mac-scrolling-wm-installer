@@ -60,7 +60,6 @@ Paneru modifiers: **Cmd+Option**, **Cmd+Ctrl**, **Shift**, **Ctrl**.
 | `Cmd` + `Option` + Arrows | Move focus between windows |
 | 3-finger swipe (← / →) | Page through windows — one full-width window per swipe, snapping on release (`rift-swipe` is gone; Paneru snaps + focuses natively) |
 | `Cmd` + `Option` + `Shift` + Arrows | Move window (swap) |
-| `Cmd` + `Option` + `←`/`→` | Cycle the focused column width (grow/shrink) |
 | `Cmd` + `Option` + `W` | Cycle the focused column width (0.3 / 0.5 / 1) |
 | `Cmd` + `Option` + `Shift` + `W` | Cycle width backwards |
 | `Cmd` + `Option` + `Space` | Center the focused window/viewport |

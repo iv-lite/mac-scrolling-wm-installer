@@ -91,9 +91,9 @@ window_swap_east = "cmd + alt + shift - rightarrow"
 window_swap_north = "cmd + alt + shift - uparrow"
 window_swap_south = "cmd + alt + shift - downarrow"
 
-# ─── Column width (Cmd+Option+W / Cmd+Option+Arrows: 0.3 → 0.5 → 1.0) ───
-window_resize = ["cmd + alt - w", "cmd + alt - rightarrow"]
-window_shrink = ["cmd + alt + shift - w", "cmd + alt - leftarrow"]
+# ─── Column width (Cmd+Option+W) ───
+window_resize = "cmd + alt - w"
+window_shrink = "cmd + alt + shift - w"
 window_fullwidth = "cmd + alt - m"
 
 # ─── Workspaces (Cmd+Option+1-9 = switch; Cmd+Option+Shift+1-9 = move) ───
