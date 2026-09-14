@@ -39,10 +39,10 @@ columnLeft = "Control+Option+Shift+Left Arrow"
 columnRight = "Control+Option+Shift+Right Arrow"
 columnToFirst = "Control+Option+Home"
 columnToLast = "Control+Option+End"
-windowToWorkspaceOnMonitor.1.left = "Command+Control+Shift+Left Arrow"
+windowToWorkspaceOnMonitor.9.left = "Command+Control+Shift+Left Arrow"
 windowToWorkspaceOnMonitor.1.right = "Command+Control+Shift+Right Arrow"
 windowToWorkspaceOnMonitor.1.up = "Command+Control+Shift+Up Arrow"
-windowToWorkspaceOnMonitor.1.down = "Command+Control+Shift+Down Arrow"
+windowToWorkspaceOnMonitor.9.down = "Command+Control+Shift+Down Arrow"
 
 [layout]
 toggleFullscreen = "Option+Return"

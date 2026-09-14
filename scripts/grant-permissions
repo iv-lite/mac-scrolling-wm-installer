@@ -10,10 +10,9 @@ RESET=$'\033[0m'
 note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
-fail() { echo "  ${RED}✗ $*${RESET}"; exit 1; }
-
-LAUNCH_AGENT="$HOME/Library/LaunchAgents/dev.guria.nehir.plist"
-LABEL="dev.guria.nehir"
+# Non-exiting: a failed grant is reported and the install continues with
+# manual instructions (matching the historical OmniWM behavior).
+fail() { echo "  ${RED}✗ $*${RESET}"; }
 
 # Resolve the app path — cask installs to /Applications, source to ~/Applications.
 app_path() {
@@ -46,8 +45,14 @@ if command -v tccutil-rs >/dev/null 2>&1; then
 		ok "Accessibility granted to Nehir (system db via sudo)"
 	else
 		fail "Could not grant Accessibility to Nehir automatically."
-		echo "     Grant manually: System Settings → Privacy & Security →"
-		echo "     Accessibility → '+' → add Nehir.app"
+		echo "     Likely cause: this terminal app lacks 'Full Disk Access'"
+		echo "     (System Settings → Privacy & Security → Full Disk Access), so"
+		echo "     tccutil-rs cannot modify the TCC privacy database."
+		echo "     Either:"
+		echo "       a) Grant Full Disk Access to this terminal, fully quit and"
+		echo "          reopen it, then re-run: bash scripts/grant-permissions"
+		echo "       b) Grant manually: System Settings → Privacy & Security →"
+		echo "          Accessibility → '+' → add Nehir.app"
 	fi
 else
 	fail "tccutil-rs not found — install it (brew install tccutil-rs) and re-run."

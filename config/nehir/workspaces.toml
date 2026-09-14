@@ -4,5 +4,8 @@ monitor = "main"
 [2]
 monitor = "main"
 
+[9]
+monitor = "secondary"
+
 [10]
 monitor = "secondary"
