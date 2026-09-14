@@ -33,7 +33,7 @@ The installer runs these steps from `scripts/`:
 | `install-deps` | Install Homebrew if missing, tccutil-rs |
 | `configure-system` | Enable "Displays have separate Spaces" (Nehir requires it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
-| `install-nehir` | Install Nehir (Homebrew cask, or build from source via mise), remove any leftover OmniWM, write split config + launchd agent |
+| `install-nehir` | Install Nehir (Homebrew cask from guria/tap — `nehir@rc` tracks the latest preview, or build from source via mise), remove any leftover OmniWM, write split config + launchd agent |
 | `grant-permissions` | Grant Accessibility to Nehir.app (best-effort) |
 | `enable-services` | Bootstrap the Nehir launchd agent (`launchctl bootstrap`) |
 

@@ -30,31 +30,66 @@ app_path() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Install Nehir: Homebrew cask first (guria/tap), fall back to a
-# from-source build via mise when the cask hasn't been published yet.
+# Install Nehir: Homebrew cask first (guria/tap — the RC cask
+# tracks the latest preview, the plain cask the stable release),
+# falling back to a from-source build via mise when no cask is
+# available yet. Requires full Xcode (Command Line Tools alone
+# cannot build the app).
 # ─────────────────────────────────────────────────────────────
+installed_cask() {
+	if brew list --cask nehir@rc >/dev/null 2>&1; then
+		echo "nehir@rc"
+	elif brew list --cask nehir >/dev/null 2>&1; then
+		echo "nehir"
+	else
+		echo ""
+	fi
+}
+
+require_full_xcode() {
+	command -v xcodebuild >/dev/null 2>&1 || return 1
+	[ "$(xcode-select -p 2>/dev/null)" != "/Library/Developer/CommandLineTools" ] || return 1
+	xcodebuild -version >/dev/null 2>&1 || return 1
+}
+
 install_nehir() {
-	if [ -n "$(app_path)" ]; then
-		local app; app="$(app_path)"
+	local app; app="$(app_path)"
+	if [ -n "$app" ]; then
 		note "Nehir found at $app — upgrading..."
-		if command -v brew >/dev/null 2>&1 && brew info --cask nehir >/dev/null 2>&1; then
-			brew upgrade --cask nehir >/dev/null 2>&1 && ok "Nehir upgraded via Homebrew" \
+		local cask_short cask
+		cask_short="$(installed_cask)"
+		if [ -n "$cask_short" ]; then
+			cask="guria/tap/$cask_short"
+			brew upgrade --cask "$cask" >/dev/null 2>&1 && ok "Nehir upgraded via Homebrew ($cask_short)" \
+				|| warn "Nehir upgrade failed (network?) — keeping installed version"
+		elif command -v brew >/dev/null 2>&1 && brew tap guria/tap 2>/dev/null && [ -n "$(installed_cask)" ]; then
+			cask_short="$(installed_cask)"
+			brew upgrade --cask "guria/tap/$cask_short" >/dev/null 2>&1 && ok "Nehir upgraded via Homebrew ($cask_short)" \
 				|| warn "Nehir upgrade failed (network?) — keeping installed version"
 		else
-			ok "Keeping existing Nehir installation"
+			warn "Nehir.app exists but is not tracked by a brew cask — keeping installed version"
 		fi
 		return 0
 	fi
 
 	if command -v brew >/dev/null 2>&1; then
-		note "Installing Nehir via Homebrew (cask nehir from guria/tap)..."
-		brew tap guria/tap >/dev/null 2>&1 || true
-		if brew info --cask nehir >/dev/null 2>&1; then
-			brew install --cask nehir
-			ok "Nehir installed via Homebrew"
+		note "Tapping guria/tap (Nehir cask repository)..."
+		brew tap guria/tap
+		ok "guria/tap tapped"
+
+		if brew info --cask guria/tap/nehir@rc >/dev/null 2>&1; then
+			note "Installing Nehir via the RC cask (guria/tap/nehir@rc — latest preview)..."
+			brew install --cask guria/tap/nehir@rc
+			ok "Nehir installed via Homebrew (RC cask)"
 			return 0
 		fi
-		warn "The 'nehir' cask is not available yet in guria/tap — falling back to a source build."
+		if brew info --cask guria/tap/nehir >/dev/null 2>&1; then
+			note "RC cask unavailable — installing stable Nehir (guria/tap/nehir)..."
+			brew install --cask guria/tap/nehir
+			ok "Nehir installed via Homebrew (stable cask)"
+			return 0
+		fi
+		warn "No nehir cask found in guria/tap — falling back to a source build."
 	else
 		warn "Homebrew not available — installing Nehir from source."
 	fi
@@ -62,7 +97,7 @@ install_nehir() {
 }
 
 install_nehir_source() {
-	note "Building Nehir from source (requires Xcode + ~5-10 minutes)..."
+	note "Building Nehir from source (requires full Xcode + ~5-10 minutes)..."
 	if ! command -v mise >/dev/null 2>&1; then
 		note "Installing mise (dev tool manager)..."
 		if ! command -v brew >/dev/null 2>&1; then
@@ -70,8 +105,14 @@ install_nehir_source() {
 		fi
 		brew install mise
 	fi
-	if ! command -v xcodebuild >/dev/null 2>&1; then
-		fail "Xcode not found — the Nehir source build also needs Xcode (not just Command Line Tools)"
+	if ! require_full_xcode; then
+		if command -v xcodebuild >/dev/null 2>&1 && [ "$(xcode-select -p 2>/dev/null)" = "/Library/Developer/CommandLineTools" ]; then
+			fail "Only Command Line Tools are installed — the Nehir source build needs full Xcode."
+			echo "     Install Xcode from the App Store, then: sudo xcode-select -s /Applications/Xcode.app"
+			echo "     (or re-run the installer so it picks up the Homebrew cask again)"
+			exit 1
+		fi
+		fail "Xcode not found — the Nehir source build needs full Xcode (not just Command Line Tools)."
 	fi
 
 	local build_dir="$HOME/.cache/nehir-src"

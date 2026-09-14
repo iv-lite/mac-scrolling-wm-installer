@@ -192,6 +192,7 @@ if command -v brew >/dev/null 2>&1; then
 		fi
 	}
 
+	add_pkg "nehir@rc"  cask    guria/tap
 	add_pkg nehir        cask    guria/tap
 	add_pkg rift        formula acsandmann/tap   # legacy
 	add_pkg borders     formula FelixKratz/formulae   # legacy
