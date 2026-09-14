@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+
+# ─────────────────────────────────────────────────────────────
+# Install Paneru (Homebrew core formula — no tap needed)
+# ─────────────────────────────────────────────────────────────
+if command -v paneru >/dev/null 2>&1; then
+	before="$(brew list --versions paneru 2>/dev/null | tr ' ' '\n' | tail -1 || true)"
+	note "Paneru already installed (${before:-unknown}) — upgrading..."
+	if brew upgrade paneru >/dev/null 2>&1; then
+		after="$(brew list --versions paneru 2>/dev/null | tr ' ' '\n' | tail -1 || true)"
+		if [ "$before" = "$after" ]; then
+			ok "Paneru is at ${after:-current}"
+		else
+			ok "Paneru updated: ${before:-old} → ${after:-new}"
+		fi
+	else
+		warn "Paneru upgrade failed (network?) — keeping ${before:-current}"
+	fi
+else
+	note "Installing Paneru via Homebrew..."
+	brew install paneru
+	ok "Paneru installed"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Config
+# ─────────────────────────────────────────────────────────────
+mkdir -p ~/.config/paneru
+
+if [ -f ~/.config/paneru/paneru.toml ]; then
+	note "Existing config found at ~/.config/paneru/paneru.toml — backing up"
+	cp ~/.config/paneru/paneru.toml ~/.config/paneru/paneru.toml.bak
+fi
+
+cp "$REPO_ROOT/config/paneru/paneru.toml" ~/.config/paneru/paneru.toml
+ok "Paneru config installed to ~/.config/paneru/paneru.toml"
+
+# ─────────────────────────────────────────────────────────────
+# launchd service (applies Accessibility before start)
+# ─────────────────────────────────────────────────────────────
+note "Installing Paneru launchd service..."
+if [ -f "$HOME/Library/LaunchAgents/com.github.karinushka.paneru.plist" ]; then
+	ok "Paneru launchd service already installed (reinstall refreshes the plist)"
+else
+	paneru install
+	ok "Paneru service installed"
+fi
+
+warn "Paneru will be started by enable-services after permissions are granted."
+echo "     (grant Accessibility to $(command -v paneru) to let it move windows)"
