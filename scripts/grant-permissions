@@ -12,76 +12,68 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 fail() { echo "  ${RED}✗ $*${RESET}"; }
 
+OMNIWM_APP="/Applications/OmniWM.app"
+
+if [ ! -d "$OMNIWM_APP" ]; then
+	fail "OmniWM is not installed at $OMNIWM_APP — run scripts/install-omniwm first"
+	exit 1
+fi
+
 # ─────────────────────────────────────────────────────────────
-# Grant Accessibility to CLI binaries (invisible in System Settings)
-# 1. user DB via tccutil-rs (no sudo, no SIP disable)
-# 2. system DB with sudo as fallback
-# 3. manual instructions as last resort
+# Accessibility — grant to the OmniWM app bundle.
+#  1. user DB via tccutil-rs (no sudo, no SIP disable)
+#  2. system DB with sudo as fallback
+#  3. manual instructions as last resort
 # ─────────────────────────────────────────────────────────────
-grant() {
-	local bin="$1"
-	if [ -z "$bin" ]; then return 0; fi
-	if [ ! -e "$bin" ]; then
-		warn "$bin not found — skipping"
-		return 0
+note "Granting Accessibility to OmniWM..."
+
+if command -v tccutil-rs >/dev/null 2>&1; then
+	if tccutil-rs grant --user Accessibility "$OMNIWM_APP" >/dev/null 2>&1; then
+		ok "Accessibility granted to OmniWM (user db)"
+	elif sudo -n tccutil-rs grant Accessibility "$OMNIWM_APP" >/dev/null 2>&1; then
+		ok "Accessibility granted to OmniWM (system db via sudo)"
+	else
+		fail "Could not grant Accessibility to OmniWM automatically."
+		echo "     Grant manually: System Settings → Privacy & Security →"
+		echo "     Accessibility → '+' → add OmniWM.app"
 	fi
-	if command -v tccutil-rs >/dev/null 2>&1; then
-		if tccutil-rs grant --user Accessibility "$bin" >/dev/null 2>&1; then
-			ok "Accessibility granted to $bin (user db)"
-			return 0
-		fi
-		sudo -n tccutil-rs grant Accessibility "$bin" >/dev/null 2>&1 && {
-			ok "Accessibility granted to $bin (system db via sudo)"
-			return 0
-		}
-	fi
-	fail "Could not grant Accessibility to $bin automatically."
-	echo "     Grant manually: System Settings → Privacy & Security →"
-	echo "     Accessibility → '+' → add '$bin'"
-}
-
-note "Granting Accessibility permissions..."
-
-grant "$(command -v paneru 2>/dev/null || true)"
+else
+	fail "tccutil-rs not found — install it (brew install tccutil-rs) and re-run."
+	echo "     Manual fallback: System Settings → Privacy & Security →"
+	echo "     Accessibility → '+' → add OmniWM.app"
+fi
 
 # ─────────────────────────────────────────────────────────────
-# Post-grant verification: check the TCC database via tccutil-rs
-# list (requires Full Disk Access for the host terminal app).
+# Input Monitoring — cannot be granted programmatically; the
+# switch must be toggled once by hand.
+# ─────────────────────────────────────────────────────────────
+note "Input Monitoring must be enabled manually (macOS enforces this)."
+echo "     Opening Input Monitoring settings..."
+open "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
+warn "Toggle 'OmniWM' ON in the Input Monitoring list, then re-run: bash scripts/enable-services"
+
+# ─────────────────────────────────────────────────────────────
+# Post-grant verification (requires Full Disk Access on the
+# terminal app for tccutil-rs to read TCC.db).
 # ─────────────────────────────────────────────────────────────
 note "Verifying grants (requires Full Disk Access on the host terminal)..."
-verify_grant() {
-	local bin="$1"
-	if [ -z "$bin" ] || [ ! -e "$bin" ]; then
-		return 0
-	fi
-	# --service filters by TCC service; --user reads per-user DB first
-	# (covers the common grant path; system DB grants need sudo list).
-	if tccutil-rs list --user --service Accessibility 2>/dev/null | grep -qF "$bin"; then
-		ok "$bin found in Accessibility list (user db)"
-	elif tccutil-rs list --service Accessibility 2>/dev/null | grep -qF "$bin"; then
-		ok "$bin found in Accessibility list (system db)"
+if command -v tccutil-rs >/dev/null 2>&1; then
+	if tccutil-rs list --user --service Accessibility 2>/dev/null | grep -qF "$OMNIWM_APP"; then
+		ok "OmniWM found in Accessibility list (user db)"
+	elif tccutil-rs list --service Accessibility 2>/dev/null | grep -qF "$OMNIWM_APP"; then
+		ok "OmniWM found in Accessibility list (system db)"
 	else
-		warn "$bin not visible in Accessibility list"
+		warn "OmniWM not visible in the Accessibility list"
 		echo "     If the terminal app lacks Full Disk Access, verification is"
 		echo "     unreliable — the grant may still have succeeded."
 	fi
-}
-
-if command -v tccutil-rs >/dev/null 2>&1; then
-	verify_grant "$(command -v paneru 2>/dev/null || true)"
 else
 	warn "tccutil-rs not found — skipping verification"
 fi
 
-# The terminal itself needs Full Disk Access for tccutil-rs to open TCC.db.
 warn "If grants failed: the terminal app running this installer needs"
 echo "     'Full Disk Access' (System Settings → Privacy & Security → Full Disk Access),"
 echo "     then quit and reopen the terminal and re-run: bash scripts/grant-permissions"
-
-# Restart tccd so any grants are picked up by running processes without waiting.
-if command -v tccutil-rs >/dev/null 2>&1; then
-	sudo -n launchctl stop com.apple.tccd >/dev/null 2>&1 || true
-fi
 
 echo ""
 ok "Permission grants finished"

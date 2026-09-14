@@ -10,25 +10,34 @@ note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
+LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.barut.OmniWM.plist"
+LABEL="com.barut.OmniWM"
+
 # ─────────────────────────────────────────────────────────────
-# Paneru (per-user launchd service)
+# OmniWM (launchd agent)
 # ─────────────────────────────────────────────────────────────
-if command -v paneru >/dev/null 2>&1; then
-	if pgrep -qx paneru >/dev/null 2>&1; then
-		note "Restarting Paneru (applies upgraded binary + config)..."
-		if paneru restart >/dev/null 2>&1; then
-			ok "Paneru restarted"
-		else
-			warn "Paneru restart failed — verify Accessibility permission, then run: paneru restart"
-		fi
-	else
-		note "Starting Paneru..."
-		if paneru start >/dev/null 2>&1; then
-			ok "Paneru service started"
-		else
-			warn "Paneru failed to start — verify Accessibility permission was granted, then run: paneru start"
-		fi
-	fi
+if [ ! -f "$LAUNCH_AGENT" ]; then
+	warn "No LaunchAgent at $LAUNCH_AGENT — run scripts/install-omniwm first"
+	exit 1
+fi
+
+if pgrep -x OmniWM >/dev/null 2>&1; then
+	# Config live-reloads on file changes; a restart picks up a new binary.
+	note "Restarting OmniWM (applies upgraded binary)..."
+	launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || pkill -x OmniWM || true
+	sleep 1
+	launchctl bootstrap "gui/$(id -u)" "$LAUNCH_AGENT" 2>/dev/null \
+		&& ok "OmniWM relaunched via launchd" \
+		|| warn "launchd bootstrap failed — grant Accessibility to OmniWM, then run launchctl load $LAUNCH_AGENT"
+else
+	note "Launching OmniWM..."
+	launchctl bootstrap "gui/$(id -u)" "$LAUNCH_AGENT" 2>/dev/null \
+		&& ok "OmniWM service started" \
+		|| warn "launchctl bootstrap failed — close OmniWM if already running, then run: launchctl load $LAUNCH_AGENT"
+fi
+
+if ! pgrep -x OmniWM >/dev/null 2>&1; then
+	warn "OmniWM is not running — grant Accessibility + Input Monitoring to OmniWM (scripts/grant-permissions), then run: $0"
 fi
 
 echo ""

@@ -16,16 +16,16 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 echo ""
 echo "  ╔══════════════════════════════════════════════════╗"
-echo "  ║          niri-like macOS setup — uninstall        ║"
+echo "  ║          OmniWM + Ghostty — uninstall              ║"
 echo "  ╚══════════════════════════════════════════════════╝"
 echo ""
 echo "  This will:"
-echo "   • Stop/remove Paneru (plus legacy Rift, JankyBorders,"
+echo "   • Stop/remove OmniWM + Paneru (plus legacy Rift, JankyBorders,"
 echo "     rift-swipe, AeroSpace/AeroSpaceBar/Aegis if present)"
 echo "   • Revoke Accessibility permissions"
 echo "   • Move configs to ~/.config/backups (not deleted)"
 echo "   • Uninstall brew packages (you'll choose which to keep)"
-echo "     paneru, tccutil-rs, ghostty"
+echo "     omniwm, paneru, tccutil-rs, ghostty"
 echo "     (+ legacy rift, borders, aerospace, aerospacebar if still present)"
 echo "   • Clean up legacy Aegis.app + its LaunchAgent/preferences (if present)"
 echo "   • Untap repos no longer needed (acsandmann/tap, nikitabobko/tap,"
@@ -44,6 +44,17 @@ fi
 # ─────────────────────────────────────────────────────────────
 echo ""
 note "Stopping services..."
+
+# OmniWM
+if pgrep -x OmniWM >/dev/null 2>&1; then
+	pkill -x OmniWM 2>/dev/null || true
+	ok "OmniWM quit"
+fi
+if [ -f ~/Library/LaunchAgents/com.barut.OmniWM.plist ]; then
+	launchctl bootout "gui/$(id -u)/com.barut.OmniWM" >/dev/null 2>&1 || true
+	rm -f ~/Library/LaunchAgents/com.barut.OmniWM.plist
+	ok "OmniWM LaunchAgent removed"
+fi
 
 if command -v paneru >/dev/null 2>&1; then
 	if paneru stop >/dev/null 2>&1; then
@@ -119,8 +130,9 @@ fi
 # ─────────────────────────────────────────────────────────────
 echo ""
 note "Revoking Accessibility permissions..."
-if command -v tccutil-rs >/dev/null 2>&1; then
-	for bin in "$(command -v paneru 2>/dev/null || true)" \
+	if command -v tccutil-rs >/dev/null 2>&1; then
+		for bin in "/Applications/OmniWM.app" \
+		           "$(command -v paneru 2>/dev/null || true)" \
 	           "$(command -v rift 2>/dev/null || true)" \
 	           "/Applications/AeroSpace.app/Contents/MacOS/AeroSpace" \
 	           "$(command -v borders 2>/dev/null || true)" \
@@ -148,7 +160,7 @@ if [ -f ~/.aerospace.toml ] || [ -f ~/.aerospace.toml.bak ]; then
 	warn "~/.aerospace.toml* exists outside ~/.config — leaving untouched (not ours to remove)"
 fi
 
-for dir in ~/.config/paneru ~/.config/rift ~/.config/aerospace ~/.config/borders ~/.config/aegis ~/.config/ghostty; do
+for dir in ~/.config/omniwm ~/.config/paneru ~/.config/rift ~/.config/aerospace ~/.config/borders ~/.config/aegis ~/.config/ghostty; do
 	if [ -d "$dir" ]; then
 		mv "$dir" "$BACKUP_DIR/"
 		ok "Moved $dir → $BACKUP_DIR/$(basename "$dir")"
@@ -204,6 +216,7 @@ if command -v brew >/dev/null 2>&1; then
 	}
 
 	add_pkg paneru      formula
+	add_pkg omniwm      cask
 	add_pkg rift        formula acsandmann/tap   # legacy
 	add_pkg borders     formula FelixKratz/formulae   # legacy
 	add_pkg aerospace    cask    nikitabobko/tap      # legacy
@@ -282,7 +295,7 @@ fi
 echo ""
 note "Reverting system defaults..."
 
-# Show the native menu bar again (Aegis is gone)
+# Show the native menu bar again (OmniWM does not draw there; legacy Aegis did)
 defaults write NSGlobalDomain _HIHideMenuBar -bool false 2>/dev/null || true
 
 # Leave "Displays have separate Spaces" enabled (macOS default).
