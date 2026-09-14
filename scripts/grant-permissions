@@ -4,6 +4,7 @@ set -euo pipefail
 CYAN=$'\033[0;36m'
 GREEN=$'\033[0;32m'
 YELLOW=$'\033[0;33m'
+RED=$'\033[0;31m'
 RESET=$'\033[0m'
 
 note() { echo "  ${CYAN}→ $*${RESET}"; }
