@@ -16,7 +16,7 @@ usage() {
   echo "  install    Sync the repo into the guest and run ./install"
   echo "  access     Re-run the accessibility grant script in the guest"
   echo "  login      Log out/in the GUI session to apply the separate-Spaces setting"
-  echo "  check      Query Rift state, separate-Spaces mode, installed formulae, and the Ghostty config in the guest"
+  echo "  check      Query Paneru state, separate-Spaces mode, installed formulae, and the Ghostty config in the guest"
   echo "  shot       Capture a screenshot into tests/screenshots/"
   echo "  snapshot   Create 'bare' (fresh macOS) + 'provisioned' (after install) snapshots"
   echo "  restore    Restore a snapshot: './tests/preview restore bare'"
@@ -62,7 +62,7 @@ cmd_access() {
   sync_repo
   guest "bash '${GUEST_DIR}/scripts/grant-permissions'" || true
   warn "If grants failed above, open the VM window and grant manually:"
-  warn "System Settings → Privacy & Security → Accessibility → enable Rift, Borders"
+  warn "System Settings → Privacy & Security → Accessibility → enable Paneru"
 }
 
 cmd_login() {
@@ -78,11 +78,11 @@ cmd_check() {
   echo "── Separate Spaces (must be mode 1) ──"
   guest "\"${GUEST_DIR}/scripts/ensure-separate-spaces\" check" 2>&1 || true
   echo ""
-  echo "── Rift workspaces ──"
-  guest "rift-cli query workspaces" 2>&1 || true
+  echo "── Paneru service + state ──"
+  guest "paneru query state --json" 2>&1 || true
   echo ""
   echo "── Installed formulae ──"
-  guest "brew list | grep -Ei 'rift|aerospace|aerospacebar|borders|tccutil|ghostty' || echo '(none found)'"
+  guest "brew list | grep -Ei 'paneru|rift|aerospace|aerospacebar|borders|tccutil|ghostty' || echo '(none found)'"
   echo ""
   echo "── Aegis.app (should NOT be present) ──"
   guest "ls -d /Applications/Aegis.app 2>&1 || echo '(not installed — correct)'"
