@@ -70,11 +70,11 @@ style = "paged"
 format = "default"
 font_size = 13.0
 
-# Native macOS dimming for inactive windows (subtle focus cue; replaces the
-# borders-only look of the old setup)
+# Native macOS dimming for inactive windows — disabled (focus cue comes from
+# the active border instead)
 [decorations.inactive.dim]
-opacity = -0.15
-opacity_night = -0.25
+opacity = 0.0
+opacity_night = 0.0
 
 # Focus border (replaces JankyBorders)
 [decorations.active.border]
