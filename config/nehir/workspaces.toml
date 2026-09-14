@@ -1,0 +1,8 @@
+[1]
+monitor = "main"
+
+[2]
+monitor = "main"
+
+[10]
+monitor = "secondary"

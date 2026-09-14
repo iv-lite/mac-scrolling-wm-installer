@@ -1,0 +1,8 @@
+id = "C96F02E0-4B2D-4E98-A0D7-9D7F3E5BF002"
+order = 15
+
+[match]
+titleSubstring = "Preferences"
+
+[effect]
+layout = "float"

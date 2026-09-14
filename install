@@ -31,7 +31,7 @@ for arg in "$@"; do
 		--help|-h)
 			echo "Usage: ./install"
 			echo ""
-			echo "  Installs OmniWM + Ghostty with a niri-like sliding-strip"
+			echo "  Installs Nehir + Ghostty with a niri-like sliding-strip"
 			echo "  layout. Requires Apple Silicon + macOS 26+ (Tahoe)."
 			exit 0
 			;;
@@ -42,7 +42,7 @@ for arg in "$@"; do
 	esac
 done
 
-if [ -d /Applications/OmniWM.app ] || [ -d ~/.config/omniwm ]; then
+if [ -d /Applications/Nehir.app ] || [ -d ~/.config/nehir ]; then
 	MODE="upgrade"
 else
 	MODE="install"
@@ -50,18 +50,18 @@ fi
 
 echo ""
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║   OmniWM + Ghostty installer                        ║"
+echo "  ║   Nehir + Ghostty installer                          ║"
 if [ "$MODE" = "upgrade" ]; then
-	echo "  ║              niri-like macOS setup (upgrade)       ║"
+	echo "  ║              niri-like macOS setup (upgrade)        ║"
 else
-	echo "  ║              niri-like macOS setup                 ║"
+	echo "  ║              niri-like macOS setup                  ║"
 fi
 echo "  ╚══════════════════════════════════════════════════════╝"
 
 run_step install-deps
 run_step configure-system
 run_step install-ghostty
-run_step install-omniwm
+run_step install-nehir
 run_step grant-permissions
 run_step enable-services
 
@@ -69,7 +69,7 @@ echo ""
 echo "  ${GREEN}══════════════════════════════════════════════${RESET}"
 if [ "$MODE" = "upgrade" ]; then
 	echo "  ${GREEN}  Upgrade complete — configs refreshed & service restarted${RESET}"
-	echo "  ${GREEN}  (OmniWM, Ghostty)${RESET}"
+	echo "  ${GREEN}  (Nehir, Ghostty)${RESET}"
 else
 	echo "  ${GREEN}  Installation complete!${RESET}"
 fi
@@ -80,7 +80,7 @@ if [ "$MODE" = "upgrade" ]; then
 	echo "     (A logout is only required if you toggled 'Displays have separate Spaces'.)"
 else
 	echo "  ${YELLOW}⚠ A logout/login is required for this to take effect:${RESET}"
-	echo "     - 'Displays have separate Spaces' enabled (OmniWM requires it)"
+	echo "     - 'Displays have separate Spaces' enabled (Nehir requires it)"
 fi
 echo ""
 if [ "$MODE" = "upgrade" ]; then
@@ -88,12 +88,12 @@ if [ "$MODE" = "upgrade" ]; then
 else
 	echo "  ${YELLOW}⚠ After the next login:${RESET}"
 fi
-echo "     - OmniWM tiles windows in niri-style horizontal strips"
-echo "     - OmniWM pops up the active workspace on switch"
+echo "     - Nehir tiles windows in niri-style horizontal strips"
+echo "     - Nehir pops up the active workspace on switch"
 echo "     - Ghostty runs frameless (title bar hidden)"
-echo "     - IPC enabled — run omniwmctl to inspect the live state"
-echo "     - If accessibility/input grants failed above, grant them manually:"
-echo "       System Settings → Privacy & Security → Accessibility + Input Monitoring"
+echo "     - IPC enabled — run nehirctl to inspect the live state"
+echo "     - If accessibility grants failed above, grant them manually:"
+echo "       System Settings → Privacy & Security → Accessibility"
 echo ""
 echo "  ${CYAN}Keybindings:${RESET}"
 echo "     Cmd+Arrows                  move focus"
@@ -112,10 +112,8 @@ echo "     3-finger vertical swipe     switch workspaces"
 echo "     Click inactive window       focus it (focus follows mouse)"
 echo ""
 echo "  ${CYAN}Workspaces:${RESET}"
-echo "     Dynamic — workspaces appear on demand and vanish when empty."
-echo "     Each display seeds one workspace (main '1', second '10');"
-echo "     Cmd+Option+↑/↓ navigates the current display's stack."
-echo "     Left/right arrows handle windows; the numeric keys are unused."
+echo "     Fixed — workspaces [1]+[2] on main, [10] on secondary."
+echo "     Cmd+Option+↑/↓ cycles the current display's stack."
 echo ""
 if [ "$MODE" = "upgrade" ]; then
 	echo "  'Displays have separate Spaces' is already configured; no logout required."

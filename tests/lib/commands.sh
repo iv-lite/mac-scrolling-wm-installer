@@ -16,7 +16,7 @@ usage() {
   echo "  install    Sync the repo into the guest and run ./install"
   echo "  access     Re-run the accessibility grant script in the guest"
   echo "  login      Log out/in the GUI session to apply the separate-Spaces setting"
-  echo "  check      Query OmniWM state, separate-Spaces mode, installed formulae, and the Ghostty config in the guest"
+  echo "  check      Query Nehir state, separate-Spaces mode, installed formulae, and the Ghostty config in the guest"
   echo "  shot       Capture a screenshot into tests/screenshots/"
   echo "  snapshot   Create 'bare' (fresh macOS) + 'provisioned' (after install) snapshots"
   echo "  restore    Restore a snapshot: './tests/preview restore bare'"
@@ -62,7 +62,7 @@ cmd_access() {
   sync_repo
   guest "bash '${GUEST_DIR}/scripts/grant-permissions'" || true
   warn "If grants failed above, open the VM window and grant manually:"
-  warn "System Settings → Privacy & Security → Accessibility → enable OmniWM.app"
+  warn "System Settings → Privacy & Security → Accessibility → enable Nehir.app"
 }
 
 cmd_login() {
@@ -78,14 +78,14 @@ cmd_check() {
   echo "── Separate Spaces (must be mode 1) ──"
   guest "\"${GUEST_DIR}/scripts/ensure-separate-spaces\" check" 2>&1 || true
   echo ""
-  echo "── OmniWM service + state ──"
-  guest "omniwmctl query active-workspace" 2>&1 || true
+  echo "── Nehir service + state ──"
+  guest "NEHIRCTL=\"/Applications/Nehir.app/Contents/MacOS/nehirctl\"; [ ! -x \"\$NEHIRCTL\" ] && NEHIRCTL=\"\$HOME/Applications/Nehir.app/Contents/MacOS/nehirctl\"; \"\$NEHIRCTL\" query active-workspace" 2>&1 || true
   echo ""
   echo "── Installed packages ──"
-  guest "brew list --formula --cask 2>/dev/null | grep -Ei 'omniwm|paneru|rift|aerospace|aerospacebar|borders|tccutil|ghostty' || echo '(none found)'"
+  guest "brew list --formula --cask 2>/dev/null | grep -Ei 'nehir|paneru|rift|aerospace|aerospacebar|borders|tccutil|ghostty' || echo '(none found)'"
   echo ""
-  echo "── OmniWM.app (should be present) ──"
-  guest "ls -d /Applications/OmniWM.app 2>&1 && echo '(installed — correct)' || echo '(missing!)'"
+  echo "── Nehir.app (should be present) ──"
+  guest "ls -d /Applications/Nehir.app 2>&1 || ls -d ~/Applications/Nehir.app 2>&1 && echo '(installed — correct)' || echo '(missing!)'"
   echo ""
   echo "── Aegis.app (should NOT be present) ──"
   guest "ls -d /Applications/Aegis.app 2>&1 || echo '(not installed — correct)'"

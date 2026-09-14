@@ -4,53 +4,55 @@ set -euo pipefail
 CYAN=$'\033[0;36m'
 GREEN=$'\033[0;32m'
 YELLOW=$'\033[0;33m'
-RED=$'\033[0;31m'
 RESET=$'\033[0m'
 
 note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
-fail() { echo "  ${RED}✗ $*${RESET}"; }
+fail() { echo "  ${RED}✗ $*${RESET}"; exit 1; }
 
-OMNIWM_APP="/Applications/OmniWM.app"
+LAUNCH_AGENT="$HOME/Library/LaunchAgents/dev.guria.nehir.plist"
+LABEL="dev.guria.nehir"
 
-if [ ! -d "$OMNIWM_APP" ]; then
-	fail "OmniWM is not installed at $OMNIWM_APP — run scripts/install-omniwm first"
-	exit 1
+# Resolve the app path — cask installs to /Applications, source to ~/Applications.
+app_path() {
+	if [ -d /Applications/Nehir.app ]; then
+		echo "/Applications/Nehir.app"
+	elif [ -d "$HOME/Applications/Nehir.app" ]; then
+		echo "$HOME/Applications/Nehir.app"
+	else
+		echo ""
+	fi
+}
+
+if [ -z "$(app_path)" ]; then
+	fail "Nehir.app not found at /Applications or ~/Applications — run scripts/install-nehir first"
 fi
 
 # ─────────────────────────────────────────────────────────────
-# Accessibility — grant to the OmniWM app bundle.
+# Accessibility — grant to the Nehir app bundle.
 #  1. user DB via tccutil-rs (no sudo, no SIP disable)
 #  2. system DB with sudo as fallback
 #  3. manual instructions as last resort
 # ─────────────────────────────────────────────────────────────
-note "Granting Accessibility to OmniWM..."
+NHEIR_APP="$(app_path)"
+note "Granting Accessibility to Nehir ($NHEIR_APP)..."
 
 if command -v tccutil-rs >/dev/null 2>&1; then
-	if tccutil-rs grant --user Accessibility "$OMNIWM_APP" >/dev/null 2>&1; then
-		ok "Accessibility granted to OmniWM (user db)"
-	elif sudo -n tccutil-rs grant Accessibility "$OMNIWM_APP" >/dev/null 2>&1; then
-		ok "Accessibility granted to OmniWM (system db via sudo)"
+	if tccutil-rs grant --user Accessibility "$NHEIR_APP" >/dev/null 2>&1; then
+		ok "Accessibility granted to Nehir (user db)"
+	elif sudo -n tccutil-rs grant Accessibility "$NHEIR_APP" >/dev/null 2>&1; then
+		ok "Accessibility granted to Nehir (system db via sudo)"
 	else
-		fail "Could not grant Accessibility to OmniWM automatically."
+		fail "Could not grant Accessibility to Nehir automatically."
 		echo "     Grant manually: System Settings → Privacy & Security →"
-		echo "     Accessibility → '+' → add OmniWM.app"
+		echo "     Accessibility → '+' → add Nehir.app"
 	fi
 else
 	fail "tccutil-rs not found — install it (brew install tccutil-rs) and re-run."
 	echo "     Manual fallback: System Settings → Privacy & Security →"
-	echo "     Accessibility → '+' → add OmniWM.app"
+	echo "     Accessibility → '+' → add Nehir.app"
 fi
-
-# ─────────────────────────────────────────────────────────────
-# Input Monitoring — cannot be granted programmatically; the
-# switch must be toggled once by hand.
-# ─────────────────────────────────────────────────────────────
-note "Input Monitoring must be enabled manually (macOS enforces this)."
-echo "     Opening Input Monitoring settings..."
-open "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
-warn "Toggle 'OmniWM' ON in the Input Monitoring list, then re-run: bash scripts/enable-services"
 
 # ─────────────────────────────────────────────────────────────
 # Post-grant verification (requires Full Disk Access on the
@@ -58,12 +60,12 @@ warn "Toggle 'OmniWM' ON in the Input Monitoring list, then re-run: bash scripts
 # ─────────────────────────────────────────────────────────────
 note "Verifying grants (requires Full Disk Access on the host terminal)..."
 if command -v tccutil-rs >/dev/null 2>&1; then
-	if tccutil-rs list --user --service Accessibility 2>/dev/null | grep -qF "$OMNIWM_APP"; then
-		ok "OmniWM found in Accessibility list (user db)"
-	elif tccutil-rs list --service Accessibility 2>/dev/null | grep -qF "$OMNIWM_APP"; then
-		ok "OmniWM found in Accessibility list (system db)"
+	if tccutil-rs list --user --service Accessibility 2>/dev/null | grep -qF "$NHEIR_APP"; then
+		ok "Nehir found in Accessibility list (user db)"
+	elif tccutil-rs list --service Accessibility 2>/dev/null | grep -qF "$NHEIR_APP"; then
+		ok "Nehir found in Accessibility list (system db)"
 	else
-		warn "OmniWM not visible in the Accessibility list"
+		warn "Nehir not visible in the Accessibility list"
 		echo "     If the terminal app lacks Full Disk Access, verification is"
 		echo "     unreliable — the grant may still have succeeded."
 	fi

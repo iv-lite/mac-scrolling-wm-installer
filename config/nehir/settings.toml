@@ -1,0 +1,62 @@
+[general]
+hotkeysEnabled = true
+ipcEnabled = true
+
+[focus]
+followsMouse = true
+moveMouseToFocusedWindow = true
+followsWindowToMonitor = true
+
+[gaps]
+size = 8.0
+
+[gaps.outer]
+left = 15.0
+right = 15.0
+top = 15.0
+bottom = 15.0
+
+[niri]
+balancedColumnCount = 2
+infiniteLoop = false
+columnWidthPresets = [0.3, 0.5, 1.0]
+
+[borders]
+enabled = true
+width = 4.0
+
+[borders.color]
+red = 0.5372549019607843
+green = 0.7058823529411765
+blue = 0.9803921568627451
+alpha = 1.0
+
+[workspaceBar]
+enabled = true
+showLabels = true
+showFloatingWindows = false
+windowLevel = "popup"
+position = "overlappingMenuBar"
+notchAware = true
+deduplicateAppIcons = false
+hideEmptyWorkspaces = false
+height = 24.0
+backgroundOpacity = 0.1
+xOffset = 0.0
+yOffset = 0.0
+
+[gestures]
+scrollEnabled = true
+scrollSensitivity = 5.0
+scrollModifierKey = "optionShift"
+overrideModifier = "option"
+fingerCount = 3
+invertDirection = true
+
+[statusBar]
+showWorkspaceName = false
+showAppNames = false
+useWorkspaceId = false
+
+[appearance]
+mode = "dark"

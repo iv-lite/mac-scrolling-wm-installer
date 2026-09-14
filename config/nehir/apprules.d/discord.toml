@@ -1,0 +1,9 @@
+id = "AF752D95-8497-4844-BE20-4C93E73BAEF2"
+order = 10
+
+[match]
+bundleId = "com.hnc.Discord"
+
+[effect]
+minWidth = 800
+minHeight = 500

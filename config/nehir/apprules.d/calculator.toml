@@ -1,0 +1,8 @@
+id = "C0DA6314-6EAD-4F91-9F51-9B4C3C32F001"
+order = 14
+
+[match]
+bundleId = "com.apple.calculator"
+
+[effect]
+layout = "float"

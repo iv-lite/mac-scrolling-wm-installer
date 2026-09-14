@@ -10,10 +10,10 @@ note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
-# Enable "Displays have separate Spaces" — OmniWM requires it (it probes the
+# Enable "Displays have separate Spaces" — Nehir requires it (it probes the
 # private windowserver mode, so `defaults write` alone is not enough on modern
 # macOS). Wrapper script verified on macOS 26; see its header for details.
-note "Checking 'Displays have separate Spaces' (OmniWM requires it ON)..."
+note "Checking 'Displays have separate Spaces' (Nehir requires it ON)..."
 if ! "${0%/*}/ensure-separate-spaces" set; then
 	echo "     Re-run this installer after enabling the setting in System Settings."
 	exit 1

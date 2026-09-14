@@ -1,0 +1,9 @@
+id = "005C00D3-F665-47F8-BDAE-D80790E9E46B"
+order = 7
+
+[match]
+bundleId = "org.mozilla.firefox"
+
+[effect]
+minWidth = 500
+minHeight = 120

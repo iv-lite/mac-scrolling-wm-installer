@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RED=$'\033[0;31m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+fail() { echo "  ${RED}✗ $*${RESET}"; exit 1; }
+
+LAUNCH_AGENT="$HOME/Library/LaunchAgents/dev.guria.nehir.plist"
+
+# Resolve the app path — the cask installs to /Applications, the source
+# build to ~/Applications.
+app_path() {
+	if [ -d /Applications/Nehir.app ]; then
+		echo "/Applications/Nehir.app"
+	elif [ -d "$HOME/Applications/Nehir.app" ]; then
+		echo "$HOME/Applications/Nehir.app"
+	else
+		echo ""
+	fi
+}
+
+# ─────────────────────────────────────────────────────────────
+# Install Nehir: Homebrew cask first (guria/tap), fall back to a
+# from-source build via mise when the cask hasn't been published yet.
+# ─────────────────────────────────────────────────────────────
+install_nehir() {
+	if [ -n "$(app_path)" ]; then
+		local app; app="$(app_path)"
+		note "Nehir found at $app — upgrading..."
+		if command -v brew >/dev/null 2>&1 && brew info --cask nehir >/dev/null 2>&1; then
+			brew upgrade --cask nehir >/dev/null 2>&1 && ok "Nehir upgraded via Homebrew" \
+				|| warn "Nehir upgrade failed (network?) — keeping installed version"
+		else
+			ok "Keeping existing Nehir installation"
+		fi
+		return 0
+	fi
+
+	if command -v brew >/dev/null 2>&1; then
+		note "Installing Nehir via Homebrew (cask nehir from guria/tap)..."
+		brew tap guria/tap >/dev/null 2>&1 || true
+		if brew info --cask nehir >/dev/null 2>&1; then
+			brew install --cask nehir
+			ok "Nehir installed via Homebrew"
+			return 0
+		fi
+		warn "The 'nehir' cask is not available yet in guria/tap — falling back to a source build."
+	else
+		warn "Homebrew not available — installing Nehir from source."
+	fi
+	install_nehir_source
+}
+
+install_nehir_source() {
+	note "Building Nehir from source (requires Xcode + ~5-10 minutes)..."
+	if ! command -v mise >/dev/null 2>&1; then
+		note "Installing mise (dev tool manager)..."
+		if ! command -v brew >/dev/null 2>&1; then
+			fail "mise not installed and Homebrew is unavailable — install mise first"
+		fi
+		brew install mise
+	fi
+	if ! command -v xcodebuild >/dev/null 2>&1; then
+		fail "Xcode not found — the Nehir source build also needs Xcode (not just Command Line Tools)"
+	fi
+
+	local build_dir="$HOME/.cache/nehir-src"
+	mkdir -p "$build_dir"
+	if [ -d "$build_dir/.git" ]; then
+		note "Updating Nehir checkout in $build_dir..."
+		git -C "$build_dir" fetch --depth 1 origin main >/dev/null 2>&1 || true
+		git -C "$build_dir" reset --hard origin/main >/dev/null 2>&1 || true
+	else
+		note "Cloning apphane-dev/nehir into $build_dir..."
+		git clone --depth 1 https://github.com/apphane-dev/nehir.git "$build_dir" >/dev/null 2>&1
+	fi
+
+	(
+		cd "$build_dir"
+		note "Running 'mise run package:release' (ad-hoc signed, not notarized)..."
+		mise run package:release
+	)
+	ok "Nehir built — dist/Nehir.app + nehirctl produced"
+
+	note "Installing Nehir.app to ~/Applications and nehirctl to ~/.local/bin..."
+	mkdir -p "$HOME/Applications" "$HOME/.local/bin"
+	rm -rf "$HOME/Applications/Nehir.app"
+	cp -R "$build_dir/dist/Nehir.app" "$HOME/Applications/Nehir.app"
+	install -m 755 "$build_dir/.build/apple/Products/Release/nehirctl" "$HOME/.local/bin/nehirctl"
+	ok "Nehir installed (config synced below; chmod +x ~/.local/bin/nehirctl if PATH needs it)"
+}
+
+install_nehir
+
+# ─────────────────────────────────────────────────────────────
+# Migrate from a previous OmniWM install (the stack this repo
+# replaced) — mirror the Paneru cleanup block from install-omniwm.
+# ─────────────────────────────────────────────────────────────
+if [ -d /Applications/OmniWM.app ] || [ -f "$HOME/Library/LaunchAgents/com.barut.OmniWM.plist" ] || [ -d "$HOME/.config/omniwm" ]; then
+	note "A previous OmniWM install was found — removing it..."
+	if pgrep -x OmniWM >/dev/null 2>&1; then
+		pkill -x OmniWM 2>/dev/null || true
+	fi
+	if [ -f "$HOME/Library/LaunchAgents/com.barut.OmniWM.plist" ]; then
+		launchctl bootout "gui/$(id -u)/com.barut.OmniWM" >/dev/null 2>&1 || true
+		rm -f "$HOME/Library/LaunchAgents/com.barut.OmniWM.plist"
+	fi
+	if [ -d /Applications/OmniWM.app ]; then
+		rm -rf /Applications/OmniWM.app
+	fi
+	if command -v brew >/dev/null 2>&1; then
+		brew uninstall --cask omniwm >/dev/null 2>&1 || true
+	fi
+
+	BACKUP_DIR="$HOME/.config/backups/migrate-nehir-$(date +%Y%m%d-%H%M%S)"
+	mkdir -p "$BACKUP_DIR"
+	if [ -d "$HOME/.config/omniwm" ]; then
+		mv "$HOME/.config/omniwm" "$BACKUP_DIR/"
+	fi
+
+	if command -v tccutil-rs >/dev/null 2>&1; then
+		tccutil-rs revoke --user Accessibility "/Applications/OmniWM.app" >/dev/null 2>&1 || true
+	fi
+
+	ok "OmniWM removed (config kept in $BACKUP_DIR)"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Config (split Nehir layout: settings.toml + hotkeys.toml +
+# workspaces.toml + apprules.d/)
+# ─────────────────────────────────────────────────────────────
+NEHIR_DIR="$HOME/.config/nehir"
+APP_RULES_DIR="$NEHIR_DIR/apprules.d"
+mkdir -p "$NEHIR_DIR" "$APP_RULES_DIR"
+
+backup_if_present() {
+	local f="$1"
+	if [ -e "$f" ]; then
+		cp "$f" "$f.bak"
+	fi
+}
+
+backup_if_present "$NEHIR_DIR/settings.toml"
+backup_if_present "$NEHIR_DIR/hotkeys.toml"
+backup_if_present "$NEHIR_DIR/workspaces.toml"
+
+cp "$REPO_ROOT/config/nehir/settings.toml" "$NEHIR_DIR/settings.toml"
+cp "$REPO_ROOT/config/nehir/hotkeys.toml" "$NEHIR_DIR/hotkeys.toml"
+cp "$REPO_ROOT/config/nehir/workspaces.toml" "$NEHIR_DIR/workspaces.toml"
+cp "$REPO_ROOT/config/nehir/apprules.d/"*.toml "$APP_RULES_DIR/"
+ok "Nehir config installed to ~/.config/nehir/ (settings.toml, hotkeys.toml, workspaces.toml, apprules.d/)"
+note "Missing keys fall back to built-in defaults; unknown keys are preserved."
+
+# ─────────────────────────────────────────────────────────────
+# launchd agent (autostart at login, keep alive; Nehir does not
+# self-manage launching — this agent is what keeps it running)
+# ─────────────────────────────────────────────────────────────
+APP_PATH="$(app_path)"
+if [ -z "$APP_PATH" ]; then
+	fail "Nehir.app not found after install (looked in /Applications and ~/Applications)"
+fi
+
+note "Installing Nehir launchd agent ($LAUNCH_AGENT)..."
+cat > "$LAUNCH_AGENT" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.guria.nehir</string>
+	<key>Program</key>
+	<string>$APP_PATH/Contents/MacOS/Nehir</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+</dict>
+</plist>
+EOF
+ok "LaunchAgent written (started by enable-services)"
+
+warn "Nehir will be launched by enable-services after permissions are granted."
+echo "     (grant Accessibility to Nehir; see grant-permissions)"

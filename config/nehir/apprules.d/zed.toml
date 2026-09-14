@@ -1,0 +1,9 @@
+id = "979F05F4-FFA2-4EDD-B23F-08A9944C759F"
+order = 4
+
+[match]
+bundleId = "dev.zed.Zed"
+
+[effect]
+minWidth = 360
+minHeight = 240

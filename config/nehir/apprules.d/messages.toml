@@ -1,0 +1,9 @@
+id = "552FB77D-BF0E-4737-90A6-B5BC6986C579"
+order = 13
+
+[match]
+bundleId = "com.apple.MobileSMS"
+
+[effect]
+minWidth = 660
+minHeight = 320

@@ -1,0 +1,9 @@
+id = "486CEFA6-69AA-4A3C-AF27-BCD38F4F138B"
+order = 3
+
+[match]
+bundleId = "com.google.Chrome"
+
+[effect]
+minWidth = 500
+minHeight = 375

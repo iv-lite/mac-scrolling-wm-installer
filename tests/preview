@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Test workflow for the omniwm-installer project. Runs the real ./install
-# inside a fresh macOS guest VM and lets you verify OmniWM tiling +
+# Test workflow for the nehir-installer project. Runs the real ./install
+# inside a fresh macOS guest VM and lets you verify Nehir tiling +
 # workspace bar + window borders visually via screenshots.
 #
 # Host is auto-detected:

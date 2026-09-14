@@ -1,17 +1,18 @@
-# omniwm-installer
+# nehir-installer
 
-A niri-like window management setup for macOS, built on **OmniWM** (Swift
-tiling WM with niri-style sliding strips, hot-reloadable TOML config, virtual
-workspaces, window borders, and IPC via `omniwmctl`) and **Ghostty**
-(terminal). Driven by **Cmd**-layered arrow chords — Cmd to focus,
-Cmd+Shift to move, Cmd+Option for workspaces, Cmd+Ctrl for displays — that
-don't fight macOS defaults. Requires **Apple Silicon + macOS 26+ (Tahoe)**.
+A niri-like window management setup for macOS, built on **Nehir** (Swift
+tiling WM fork of OmniWM with niri-style sliding strips, hot-reloadable
+split TOML config, fixed virtual workspaces, window borders, and IPC via
+`nehirctl`) and **Ghostty** (terminal). Driven by **Cmd**-layered arrow
+chords — Cmd to focus, Cmd+Shift to move, Cmd+Option for workspaces,
+Cmd+Ctrl for displays — that don't fight macOS defaults. Requires
+**Apple Silicon + macOS 26+ (Tahoe)**.
 
 ## Requirements
 
-- macOS 26+ (Tahoe) — Apple Silicon (OmniWM cask depends on both)
+- macOS 26+ (Tahoe) — Apple Silicon (Nehir requires both)
 - Homebrew installed or auto-installed
-- "Displays have separate Spaces" enabled (OmniWM requires it; the installer sets it)
+- "Displays have separate Spaces" enabled (Nehir requires it; the installer sets it)
 - No Karabiner, no SIP disable
 
 ## Quick start
@@ -21,7 +22,7 @@ don't fight macOS defaults. Requires **Apple Silicon + macOS 26+ (Tahoe)**.
 ```
 
 Re-running `./install` **upgrades** an existing setup: Homebrew components
-(OmniWM, Ghostty, tccutil-rs) are updated, configs are refreshed from this
+(Nehir, Ghostty, tccutil-rs) are updated, configs are refreshed from this
 repo (existing copies backed up as `*.bak`), and the launchd service is
 restarted so the new binary/config apply immediately.
 
@@ -30,25 +31,23 @@ The installer runs these steps from `scripts/`:
 | Script | Purpose |
 |---|---|
 | `install-deps` | Install Homebrew if missing, tccutil-rs |
-| `configure-system` | Enable "Displays have separate Spaces" (OmniWM requires it) |
+| `configure-system` | Enable "Displays have separate Spaces" (Nehir requires it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
-| `install-omniwm` | Install OmniWM (Homebrew cask), remove any leftover Paneru, write config + launchd agent |
-| `grant-permissions` | Grant Accessibility to OmniWM.app (best-effort) + open Input Monitoring pane |
-| `enable-services` | Bootstrap the OmniWM launchd agent (`launchctl bootstrap`) |
+| `install-nehir` | Install Nehir (Homebrew cask, or build from source via mise), remove any leftover OmniWM, write split config + launchd agent |
+| `grant-permissions` | Grant Accessibility to Nehir.app (best-effort) |
+| `enable-services` | Bootstrap the Nehir launchd agent (`launchctl bootstrap`) |
 
 ### After install
 
 1. **Log out and back in** (Cmd+Shift+Q) — applies the enabled
    separate-Spaces setting.
-2. OmniWM tiles in an **niri-style sliding strip**; new windows are appended
+2. Nehir tiles in an **niri-style sliding strip**; new windows are appended
    at the end and **never resize existing windows**.
-3. Workspaces are **dynamic**: they appear on demand and vanish when empty.
-   Each display seeds one workspace (main "1", a second display "10").
-   `Cmd+Option+↑/↓` navigates the current display's stack; left/right arrows
-   handle windows within it.
-4. If Accessibility or Input Monitoring grants failed, grant them manually:
-   System Settings → Privacy & Security → Accessibility (toggle OmniWM on)
-   and Privacy & Security → Input Monitoring (toggle OmniWM on).
+3. Workspaces are **fixed**: `[1]+[2]` on the main display, `[10]` on a
+   second display. Cmd+Option+↑/↓ cycles the current display's stack;
+   Cmd+Option+Shift+↑/↓ moves a window between workspaces.
+4. If Accessibility grants failed, grant them manually:
+   System Settings → Privacy & Security → Accessibility (toggle Nehir on).
 5. Ghostty opens **frameless** (`macos-titlebar-style = hidden` in
    `~/.config/ghostty/config`) — drag its window edge with `Option+Click`.
 
@@ -78,19 +77,14 @@ Arrow-key hierarchy — **Cmd** (focus), **Cmd+Shift** (move), **Cmd+Option**
 
 ### Workspaces
 
-Dynamic: workspaces are created on demand at the ends of the stack and
-auto-removed when emptied. Each display seeds one (main "1", second "10").
+Fixed pre-defined list: `[1]+[2]` on main, `[10]` on secondary. Missing
+workspaces default to next slot on main.
 
 | Shortcut | Action |
 |---|---|
 | `Cmd` + `Option` + `↓` / `↑` | Next / previous workspace **on this display** |
 | `Cmd` + `Option` + `Shift` + `↓` / `↑` | Move window to next / previous workspace on this display |
 | `Cmd` + `Option` + `Tab` | Focus previous window |
-
-> Workspaces are global but each belongs to a **Home Monitor** — cycling with
-> `Cmd+Option+↑/↓` stays within the current display's own stack. Numeric
-> workspace shortcuts are disabled because workspace numbers are assigned
-> dynamically. The workspace bar pills are clickable for direct access.
 
 ### Multi-monitor
 
@@ -99,10 +93,9 @@ auto-removed when emptied. Each display seeds one (main "1", second "10").
 | `Cmd` + `Ctrl` + `→` / `←` | Focus next / previous display |
 | `Cmd` + `Ctrl` + `Shift` + ←/↓/↑/→ | Move the focused window to the adjacent display |
 
-> A workspace belongs to a Home Monitor — it follows you when you move to it.
-> Every connected display needs at least one seed workspace (the shipped
-> config assigns "1" to main and "10" to a second display; the rest are
-> created dynamically).
+> Workspaces belong to a specific monitor — cycling with Cmd+Option+↑/↓ stays
+> within the current display's own stack. The workspace bar shows workspace
+> pills; click to jump directly.
 
 ### Window state
 
@@ -112,15 +105,15 @@ auto-removed when emptied. Each display seeds one (main "1", second "10").
 | `Cmd` + `Option` + `B` | Balance all columns to the focused column's width |
 | `Cmd` + `Option` + `Space` | Center the focused column in the viewport |
 
-### Not available in OmniWM
+### Not available in Nehir
 
-These Paneru features have no OmniWM equivalent and were not mapped:
+These Paneru features have no Nehir equivalent and were not mapped:
 
 - Inactive-window dim (use the native blue border as a focus cue instead)
-- Stack commands (consume/expel — done via niri-style automation in OmniWM)
+- Stack commands (consume/expel — done via niri-style automation in Nehir)
 - Copy-window-rule shortcut
 - Restart/quit hotkeys (`Ctrl+Cmd+Shift+R`, `Ctrl+Cmd+Shift+Q` — use
-  `omniwmctl save` to persist config, or `pkill -x OmniWM` to quit; the
+  `nehirctl save` to persist config, or `pkill -x Nehir` to quit; the
   launchd agent restarts it automatically)
 
 ## The infinite horizontal canvas
@@ -129,7 +122,7 @@ The niri layout behaves like a canvas **wider than the monitor**: unfocused
 windows park off-screen and glide in/out as focus moves. Two things make it
 feel native:
 
-- OmniWM keeps a thin **sliver** of each off-screen window visible at the
+- Nehir keeps a thin **sliver** of each off-screen window visible at the
   screen edge — a workaround for macOS relocating windows that move fully
   off-screen.
 - The workspace bar shows which display is active and which workspace it is
@@ -142,14 +135,15 @@ feel native:
 
 - **Active-window border**: a 4px Nord blue (`#88ACE4`) border replaces
   JankyBorders — no extra process needed.
-- **Workspace bar**: an overlay drawn by OmniWM at the top of each display,
+- **Workspace bar**: an overlay drawn by Nehir at the top of each display,
   showing workspace pills. Green-highlighted pills mark the active workspace
   and the current display. Labels are shown (`showLabels = true`); pill
   radius, inset, and top padding are tuned in the shipped config.
+- Empty workspaces are hidden when `hideEmptyWorkspaces = true`.
 
 ## No title bars (the macOS reality)
 
-macOS tiling window managers (OmniWM included — same as yabai/AeroSpace) cannot
+macOS tiling window managers (Nehir included — same as yabai/AeroSpace) cannot
 hide a window's title bar or toolbar: each app draws its own chrome, so removal
 has to happen per app. This installer does what's safely possible:
 
@@ -171,31 +165,37 @@ has to happen per app. This installer does what's safely possible:
 
 ## IPC & config live-reload
 
-OmniWM supports **IPC** (enabled in the shipped config): the `omniwmctl`
+Nehir supports **IPC** (enabled in the shipped config): the `nehirctl`
 binary lets you inspect and control the WM at any time.
 
 ```sh
-omniwmctl query active-workspace   # show current workspace + display
-omniwmctl query workspaces          # list all workspaces + their displays
-omniwmctl query displays            # list connected displays
-omniwmctl log                       # tail OmniWM logs
-omniwmctl save                      # persist the live config to disk
+nehirctl query active-workspace   # show current workspace + display
+nehirctl query workspaces         # list all workspaces + their displays
+nehirctl query displays           # list connected displays
+nehirctl ping                     # check if Nehir is responding
 ```
 
-`settings.toml` live-reloads on save — edit `~/.config/omniwm/settings.toml`
-and the changes apply instantly (no restart needed). The schema is strict:
-all required keys must be present and each hotkey action must appear exactly
-once. Use `omniwmctl save` from OmniWM's own UI to export the canonical file,
-then edit values in place.
+Config is split into three TOML files under `~/.config/nehir/`:
+
+- `settings.toml` — appearance, focus, gaps, borders, workspace bar, gestures
+- `hotkeys.toml` — all keyboard shortcuts (missing keys fall back to defaults silently)
+- `workspaces.toml` — fixed workspace definitions and monitor assignments
+
+Changes to `settings.toml` and `hotkeys.toml` live-reload on save — edit them
+and the changes apply instantly (no restart needed). Unlike OmniWM's strict
+canonical schema, Nehir's config is lenient: unknown keys are preserved,
+missing keys keep built-in defaults, and only duplicate bindings within a
+section are rejected.
+
+App rules live in `~/.config/nehir/apprules.d/*.toml` — each file defines
+a match condition and an effect (e.g. `apploating = true`).
 
 ## Multi-monitor
 
-- OmniWM workspaces are **global entities**, each assigned to a **Home
-  Monitor** (not per-display stacks like Paneru's native Spaces).
-- Workspaces are **dynamic**: a new one is created at the stack edges when
-  `Cmd+Option+↑/↓` overflows; empty ones are cleaned up automatically. The
-  shipped config only seeds "1" on the main display and "10" on a second
-  display.
+- Nehir workspaces are **fixed pre-defined entities**, each assigned to a
+  **Monitor** (not per-display stacks like Paneru's native Spaces).
+- Workspaces `[1]+[2]` are on the main display, `[10]` on a second display.
+  Empty workspace pills are hidden automatically.
 - `Cmd+Ctrl+→` / `Cmd+Ctrl+←` cycles focus between displays (round-robin);
   `Cmd+Ctrl+Shift+←/↓/↑/→` moves just the focused window to a display.
 - The sliding strip works best when displays are arranged **vertically**
@@ -203,37 +203,34 @@ then edit values in place.
 
 ## Troubleshooting
 
-**OmniWM won't start / instantly exits.** OmniWM requires Accessibility and
-Input Monitoring permissions, plus "Displays have separate Spaces" **ON**.
-The installer's `configure-system` / `ensure-separate-spaces` handles the
-latter. If grants failed, give the terminal **Full Disk Access** first, then:
+**Nehir won't start / instantly exits.** Nehir requires Accessibility
+permission and "Displays have separate Spaces" **ON**. The installer's
+`configure-system` / `ensure-separate-spaces` handles the latter. If grants
+failed, give the terminal **Full Disk Access** first, then:
 
 ```sh
 bash scripts/grant-permissions
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.barut.OmniWM.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.guria.nehir.plist
 ```
 
-Check the OmniWM logs for errors:
+**IPC not working (`nehirctl` gives errors).** The shipped config sets
+`ipcEnabled = true` in `~/.config/nehir/settings.toml`. If it was changed,
+restore it and restart:
 
 ```sh
-omniwmctl log
+# Edit ~/.config/nehir/settings.toml and set general.ipcEnabled = true
+# Then restart Nehir or press the save keybind to live-reload
+pkill -x Nehir   # launchd will restart it automatically
 ```
 
-**IPC not working (`omniwmctl` gives errors).** The shipped config sets
-`general.ipcEnabled = true`. If it was changed, restore it and save:
+**Config won't load / validation errors.** Nehir's config files are
+lenient — unknown keys are preserved, missing keys keep defaults. If you see
+errors, check for TOML syntax mistakes. The shipped configs in this repo are
+validated reference files:
 
 ```sh
-# Edit ~/.config/omniwm/settings.toml and set general.ipcEnabled = true
-# Then restart OmniWM or press the save keybind to live-reload
-pkill -x OmniWM   # launchd will restart it automatically
+python3 -c "import tomllib; tomllib.load(open('config/nehir/settings.toml','rb'))"
 ```
-
-**Config won't load / validation errors.** OmniWM's `settings.toml` is a
-strict canonical schema — all required keys must be present and each hotkey
-action must appear exactly once. Never delete entries; only edit values. To
-export the current valid config from OmniWM itself: save from the OmniWM UI
-or run `omniwmctl save`. The shipped `config/omniwm/settings.toml` in this
-repo is the full validated canonical config.
 
 **Accessibility grants failed.** The terminal app running this installer needs
 **Full Disk Access** (System Settings → Privacy & Security → Full Disk Access),
@@ -243,8 +240,7 @@ then quit and reopen the terminal and re-run:
 bash scripts/grant-permissions
 ```
 
-Input Monitoring **cannot** be granted programmatically — you must toggle
-OmniWM on manually in System Settings → Privacy & Security → Input Monitoring.
+Nehir only needs **Accessibility** — no Input Monitoring is required.
 
 ## Uninstall
 
@@ -252,10 +248,10 @@ OmniWM on manually in System Settings → Privacy & Security → Input Monitorin
 ./uninstall
 ```
 
-Stops and removes OmniWM (launchd agent + app), cleans up any leftover Paneru
+Stops and removes Nehir (launchd agent + app), cleans up any leftover OmniWM
 (from the previous stack) plus any **legacy** Rift / `rift-swipe` /
 JankyBorders / AeroSpace / AeroSpaceBar / Aegis residue (services,
-LaunchAgents, apps), moves configs (from `~/.config/omniwm`, `~/.config/ghostty`,
+LaunchAgents, apps), moves configs (from `~/.config/nehir`, `~/.config/ghostty`,
 plus legacy dirs) to `~/.config/backups/uninstall-<timestamp>/`, then asks
 which brew packages to **keep** (interactive numbered menu). Untaps unused
 repos and restores system defaults.
@@ -276,7 +272,7 @@ macOS host:
 ./tests/preview setup        # installs tart/sshpass (auto), clones host-matched base image
 ./tests/preview up           # boot guest, live-mount the repo, wait for SSH
 ./tests/preview install      # run ./install in the guest (asks to clean up afterwards)
-./tests/preview check        # query omniwmctl state + installed formulae
+./tests/preview check        # query nehirctl state + installed formulae
 ./tests/preview shot         # screenshot the tiling into tests/screenshots/
 ./tests/preview clean        # interactively remove VM, tart, sshpass, base image
 ```
@@ -313,24 +309,25 @@ tested), Accessibility may need one manual grant inside the guest.
 install                   Main installer (runs scripts/*)
 uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
-config/omniwm/            OmniWM config (canonical settings.toml)
+config/nehir/             Nehir config (settings.toml, hotkeys.toml, workspaces.toml, apprules.d/)
 config/ghostty/           Ghostty config (frameless title bar)
 tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
-Configs are installed to `~/.config/{omniwm,ghostty}`; existing files are
-backed up (`.bak`) before overwriting. OmniWM live-reloads
-`~/.config/omniwm/settings.toml` on save, and a launchd agent
-(`~/Library/LaunchAgents/com.barut.OmniWM.plist`) keeps OmniWM running.
+Configs are installed to `~/.config/nehir/` and `~/.config/ghostty/`; existing
+files are backed up (`.bak`) before overwriting. Nehir live-reloads
+`settings.toml` and `hotkeys.toml` on save, and a launchd agent
+(`~/Library/LaunchAgents/dev.guria.nehir.plist`) keeps Nehir running.
 
 > **Note on the history:** an early version of this installer targeted
 > AeroSpace (i3-style tree tiler) with AeroSpaceBar in the menu bar; a later
 > version used **Rift** (niri-style scrolling strip) plus a custom `rift-swipe`
 > C helper; the most recent version used **Paneru** (niri-style sliding strip
-> with native per-Space virtual workspaces). This version is on **OmniWM**
-> (Swift, niri-style sliding strips, global virtual workspaces, window borders,
-> workspace bar overlay, and `omniwmctl` IPC), which retains the niri layout
-> and cursor-warp focus model while adding a workspace bar overlay and native
-> IPC — the Rift-era helper, its LaunchAgent, JankyBorders, Paneru's menu-bar
-> workspace indicator workaround, and the `cycle-column-width` Python helper
-> are all gone.
+> with native per-Space virtual workspaces), followed by **OmniWM** (Swift
+> tiling WM with niri-style sliding strips, dynamic workspaces, workspace bar
+> overlay, and `omniwmctl` IPC). This version is on **Nehir** (Swift fork of
+> OmniWM, niri-style sliding strips, fixed virtual workspaces, window borders,
+> workspace bar overlay, and `nehirctl` IPC), which retains the niri layout
+> and cursor-warp focus model while switching to a fixed workspace model and
+> split TOML config — the `omniwmctl` binary, OmniWM's strict canonical
+> schema, and the dynamic workspace lifecycle are all replaced.

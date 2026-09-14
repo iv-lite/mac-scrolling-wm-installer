@@ -1,0 +1,9 @@
+id = "81426D13-C1A5-475E-AFBC-00BBA05042D0"
+order = 5
+
+[match]
+bundleId = "com.apple.Safari"
+
+[effect]
+minWidth = 574
+minHeight = 220
