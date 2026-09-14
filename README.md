@@ -3,7 +3,7 @@
 A niri-like window management setup for macOS, built on **Paneru** (sliding
 infinite-strip tiler with hot-reloadable TOML config, native macOS workspaces
 + virtual workspaces, and a native menu-bar indicator), and **Ghostty**
-(terminal). Driven by Option-key shortcuts that don't fight macOS defaults.
+(terminal). Driven by Cmd+Option-key shortcuts that don't fight macOS defaults.
 
 ## Requirements
 
@@ -51,32 +51,32 @@ The installer runs these steps from `scripts/`:
 
 ## Keybindings
 
-Paneru modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd**.
+Paneru modifiers: **Cmd+Option**, **Cmd+Ctrl**, **Shift**, **Ctrl**.
 
 ### Navigation & layout
 
 | Shortcut | Action |
 |---|---|
-| `Option` + Arrows | Move focus between windows |
+| `Cmd` + `Option` + Arrows | Move focus between windows |
 | 3-finger swipe (← / →) | Page through windows — one full-width window per swipe, snapping on release (`rift-swipe` is gone; Paneru snaps + focuses natively) |
-| `Option` + `Shift` + Arrows | Move window (swap) |
-| `Option` + `Ctrl` + `←`/`→` | Cycle the focused column width (grow/shrink) |
-| `Option` + `W` | Cycle the focused column width (0.3 / 0.5 / 1) |
-| `Option` + `Shift` + `W` | Cycle width backwards |
-| `Option` + `Space` | Center the focused window/viewport |
-| `Option` + `Shift` + `Space` | Snap an overflowing window into the viewport |
-| `Option` + `M` | Toggle full-width for the focused window |
+| `Cmd` + `Option` + `Shift` + Arrows | Move window (swap) |
+| `Cmd` + `Option` + `←`/`→` | Cycle the focused column width (grow/shrink) |
+| `Cmd` + `Option` + `W` | Cycle the focused column width (0.3 / 0.5 / 1) |
+| `Cmd` + `Option` + `Shift` + `W` | Cycle width backwards |
+| `Cmd` + `Option` + `Space` | Center the focused window/viewport |
+| `Cmd` + `Option` + `Shift` + `Space` | Snap an overflowing window into the viewport |
+| `Cmd` + `Option` + `M` | Toggle full-width for the focused window |
 
 ### Workspaces (1-9)
 
 | Shortcut | Action |
 |---|---|
-| `Option` + `1..9` | Switch virtual workspace |
-| `Option` + `Shift` + `1..9` | Move window to virtual workspace |
-| `Option` + `Ctrl` + `↑`/`↓` | Switch to previous/next virtual workspace |
-| `Option` + `Ctrl` + `Shift` + `↑`/`↓` | Move window to prev/next virtual workspace (and follow) |
+| `Cmd` + `Option` + `1..9` | Switch virtual workspace |
+| `Cmd` + `Option` + `Shift` + `1..9` | Move window to virtual workspace |
+| `Cmd` + `Ctrl` + `↑`/`↓` | Switch to previous/next virtual workspace |
+| `Cmd` + `Ctrl` + `Shift` + `↑`/`↓` | Move window to prev/next virtual workspace (and follow) |
 | 3-finger swipe (↑ / ↓) | Switch virtual workspace rows (trackpad) |
-| `Option` + `Tab` | Focus the last-focused window on this workspace |
+| `Cmd` + `Option` + `Tab` | Focus the last-focused window on this workspace |
 
 > Paneru virtual workspaces are stacks of horizontal strips *inside* a native
 > macOS workspace. Each native Space (per display, with separate Spaces on) has
@@ -86,28 +86,28 @@ Paneru modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd**.
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Option` + `→` | Move focused window to the next display (and follow) |
-| `Cmd` + `Option` + `←` | Move focused window to the next display (stay here) |
-| `Cmd` + `Option` + `↑` | Warp the mouse to the next display |
+| `Cmd` + `Option` + `Ctrl` + `→` | Move focused window to the next display (and follow) |
+| `Cmd` + `Option` + `Ctrl` + `←` | Move focused window to the next display (stay here) |
+| `Cmd` + `Option` + `Ctrl` + `↑` | Warp the mouse to the next display |
 | `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
 
 ### Window state
 
 | Shortcut | Action |
 |---|---|
-| `Option` + `V` | Toggle floating/tiled |
-| `Option` + `O` | Stack the window into the neighbouring column |
-| `Option` + `Shift` + `O` | Pull a window out of a stack |
-| `Option` + `B` | Balance all columns to the focused window's width |
-| `Option` + `Shift` + `E` | Equalize the heights in a stack |
-| `Option` + `Shift` + `C` | Copy a Paneru window rule for the focused window |
-| `Option` + `Ctr` + `Q` | Quit Paneru |
+| `Cmd` + `Option` + `V` | Toggle floating/tiled |
+| `Cmd` + `Option` + `O` | Stack the window into the neighbouring column |
+| `Cmd` + `Option` + `Shift` + `O` | Pull a window out of a stack |
+| `Cmd` + `Option` + `B` | Balance all columns to the focused window's width |
+| `Cmd` + `Option` + `Shift` + `E` | Equalize the heights in a stack |
+| `Cmd` + `Option` + `Shift` + `C` | Copy a Paneru window rule for the focused window |
+| `Cmd` + `Option` + `Ctrl` + `Q` | Quit Paneru |
 
 ### Apps & misc
 
 | Shortcut | Action |
 |---|---|
-| `Option` + `Shift` + `R` | Restart Paneru (config also live-reloads on save) |
+| `Cmd` + `Option` + `Shift` + `R` | Restart Paneru (config also live-reloads on save) |
 
 > **Removed vs. the Rift/AeroSpace setups:** fine-grained resizing
 > (`Option+Ctrl+arrows` step-resize), fullscreen toggles, per-Space tiling
@@ -127,9 +127,9 @@ moves. Two things make it feel native:
   for macOS relocating windows that move fully off-screen, not a design choice.
 - `[swipe] continuous = false` bounds the strip to its left/right-most window,
   so a full 3-finger swipe lands exactly on the next full-width window
-  (page-flip), and `auto_center = true` keeps the focused window centered.
+  (page-flip).
 - `[options] preset_column_widths = [0.3, 0.5, 1.0]` cycling and
-  `window_fullwidth` (Option+M) cover on-demand sizing; new windows are
+  `window_fullwidth` (Cmd+Option+M) cover on-demand sizing; new windows are
   appended at the end and never resize existing ones.
 
 ## The menu bar
@@ -195,8 +195,8 @@ paneru query state --json                   # must print a JSON snapshot (servic
   windows to a neighbouring display. If you must run side-by-side, the
   `horizontal_mouse_warp` option makes a vertical arrangement of displays
   "feel" horizontal for the mouse.
-- A window can be sent to another display with `Cmd+Option+→` (follow) or
-  `Cmd+Option+←` (stay), and `Cmd+Option+↑` warps the mouse there.
+- A window can be sent to another display with `Cmd+Option+Ctrl+→` (follow) or
+  `Cmd+Option+Ctrl+←` (stay), and `Cmd+Option+Ctrl+↑` warps the mouse there.
 
 ## Uninstall
 
