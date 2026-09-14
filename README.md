@@ -73,6 +73,8 @@ Paneru modifiers: **Option** (Alt), **Shift**, **Ctrl**, **Cmd**.
 |---|---|
 | `Option` + `1..9` | Switch virtual workspace |
 | `Option` + `Shift` + `1..9` | Move window to virtual workspace |
+| `Option` + `Ctrl` + `↑`/`↓` | Switch to previous/next virtual workspace |
+| `Option` + `Ctrl` + `Shift` + `↑`/`↓` | Move window to prev/next virtual workspace (and follow) |
 | 3-finger swipe (↑ / ↓) | Switch virtual workspace rows (trackpad) |
 | `Option` + `Tab` | Focus the last-focused window on this workspace |
 
