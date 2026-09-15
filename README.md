@@ -31,7 +31,8 @@ The installer runs these steps from `scripts/`:
 | `install-deps` | Install Homebrew if missing, tccutil-rs |
 | `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Paneru draws its indicator in it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
-| `install-paneru` | Install Paneru (Homebrew core) + write `~/.config/paneru/paneru.toml` + install its launchd service |
+| `install-paneru` | Install Paneru (Homebrew core) + write `~/.config/paneru/init.lua` + install its launchd service |
+| `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and build the macOS cheat-sheet viewer app (Cmd+Shift+?) |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
 | `enable-services` | Start Paneru |
 
@@ -122,6 +123,28 @@ window in the same lane), **Ctrl**.
 | Shortcut | Action |
 |---|---|
 | `Cmd` + `Option` + `Shift` + `R` | Restart Paneru (config also live-reloads on save) |
+| `Cmd` + `Shift` + `?` | Show the shortcut cheat sheet (regenerates the JSON from `init.lua`, then opens `mac-cheatsheet-viewer`) |
+
+### Shortcut cheat sheet (Cmd+Shift+?)
+
+`Cmd+Shift+?` runs `display-shortcuts`, which regenerates the cheat-sheet JSON
+from the live Paneru config and opens it in `mac-cheatsheet-viewer`, a
+borderless always-on-top overlay (Esc / Cmd+W to close). The pieces:
+
+- `helpers/generate-shortcuts-json` — parses the `BINDINGS` table in
+  `~/.config/paneru/init.lua`, humanizes the chords, and emits
+  `~/.config/paneru/cheatsheet.json` (curated action labels; unknown bindings
+  fall back to their command name).
+- `helpers/display-shortcuts` — runs the generator and opens the viewer.
+- `helpers/mac-cheatsheet-viewer/` — Tauri app (static vanilla frontend, no
+  npm) whose CLI arg is the JSON path; validates it strictly
+  (`cheatsheet-core` crate) and renders it as bordered groups.
+- Paneru itself runs the launcher via its Lua API
+  (`paneru.exec`), which is why the config is `init.lua` (a Lua config
+  replaces the legacy `paneru.toml`; TOML bindings cannot launch scripts).
+
+Installed helpers live in `~/.config/mac-scrolling-wm/helpers/` (copied on
+`install`, removed by `uninstall`).
 
 > **Removed vs. the Rift/AeroSpace setups:** fine-grained resizing
 > (`Option+Ctrl+arrows` step-resize), fullscreen toggles, per-Space tiling
@@ -139,27 +162,27 @@ moves. Two things make it feel native:
 - Paneru keeps a thin **sliver** of each off-screen window visible at the
   screen edge (`sliver_width` / `sliver_height` in the config) — a workaround
   for macOS relocating windows that move fully off-screen, not a design choice.
-- `[swipe] continuous = false` bounds the strip to its left/right-most window,
+- `swipe.continuous = false` bounds the strip to its left/right-most window,
   so a full 3-finger swipe lands exactly on the next full-width window
   (page-flip).
-- `[options] preset_column_widths = [0.3, 0.5, 1.0]` cycling and
+- `options.preset_column_widths = { 0.3, 0.5, 1.0 }` cycling and
   `window_fullwidth` (Cmd+Option+M) cover on-demand sizing; new windows are
   appended at the end and never resize existing ones.
 
 ## The menu bar
 
 - The **native macOS menu bar** is kept. The menu-bar workspace indicator is
-  **disabled by default** (`[decorations]` in `~/.config/paneru/paneru.toml`,
+  **disabled by default** (`decorations` in `~/.config/paneru/init.lua`,
   `workspace_menu_status = false`) because Paneru < the fix in
   [karinushka/paneru#390](https://github.com/karinushka/paneru/issues/390)
   hosts a live view in the status item, and its AppKit redraw loop starves the
   run loop that services Paneru's `CGEventTap` — keybindings silently die after
   leaving native fullscreen. A brief status popup still announces the active
   workspace on switch; re-enable the indicator once a Paneru release ships #390.
-- **Focus cues**: an active-window border (`[decorations.active.border]`, Nord
+- **Focus cues**: an active-window border (`decorations.active.border`, Nord
   blue) replaces JankyBorders — no extra bar process needed. Inactive-window
-  dimming uses native macOS (`[decorations.inactive.dim]`).
-- **Top gap:** `[padding].top` defaults to 15px in the config.
+  dimming uses native macOS (`decorations.inactive.dim`).
+- **Top gap:** `padding.top` defaults to 15px in the config.
 
 ## No title bars (the macOS reality)
 
@@ -295,14 +318,17 @@ tested), Accessibility may need one manual grant inside the guest.
 install                   Main installer (runs scripts/*)
 uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
-config/paneru/            Paneru config (sliding strip, bindings, rules)
+config/paneru/            Paneru config (sliding strip, bindings, rules) — init.lua
 config/ghostty/           Ghostty config (frameless title bar)
+helpers/                  shortcut cheat-sheet: mac-cheatsheet-viewer (Tauri),
+                          generate-shortcuts-json, display-shortcuts
 tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
-Configs are installed to `~/.config/{paneru,ghostty}`;
+Configs are installed to `~/.config/{paneru,ghostty}` (plus shortcut helpers
+under `~/.config/mac-scrolling-wm/`);
 existing files are backed up (`.bak`) before overwriting, and Paneru
-hot-reloads `~/.config/paneru/paneru.toml`, so edits apply live.
+hot-reloads `~/.config/paneru/init.lua`, so edits apply live.
 
 > **Note on the history:** an early version of this installer targeted
 > AeroSpace (i3-style tree tiler) with AeroSpaceBar in the menu bar; a later

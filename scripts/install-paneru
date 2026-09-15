@@ -55,15 +55,16 @@ esac
 # ─────────────────────────────────────────────────────────────
 mkdir -p ~/.config/paneru
 
-if [ -f ~/.config/paneru/paneru.toml ]; then
-	note "Existing config found at ~/.config/paneru/paneru.toml — backing up"
-	cp ~/.config/paneru/paneru.toml ~/.config/paneru/paneru.toml.bak
+if [ -f ~/.config/paneru/init.lua ]; then
+	note "Existing config found at ~/.config/paneru/init.lua — backing up"
+	cp ~/.config/paneru/init.lua ~/.config/paneru/init.lua.bak
 fi
 
-cp "$REPO_ROOT/config/paneru/paneru.toml" ~/.config/paneru/paneru.toml
-ok "Paneru config installed to ~/.config/paneru/paneru.toml"
+cp "$REPO_ROOT/config/paneru/init.lua" ~/.config/paneru/init.lua
+ok "Paneru config installed to ~/.config/paneru/init.lua"
 note "Menu-bar workspace indicator is off (upstream event-tap starvation bug, karinushka/paneru#390);"
 note "the popup still shows the active workspace. Re-enable after a Paneru release ships the fix."
+note "Cmd+Shift+? opens the shortcut cheat sheet via the helper above."
 
 # ─────────────────────────────────────────────────────────────
 # launchd service (applies Accessibility before start)
