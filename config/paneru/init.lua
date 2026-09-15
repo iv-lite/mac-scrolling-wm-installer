@@ -146,6 +146,13 @@ paneru.setup {
 -- window, teleports it (AppleScript/Accessibility) onto the target display's
 -- frame, brings focus there so Paneru's active-display marker rotates, and
 -- re-manages it so it is adopted by the target display's strip.
+--
+-- While a move is mid-flight the focused window is *floating*. Paneru's Lua
+-- `display_of` resolves a window's display by strip membership, which lags
+-- the physical teleport, so both focus and move skip while the focused
+-- window is floating — that is what stops rapid re-presses from computing
+-- targets off a stale "current" display and bouncing windows back to the
+-- wrong monitor.
 
 local function filled(ws, wid)
   local win, disp = ws:window(wid), ws:display_of(wid)
@@ -185,6 +192,8 @@ end
 local function focus_display(ws, target)
   local focused = ws:focused()
   if not focused then return end
+  local win = ws:window(focused)
+  if win and win.floating then return end  -- a window move is in flight; don't jump
   local cur = ws:display_of(focused)
   local ids = ordered_displays(ws)
   if not cur or #ids < 2 then return end
@@ -212,6 +221,8 @@ end
 local function move_to_display(ws, target)
   local focused = ws:focused()
   if not focused then return end
+  local win = ws:window(focused)
+  if win and win.floating then return end  -- a move is already in flight (helper busy); ignore re-presses
   local cur = ws:display_of(focused)
   local ids = ordered_displays(ws)
   if not cur or #ids < 2 then return end
@@ -232,7 +243,7 @@ local function move_to_display(ws, target)
     paneru.flash("move-display: target display has no windows", 3.0)
     return
   end
-  paneru.exec(MOVE_HELPER, { string.format("%d %d %d %d", t.x, t.y, t.width, t.height) })
+  paneru.exec(MOVE_HELPER, { string.format("%d %d %d %d %d", t.x, t.y, t.width, t.height, t.id) })
 end
 
 -- ─── Keybindings ───

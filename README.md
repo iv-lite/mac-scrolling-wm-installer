@@ -119,7 +119,13 @@ window in the same lane), **Ctrl**.
 > the script floats the focused window, teleports it onto the target
 > display's frame via Accessibility, clicks it so macOS switches its
 > active display (Paneru's active-display marker rotates along), and
-> re-manages it so it is adopted by the target display's strip.
+> re-manages it so it is adopted by the target display's strip. It then
+> **verifies the adoption** (`paneru query state`), polling the active
+> display instead of sleeping so the OS's lagging display-change
+> notification can't bounce the window back onto the source monitor. While
+> a move is mid-flight the focused window is floating, and both the move and
+> the focus shortcuts skip re-presses so targets are never computed off a
+> stale "current" display.
 >
 > One-time cost: grant Accessibility access to System Events (macOS
 > prompts on first teleport). If the target display has no windows at all,
@@ -158,7 +164,8 @@ borderless always-on-top overlay (Esc / Cmd+W to close). The pieces:
 - `helpers/move-display` — the 3+ display window mover (see "Displays
   (multi-monitor)"): floats the focused window, teleports it onto the target
   display via Accessibility, clicks it to rotate Paneru's active-display
-  marker, and re-manages it. Needs one-time Accessibility access for System
+  marker, and re-manages it, polling `paneru query state` to verify it was
+  adopted by the target strip. Needs one-time Accessibility access for System
   Events; logs to `move-display.log` next to itself.
 - `mac-cheatsheet-viewer` — a separate repo (`iv-lite/mac-cheatsheet-viewer`)
   holding the Tauri app (static vanilla frontend, no npm) whose CLI arg is the
