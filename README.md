@@ -93,24 +93,25 @@ window in the same lane), **Ctrl**.
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Ctrl` + `←` | Focus the previous display (moves the focused window there and follows) |
-| `Cmd` + `Ctrl` + `→` | Focus the next display (moves the focused window there and follows) |
-| `Cmd` + `Ctrl` + `Shift` + `←` | Move the focused window to the previous display (stay here) |
-| `Cmd` + `Ctrl` + `Shift` + `→` | Move the focused window to the next display (stay here) |
+| `Cmd` + `Ctrl` + `←` | Focus the previous display (window stays put) |
+| `Cmd` + `Ctrl` + `→` | Focus the next display (window stays put) |
+| `Cmd` + `Ctrl` + `Shift` + `←` | Move the focused window to the previous display (follow, maximized) |
+| `Cmd` + `Ctrl` + `Shift` + `→` | Move the focused window to the next display (follow, maximized) |
 | `Cmd` + `Ctrl` + `↑` | Warp the mouse to the next display |
 | `Cmd` + `Option` + `↑`/`↓` | Focus a column above/below — crosses displays when no window is there |
 | `Cmd` + `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
 
-> **Previous display is synthesized:** Paneru's only display commands are
-> `nextdisplay` / `nextdisplaysend`, which move to the *next* display and wrap
-> around (verified in Paneru's `argv` parser and
-> `QUERY_AND_SUBSCRIBE_FORMAT.md` — there is no previous-direction variant).
-> The four shortcuts above are function binds in `config/paneru/init.lua` that
-> synthesize "previous" by repeating `nextdisplay` (displays − 1) times, and
-> they full-width the window before the hop so it lands maximized on the other
-> display (Paneru carries the source width ratio across the move). With exactly
-> two displays, previous and next are the same display, so `Cmd+Ctrl+Shift+←`
-> is an alias of `Cmd+Ctrl+Shift+→`.
+> **Previous display is synthesized:** Paneru has no previous-direction
+> display command (verified in Paneru's `argv` parser and
+> `QUERY_AND_SUBSCRIBE_FORMAT.md`), so the focus-only shortcuts use a
+> geometry-based Lua helper that orders displays by their macOS arrangement
+> position (`y` then `x`) and picks the previous/next display via
+> `ws:focus` — no window is moved. The move-shortcut "previous" is
+> synthesized by repeating `window nextdisplay` (displays − 1) times, and
+> the window is full-widthed before the hop so it arrives maximized (Paneru
+> carries the source width ratio across the move). With exactly two displays,
+> previous and next are the same display, so `Cmd+Ctrl+Shift+←` is an alias
+> of `Cmd+Ctrl+Shift+→`.
 
 ### Window state
 

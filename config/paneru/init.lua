@@ -132,18 +132,20 @@ paneru.setup {
 }
 
 -- ─── Display navigation ───
--- Paneru only ships `nextdisplay` / `nextdisplaysend` (wrap-around; no
--- previous-direction variant), so "previous" is synthesized as `nextdisplay`
--- repeated (displays - 1) times. Every move maximizes the window first: Paneru
--- carries a moved window's source width ratio to the target display, so
--- full-width on the source lands it maximized on the target.
+-- Cmd+Ctrl+←/→ shift focus to another display without moving the window,
+-- using geometric display order (sorted by macOS arrangement position).
+-- Cmd+Ctrl+Shift+←/→ moves the focused window to the other display and
+-- follows it; "previous" is synthesized as `nextdisplay` repeated
+-- (displays − 1) times since paneru has no previous-direction command.
+-- Every move maximizes the window first: full-width on the source display
+-- lands it maximized on the target (Paneru carries the source width ratio
+-- across the hop).
 local function filled(ws, wid)
   local win, disp = ws:window(wid), ws:display_of(wid)
   if not win or not disp then return true end
-  return win.frame.width >= disp.width - 32 -- outer padding 15+15, +2 epsilon
+  return win.frame.width >= disp.width - 32
 end
 
--- Best-effort distinct display count (a bare display with no windows is missed).
 local function display_count(ws)
   local seen, count = {}, 0
   for _, w in ipairs(ws:windows()) do
@@ -153,7 +155,8 @@ local function display_count(ws)
   return count
 end
 
-local function move_to_display(ws, target) -- move window there and follow
+-- Move a window to the other display and follow it.
+local function move_to_display(ws, target)
   local wid = ws:focused()
   if wid and not filled(ws, wid) then paneru.run("window fullwidth") end
   local hops = 1
@@ -161,18 +164,59 @@ local function move_to_display(ws, target) -- move window there and follow
   for _ = 1, hops do paneru.run("window nextdisplay") end
 end
 
-local function send_to_other_display(ws) -- move the window, stay on this display
-  local wid = ws:focused()
-  if wid and not filled(ws, wid) then paneru.run("window fullwidth") end
-  paneru.run("window nextdisplaysend")
+-- Pure focus-only helpers (no window movement): displays are ordered by their
+-- macOS arrangement position (y then x); previous = smaller y, next = larger y,
+-- matching horizontal_mouse_warp = −1 (right edge → lower display).
+local function ordered_displays(ws)
+  local displays = {}
+  for _, w in ipairs(ws:windows()) do
+    local d = ws:display_of(w.id)
+    if d and not displays[d.id] then
+      displays[d.id] = { id = d.id, x = d.x, y = d.y }
+    end
+  end
+  local ids = {}
+  for id in pairs(displays) do ids[#ids + 1] = id end
+  table.sort(ids, function(a, b)
+    if displays[a].y ~= displays[b].y then return displays[a].y < displays[b].y end
+    return displays[a].x < displays[b].x
+  end)
+  return ids
 end
 
--- Cmd+Ctrl+←/→ move focus between displays; with two displays "previous"
--- and "next" are the same display, so Shift+← aliases Shift+→.
-paneru.bind("cmd + ctrl - leftarrow", function(ws) move_to_display(ws, "previous") end)
-paneru.bind("cmd + ctrl - rightarrow", function(ws) move_to_display(ws, "next") end)
-paneru.bind("cmd + ctrl + shift - leftarrow", send_to_other_display)
-paneru.bind("cmd + ctrl + shift - rightarrow", send_to_other_display)
+local function focused_on_display(ws, display_id)
+  for _, w in ipairs(ws:windows()) do
+    local d = ws:display_of(w.id)
+    if d and d.id == display_id and w.focused then return w.id end
+  end
+  for _, w in ipairs(ws:windows()) do
+    local d = ws:display_of(w.id)
+    if d and d.id == display_id then return w.id end
+  end
+end
+
+local function focus_display(ws, target)
+  local focused = ws:focused()
+  if not focused then return end
+  local cur = ws:display_of(focused)
+  local ids = ordered_displays(ws)
+  if not cur or #ids < 2 then return end
+  local idx
+  for i, id in ipairs(ids) do if id == cur.id then idx = i break end end
+  if not idx then return end
+  local n = #ids
+  local step = (target == "previous") and (n - 1) or 1
+  local target_id = ids[((idx - 1 + step) % n) + 1]
+  local win = focused_on_display(ws, target_id)
+  if win then return ws:focus(win) end
+end
+
+-- Focus only: window stays put, no maximize.
+paneru.bind("cmd + ctrl - leftarrow", function(ws) return focus_display(ws, "previous") end)
+paneru.bind("cmd + ctrl - rightarrow", function(ws) return focus_display(ws, "next") end)
+-- Move window + follow, with maximize-before-move.
+paneru.bind("cmd + ctrl + shift - leftarrow", function(ws) move_to_display(ws, "previous") end)
+paneru.bind("cmd + ctrl + shift - rightarrow", function(ws) move_to_display(ws, "next") end)
 
 -- Cmd+Shift+? (slash key) opens the shortcut cheat sheet: regenerate the JSON
 -- from BINDINGS above, then show it in mac-cheatsheet-viewer.
