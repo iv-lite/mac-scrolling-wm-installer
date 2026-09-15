@@ -139,11 +139,14 @@ borderless always-on-top overlay (Esc / Cmd+W to close). The pieces:
 - `mac-cheatsheet-viewer` — a separate repo (`iv-lite/mac-cheatsheet-viewer`)
   holding the Tauri app (static vanilla frontend, no npm) whose CLI arg is the
   JSON path; it validates strictly (`cheatsheet-core` crate) and renders
-  bordered groups. `install-helpers` fetches the latest **release** (`.app.zip`)
-  via the GitHub API by default (`MAC_WM_VIEWER_REPO`/`MAC_WM_VIEWER_TAG`
-  override the source); a CI workflow in that repo builds DMG + `.app` releases
-  for every `v*` tag. If the fetch fails, it falls back to a local source build
-  at `../mac-cheatsheet-viewer` (now only used as a fallback).
+  bordered groups. `install-helpers` fetches the `.app.zip` of the **newest
+  release in the GitHub release list** (the special-latest endpoint is never
+  used; prereleases are included, drafts excluded, releases without the asset
+  skipped) and overwrites the installed bundle on every run.
+  `MAC_WM_VIEWER_REPO` changes the repo, `MAC_WM_VIEWER_TAG` pins an exact
+  tag; a CI workflow in that repo builds DMG + `.app` releases for every `v*`
+  tag. If the fetch fails, it falls back to a local source build at
+  `../mac-cheatsheet-viewer`.
 - Paneru itself runs the launcher via its Lua API
   (`paneru.exec`), which is why the config is `init.lua` (a Lua config
   replaces the legacy `paneru.toml`; TOML bindings cannot launch scripts).
