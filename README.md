@@ -41,7 +41,7 @@ The installer runs these steps from `scripts/`:
    separate-Spaces setting.
 2. Paneru tiles in an **niri-style sliding strip**; new windows are appended at
    the end of the strip and **never resize existing windows**. Virtual
-   workspaces `1..9` are created on demand.
+   workspaces are **dynamic rows** created on demand (and reaped when empty).
 3. **Paneru** shows the active virtual workspace in a brief popup on switch.
 4. If the Accessibility grant failed, grant it manually:
    System Settings → Privacy & Security → Accessibility (enable `paneru`,
@@ -51,8 +51,9 @@ The installer runs these steps from `scripts/`:
 
 ## Keybindings
 
-Paneru modifiers: **Cmd+Option** (columns), **Cmd+Ctrl** (displays), **Shift**
-(**moves** the focused window in the same lane), **Ctrl**.
+Paneru modifiers: **Cmd+Option** (columns), **Cmd+Ctrl** (displays),
+**Ctrl+Option** (virtual workspace rows), **Shift** (**moves** the focused
+window in the same lane), **Ctrl**.
 
 ### Navigation & layout
 
@@ -70,18 +71,18 @@ Paneru modifiers: **Cmd+Option** (columns), **Cmd+Ctrl** (displays), **Shift**
 > Focus **follows the mouse**, and keyboard navigation warps the cursor to the
 > focused window (`focus_follows_mouse` / `mouse_follows_focus` in `[options]`).
 
-### Workspaces (1-9)
+### Workspaces (dynamic rows)
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Option` + `1..9` | Switch virtual workspace |
-| `Cmd` + `Option` + `Shift` + `1..9` | Move window to virtual workspace |
+| `Ctrl` + `Option` + `↑` / `↓` | Switch to the previous/next virtual workspace row (rows are created on demand past the last one) |
+| `Ctrl` + `Option` + `Shift` + `↑` / `↓` | Move the focused window to the previous/next row and follow |
 | 3-finger swipe (↑ / ↓) | Switch virtual workspace rows (trackpad) |
 | `Cmd` + `Option` + `Tab` | Focus the last-focused window on this workspace |
 
-> Keyboard cycling between *adjacent* virtual workspaces was dropped when
-> `Cmd+Ctrl` became the display lane; switch directly with `1..9` or swipe
-> vertically.
+> Workspace rows are **dynamic**: a new row spawns when you cross the last one
+> and vanishes once it's empty (`create_virtual_workspace_automatically` /
+> `reap_empty_workspaces` in `[options]`).
 
 > Paneru virtual workspaces are stacks of horizontal strips *inside* a native
 > macOS workspace. Each native Space (per display, with separate Spaces on) has
@@ -96,6 +97,13 @@ Paneru modifiers: **Cmd+Option** (columns), **Cmd+Ctrl** (displays), **Shift**
 | `Cmd` + `Ctrl` + `↑` | Warp the mouse to the next display |
 | `Cmd` + `Option` + `↑`/`↓` | Focus a column above/below — crosses displays when no window is there |
 | `Cmd` + `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
+
+> **No "previous display" shortcut:** Paneru's only display commands are
+> `nextdisplay` / `nextdisplaysend`, which move to the *next* display and wrap
+> around (verified in Paneru's `argv` parser and
+> `QUERY_AND_SUBSCRIBE_FORMAT.md` — there is no previous-direction variant).
+> `Cmd+Ctrl+←`/`Cmd+Ctrl+Shift+←` are therefore intentionally unbound; with
+> exactly two displays, `Cmd+Ctrl+→` already covers both directions.
 
 ### Window state
 
