@@ -1,0 +1,29 @@
+#!/bin/bash
+# display-shortcuts — regenerate the shortcut cheat-sheet JSON from the live
+# Paneru config and open it in mac-cheatsheet-viewer.
+#
+# Bound to Cmd+Shift+? by config/paneru/init.lua (paneru.exec this script).
+set -euo pipefail
+
+HELPERS_DIR="${MAC_WM_HELPERS_DIR:-$HOME/.config/mac-scrolling-wm/helpers}"
+APP="$HELPERS_DIR/mac-cheatsheet-viewer.app"
+GEN="$HELPERS_DIR/generate-shortcuts-json"
+JSON="$HOME/.config/paneru/cheatsheet.json"
+
+if [[ ! -x "$GEN" ]]; then
+  echo "display-shortcuts: $GEN not found — re-run the installer to restore helpers." >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "$JSON")"
+"$GEN" --output "$JSON"
+
+if [[ ! -d "$APP" ]]; then
+  echo "display-shortcuts: mac-cheatsheet-viewer.app is not built." >&2
+  echo "Re-run the installer (install-helpers builds it), or build manually:" >&2
+  echo "  cd <repo>/helpers/mac-cheatsheet-viewer" >&2
+  echo "  cargo install tauri-cli && tauri icon src-tauri/icons/app-icon.png && tauri build -b app" >&2
+  exit 1
+fi
+
+open -a "$APP" --args "$JSON"
