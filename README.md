@@ -106,12 +106,15 @@ window in the same lane), **Ctrl**.
 > `QUERY_AND_SUBSCRIBE_FORMAT.md`), so the focus-only shortcuts use a
 > geometry-based Lua helper that orders displays by their macOS arrangement
 > position (`y` then `x`) and picks the previous/next display via
-> `ws:focus` — no window is moved. The move-shortcut "previous" is
-> synthesized by repeating `window nextdisplay` (displays − 1) times, and
-> the window is full-widthed before the hop so it arrives maximized (Paneru
-> carries the source width ratio across the move). With exactly two displays,
-> previous and next are the same display, so `Cmd+Ctrl+Shift+←` is an alias
-> of `Cmd+Ctrl+Shift+→`.
+> `ws:focus` — no window is moved. The move-shortcuts maximize the window
+> first (full-width on the source lands it maximized on the target), then
+> hop via `window nextdisplay`. With exactly two displays, a single hop
+> suffices. With three or more, paneru's internal hop order (driven by
+> `CGGetActiveDisplayList`) does not match the geometric arrangement, so
+> on first use the helper **probes** this order by moving the focused
+> window through each display once, caches the mapping in `paneru.state`,
+> and computes the exact hop count on subsequent moves. The cache is
+> invalidated when the set of connected displays changes.
 
 ### Window state
 
