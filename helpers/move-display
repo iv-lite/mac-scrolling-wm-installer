@@ -1,0 +1,84 @@
+#!/bin/bash
+# move-display — physically move the focused window to another display.
+#
+# Paneru can only move a window to a single fixed display ("other().next()"
+# in its ECS), which cannot reach every monitor on a 3+ display setup. For
+# those setups this helper is the mover. It is invoked by
+# config/paneru/init.lua (Cmd+Ctrl+Shift+arrows) and must be installed at
+# $HOME/.config/mac-scrolling-wm/helpers/move-display.
+#
+# It performs the move as a four-step dance:
+#   1. `window manage` — float the focused window so Paneru stops pinning it
+#      to its current display's strip.
+#   2. AppleScript/Accessibility — teleport the frontmost window onto the
+#      target display's frame and click its center, so macOS switches its
+#      active display (Paneru's active-display marker rotates along).
+#   3. Wait for macOS / Paneru to observe the focus cross.
+#   4. `window manage` again — re-manage the window; it is now adopted by the
+#      target display's strip (re-manage appends to the *active* strip).
+#
+# Usage: move-display "<x> <y> <w> <h>"
+# The frame is the target display's full bounds in CG coordinates.
+#
+# Needs Accessibility access for System Events (one-time macOS prompt).
+# paneru.exec swallows stdout/stderr, so every run is also logged.
+set -euo pipefail
+
+FRAME="$1"
+DEFAULT_DIR="${MAC_WM_HELPERS_DIR:-$HOME/.config/mac-scrolling-wm/helpers}"
+LOG="$DEFAULT_DIR/move-display.log"
+PANERU="${PANERU_BIN:-/opt/homebrew/bin/paneru}"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >>"$LOG"; }
+
+mkdir -p "$(dirname "$LOG")"
+log "run target=$FRAME"
+
+IFS=' ' read -r tx ty tw th <<<"$FRAME"
+
+# 1. Float the focused window (toggle tiled/floating on the focused window).
+if ! "$PANERU" send-cmd window manage; then
+  log "error: 'window manage' (float) failed"
+  exit 1
+fi
+sleep 0.3
+
+# 2. Teleport the frontmost window onto the target frame and click its center.
+if ! osascript - "$tx" "$ty" "$tw" "$th" <<'EOF'
+on run argv
+  set tx to item 1 of argv as number
+  set ty to item 2 of argv as number
+  set tw to item 3 of argv as number
+  set th4 to item 4 of argv as number
+  tell application "System Events"
+    set frontApp to name of first application process whose frontmost is true
+    tell process frontApp
+      if (count of windows) is 0 then
+        error "no windows"
+      end if
+      set fw to front window
+      set position of fw to {tx, ty}
+      set size of fw to {tw, th4}
+      set {px, py} to position of fw
+      set {pw, ph} to size of fw
+      click at {px + pw / 2, py + ph / 2}
+    end tell
+  end tell
+end run
+EOF
+then
+  log "error: osascript teleport failed"
+  exit 1
+fi
+
+# 3. Give macOS time to switch its active display and Paneru to rotate its
+#    active-display marker (both are OS-notification driven).
+sleep 1.5
+
+# 4. Re-manage: the window is adopted by the active (now target) strip.
+if ! "$PANERU" send-cmd window manage; then
+  log "error: 'window manage' (re-manage) failed"
+  exit 1
+fi
+
+log "done"

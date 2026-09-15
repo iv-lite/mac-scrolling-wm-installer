@@ -134,12 +134,18 @@ paneru.setup {
 -- ─── Display navigation ───
 -- Cmd+Ctrl+←/→ shift focus to another display without moving the window,
 -- using geometric display order (sorted by macOS arrangement position).
--- Cmd+Ctrl+Shift+←/→ moves the focused window to the other display and
--- follows it, with maximize-before-move. With 2 displays this is a single
--- nextdisplay hop. With 3+ displays the helper probes paneru's internal
--- (Bevy/CGDirectDisplayID) display order on first use by moving the
--- focused window through each display once, caches the mapping in
--- paneru.state, and computes the exact hop count on subsequent moves.
+-- Cmd+Ctrl+Shift+←/→ moves the focused window to the previous/next display
+-- and follows it.
+--
+-- Paneru itself can only move a window to a single fixed display
+-- (`other().next()` in its ECS), which on 3+ display setups cannot reach
+-- every monitor. With exactly two displays a single `nextdisplay` hop
+-- suffices (previous and next are the same display). With three or more the
+-- move goes through an external helper
+-- (~/.config/mac-scrolling-wm/helpers/move-display) that floats the focused
+-- window, teleports it (AppleScript/Accessibility) onto the target display's
+-- frame, brings focus there so Paneru's active-display marker rotates, and
+-- re-manages it so it is adopted by the target display's strip.
 
 local function filled(ws, wid)
   local win, disp = ws:window(wid), ws:display_of(wid)
@@ -147,7 +153,7 @@ local function filled(ws, wid)
   return win.frame.width >= disp.width - 32
 end
 
--- ─── Geometric display ordering (used by focus-only and cache validation) ───
+-- Geometric display ordering (used by focus-only and move targeting).
 local function ordered_displays(ws)
   local displays = {}
   for _, w in ipairs(ws:windows()) do
@@ -192,124 +198,41 @@ local function focus_display(ws, target)
   if win then return ws:focus(win) end
 end
 
--- ─── Bevy-order probe + cache (for move shortcuts with 3+ displays) ───
--- Paneru's `window nextdisplay` follows the internal Bevy entity spawn
--- order (driven by CGGetActiveDisplayList), which does NOT match the
--- geometric display arrangement.  To compute the correct hop count for
--- "previous"/"next" we must first discover this order by observing where
--- the window lands after each hop.  The result is cached in paneru.state
--- and invalidated when the set of display IDs changes (hot-plug).
-local CACHE_KEY = "display_bevy_order"
-local PROBE_KEY = "display_bevy_probe"
+-- Helper that physically moves the window to another display (float, AX
+-- teleport, focus to rotate the active marker, re-manage).
+local MOVE_HELPER = os.getenv("HOME") .. "/.config/mac-scrolling-wm/helpers/move-display"
 
-local function read_cache()
-  return paneru.state.get(CACHE_KEY)
+local function display_frame(ws, display_id)
+  for _, w in ipairs(ws:windows()) do
+    local d = ws:display_of(w.id)
+    if d and d.id == display_id then return d end
+  end
 end
 
-local function write_cache(geo, bevy)
-  paneru.state.set(CACHE_KEY, { geometric = geo, bevy = bevy })
-end
-
-local function validate_cache(ws, cache)
-  if not cache then return false end
-  local cur = {}
-  for _, id in ipairs(ordered_displays(ws)) do cur[id] = true end
-  for _, id in ipairs(cache.geometric) do
-    if not cur[id] then return false end
-  end
-  for id in pairs(cur) do
-    local found = false
-    for _, cid in ipairs(cache.geometric) do
-      if cid == id then found = true; break end
-    end
-    if not found then return false end
-  end
-  return true
-end
-
--- Move using the cached Bevy↔geometric mapping.
-local function move_with_cache(ws, target, cache)
-  local wid = ws:focused()
-  if not wid then return end
-  local cur = ws:display_of(wid)
-  if not cur then return end
-  local geo_idx
-  for i, id in ipairs(cache.geometric) do
-    if id == cur.id then geo_idx = i; break end
-  end
-  if not geo_idx then return end
-  local n = #cache.geometric
-  local step = (target == "previous") and (n - 1) or 1
-  local target_id = cache.geometric[((geo_idx - 1 + step) % n) + 1]
-  local bevy_cur, bevy_tgt
-  for i, id in ipairs(cache.bevy) do
-    if id == cur.id then bevy_cur = i end
-    if id == target_id then bevy_tgt = i end
-  end
-  if not bevy_cur or not bevy_tgt then return end
-  local hops = (bevy_tgt - bevy_cur) % n
-  if hops == 0 then return end
-  if not filled(ws, wid) then paneru.run("window fullwidth") end
-  for _ = 1, hops do paneru.run("window nextdisplay") end
-end
-
--- Start the probe: move the focused window through all displays once,
--- recording each landing display via the window_moved handler.
-local function start_probe(ws, target)
-  local wid = ws:focused()
-  if not wid then return end
-  local cur = ws:display_of(wid)
-  if not cur then return end
-  local n = #ordered_displays(ws)
-  if n < 2 then return end
-  paneru.state.set(PROBE_KEY, {
-    window_id = wid,
-    order = { cur.id },
-    total = n,
-    target = target,
-  })
-  paneru.run("window nextdisplay")
-end
-
--- Probe observer: records where the window lands after each hop and, once
--- all displays have been seen, builds the cache and dispatches the real move.
-paneru.on("window_moved", function(event, ws)
-  local probe = paneru.state.get(PROBE_KEY)
-  if not probe then return end
-  if event.window_id ~= probe.window_id then return end
-  local disp = ws:display_of(event.window_id)
-  if not disp then
-    paneru.state.set(PROBE_KEY, nil)
-    return
-  end
-  table.insert(probe.order, disp.id)
-  if #probe.order >= probe.total then
-    local geo = ordered_displays(ws)
-    write_cache(geo, probe.order)
-    paneru.state.set(PROBE_KEY, nil)
-    move_with_cache(ws, probe.target, { geometric = geo, bevy = probe.order })
-  else
-    paneru.state.set(PROBE_KEY, probe)
-    paneru.run("window nextdisplay")
-  end
-end)
-
--- Move shortcut: N≤2 is a single hop (no probe needed); N≥3 uses the
--- cache-or-probe path.
 local function move_to_display(ws, target)
-  local n = #ordered_displays(ws)
-  if n <= 2 then
-    local wid = ws:focused()
-    if wid and not filled(ws, wid) then paneru.run("window fullwidth") end
+  local focused = ws:focused()
+  if not focused then return end
+  local cur = ws:display_of(focused)
+  local ids = ordered_displays(ws)
+  if not cur or #ids < 2 then return end
+  local n = #ids
+  if n == 2 then
+    if not filled(ws, focused) then paneru.run("window fullwidth") end
     paneru.run("window nextdisplay")
     return
   end
-  local cache = read_cache()
-  if cache and validate_cache(ws, cache) then
-    move_with_cache(ws, target, cache)
-  else
-    start_probe(ws, target)
+  local idx
+  for i, id in ipairs(ids) do if id == cur.id then idx = i break end end
+  if not idx then return end
+  local step = (target == "previous") and (n - 1) or 1
+  local target_id = ids[((idx - 1 + step) % n) + 1]
+  if target_id == cur.id then return end
+  local t = display_frame(ws, target_id)
+  if not t then
+    paneru.flash("move-display: target display has no windows", 3.0)
+    return
   end
+  paneru.exec(MOVE_HELPER, { string.format("%d %d %d %d", t.x, t.y, t.width, t.height) })
 end
 
 -- ─── Keybindings ───

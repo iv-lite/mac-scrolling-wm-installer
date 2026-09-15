@@ -106,15 +106,24 @@ window in the same lane), **Ctrl**.
 > `QUERY_AND_SUBSCRIBE_FORMAT.md`), so the focus-only shortcuts use a
 > geometry-based Lua helper that orders displays by their macOS arrangement
 > position (`y` then `x`) and picks the previous/next display via
-> `ws:focus` — no window is moved. The move-shortcuts maximize the window
-> first (full-width on the source lands it maximized on the target), then
-> hop via `window nextdisplay`. With exactly two displays, a single hop
-> suffices. With three or more, paneru's internal hop order (driven by
-> `CGGetActiveDisplayList`) does not match the geometric arrangement, so
-> on first use the helper **probes** this order by moving the focused
-> window through each display once, caches the mapping in `paneru.state`,
-> and computes the exact hop count on subsequent moves. The cache is
-> invalidated when the set of connected displays changes.
+> `ws:focus` — no window is moved.
+>
+> **Moving to any display needs a helper on 3+ monitors.** Paneru's engine
+> can only move a window to a single fixed display (`other().next()`, the
+> first spawned display that isn't the active one), which cannot reach
+> every monitor on a three-or-more display setup — pressing the move
+> shortcut just hops between two of them. With exactly two displays that
+> one hop is correct (previous and next are the same display), so the
+> move shortcuts keep using `window nextdisplay` there. With three or more
+> they delegate to `~/.config/mac-scrolling-wm/helpers/move-display`:
+> the script floats the focused window, teleports it onto the target
+> display's frame via Accessibility, clicks it so macOS switches its
+> active display (Paneru's active-display marker rotates along), and
+> re-manages it so it is adopted by the target display's strip.
+>
+> One-time cost: grant Accessibility access to System Events (macOS
+> prompts on first teleport). If the target display has no windows at all,
+> the move is a no-op with a flash message.
 
 ### Window state
 
@@ -146,6 +155,11 @@ borderless always-on-top overlay (Esc / Cmd+W to close). The pieces:
   `~/.config/paneru/cheatsheet.json` (curated action labels; unknown bindings
   fall back to their command name).
 - `helpers/display-shortcuts` — runs the generator and opens the viewer.
+- `helpers/move-display` — the 3+ display window mover (see "Displays
+  (multi-monitor)"): floats the focused window, teleports it onto the target
+  display via Accessibility, clicks it to rotate Paneru's active-display
+  marker, and re-manages it. Needs one-time Accessibility access for System
+  Events; logs to `move-display.log` next to itself.
 - `mac-cheatsheet-viewer` — a separate repo (`iv-lite/mac-cheatsheet-viewer`)
   holding the Tauri app (static vanilla frontend, no npm) whose CLI arg is the
   JSON path; it validates strictly (`cheatsheet-core` crate) and renders
