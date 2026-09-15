@@ -104,7 +104,7 @@ paneru.setup {
     active = {
       border = {
         enabled = true,
-        color = "#89b4fa",
+        color = "#2b303cd6",
         opacity = 1.0,
         width = 4.0,
         radius = "auto",
