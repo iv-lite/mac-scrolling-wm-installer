@@ -66,6 +66,7 @@ run_step install-deps
 run_step configure-system
 run_step install-ghostty
 run_step install-rift
+run_step install-hammerspoon
 run_step install-borders
 run_step install-helpers
 run_step grant-permissions
@@ -97,6 +98,8 @@ fi
 echo "     - Rift tiles windows on a niri-style scrolling strip"
 echo "     - Rift's native menu bar shows workspaces 1-9"
 echo "     - JankyBorders draws a border around the focused window"
+echo "     - Moving the mouse to a display's left/right edge warps it to the"
+echo "       next monitor, cycling — via Hammerspoon's WarpMouse.spoon"
 echo "     - Ghostty runs frameless (title bar hidden)"
 echo "     - If accessibility grants failed above, grant them manually:"
 echo "       System Settings → Privacy & Security → Accessibility"

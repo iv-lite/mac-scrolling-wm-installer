@@ -22,6 +22,9 @@ echo ""
 echo "  This will:"
 echo "   • Stop/remove Rift + JankyBorders (plus legacy Paneru, rift-swipe,"
 echo "     AeroSpace/AeroSpaceBar/Aegis if present)"
+echo "   • Remove WarpMouse.spoon and its entry from ~/.hammerspoon/init.lua"
+echo "     (Hammerspoon itself is left installed/running — it's a"
+echo "     general-purpose tool you may use for other things)"
 echo "   • Revoke Accessibility permissions"
 echo "   • Move configs to ~/.config/backups (not deleted, incl. shortcut helpers)"
 echo "   • Uninstall brew packages (you'll choose which to keep)"
@@ -58,6 +61,19 @@ fi
 if command -v borders >/dev/null 2>&1; then
 	brew services stop borders >/dev/null 2>&1 || true
 	ok "JankyBorders service stopped"
+fi
+
+# WarpMouse.spoon — remove only what we added (the Spoon directory and our
+# marker-delimited block in ~/.hammerspoon/init.lua), leaving Hammerspoon
+# itself and any other config the user has there untouched.
+if [ -d ~/.hammerspoon/Spoons/WarpMouse.spoon ]; then
+	rm -rf ~/.hammerspoon/Spoons/WarpMouse.spoon
+	ok "WarpMouse.spoon removed"
+fi
+if [ -f ~/.hammerspoon/init.lua ] && grep -qF -- "-- >>> aerospace-installer: WarpMouse.spoon" ~/.hammerspoon/init.lua; then
+	sed -i '' '/-- >>> aerospace-installer: WarpMouse.spoon/,/-- <<< aerospace-installer/d' ~/.hammerspoon/init.lua
+	ok "Removed WarpMouse.spoon entry from ~/.hammerspoon/init.lua"
+	note "Reload Hammerspoon's config (menu bar icon → Reload Config) to apply"
 fi
 
 # Legacy: rift-swipe LaunchAgent (binary lived in ~/.config/rift, removed below)
@@ -130,6 +146,9 @@ if command -v tccutil-rs >/dev/null 2>&1; then
 			tccutil-rs revoke --user Accessibility "$bin" >/dev/null 2>&1 || true
 		fi
 	done
+	# Hammerspoon's own Accessibility grant is intentionally left alone —
+	# it's a general-purpose tool the user may use for other things, not
+	# something this installer owns.
 	ok "Accessibility grants revoked (best-effort)"
 else
 	warn "tccutil-rs not installed — skip revoking (also fine)"
@@ -210,6 +229,7 @@ if command -v brew >/dev/null 2>&1; then
 	add_pkg aerospacebar cask    rdrkr/tap            # legacy
 	add_pkg tccutil-rs   formula uinaf/tap
 	add_pkg ghostty      cask
+	add_pkg hammerspoon  cask
 
 	if [ "$n" -eq 0 ]; then
 		warn "No packages from this setup are installed — nothing to uninstall."

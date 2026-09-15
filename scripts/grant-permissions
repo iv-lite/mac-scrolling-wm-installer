@@ -13,36 +13,36 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 fail() { echo "  ${RED}✗ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
-# Grant Accessibility to CLI binaries (invisible in System Settings)
+# Grant a TCC service to CLI binaries (invisible in System Settings)
 # 1. user DB via tccutil-rs (no sudo, no SIP disable)
 # 2. system DB with sudo as fallback
 # 3. manual instructions as last resort
 # ─────────────────────────────────────────────────────────────
 grant() {
-	local bin="$1"
+	local service="$1" bin="$2" label="${3:-$1}"
 	if [ -z "$bin" ]; then return 0; fi
 	if [ ! -e "$bin" ]; then
 		warn "$bin not found — skipping"
 		return 0
 	fi
 	if command -v tccutil-rs >/dev/null 2>&1; then
-		if tccutil-rs grant --user Accessibility "$bin" >/dev/null 2>&1; then
-			ok "Accessibility granted to $bin (user db)"
+		if tccutil-rs grant --user "$service" "$bin" >/dev/null 2>&1; then
+			ok "$label granted to $bin (user db)"
 			return 0
 		fi
-		sudo -n tccutil-rs grant Accessibility "$bin" >/dev/null 2>&1 && {
-			ok "Accessibility granted to $bin (system db via sudo)"
+		sudo -n tccutil-rs grant "$service" "$bin" >/dev/null 2>&1 && {
+			ok "$label granted to $bin (system db via sudo)"
 			return 0
 		}
 	fi
-	fail "Could not grant Accessibility to $bin automatically."
+	fail "Could not grant $label to $bin automatically."
 	echo "     Grant manually: System Settings → Privacy & Security →"
-	echo "     Accessibility → '+' → add '$bin'"
+	echo "     $label → '+' → add '$bin'"
 }
 
 note "Granting Accessibility permissions..."
 
-grant "$(command -v rift 2>/dev/null || true)"
+grant Accessibility "$(command -v rift 2>/dev/null || true)"
 
 # ─────────────────────────────────────────────────────────────
 # Post-grant verification: check the TCC database via tccutil-rs
@@ -50,25 +50,25 @@ grant "$(command -v rift 2>/dev/null || true)"
 # ─────────────────────────────────────────────────────────────
 note "Verifying grants (requires Full Disk Access on the host terminal)..."
 verify_grant() {
-	local bin="$1"
+	local service="$1" bin="$2" label="${3:-$1}"
 	if [ -z "$bin" ] || [ ! -e "$bin" ]; then
 		return 0
 	fi
 	# --service filters by TCC service; --user reads per-user DB first
 	# (covers the common grant path; system DB grants need sudo list).
-	if tccutil-rs list --user --service Accessibility 2>/dev/null | grep -qF "$bin"; then
-		ok "$bin found in Accessibility list (user db)"
-	elif tccutil-rs list --service Accessibility 2>/dev/null | grep -qF "$bin"; then
-		ok "$bin found in Accessibility list (system db)"
+	if tccutil-rs list --user --service "$service" 2>/dev/null | grep -qF "$bin"; then
+		ok "$bin found in $label list (user db)"
+	elif tccutil-rs list --service "$service" 2>/dev/null | grep -qF "$bin"; then
+		ok "$bin found in $label list (system db)"
 	else
-		warn "$bin not visible in Accessibility list"
+		warn "$bin not visible in $label list"
 		echo "     If the terminal app lacks Full Disk Access, verification is"
 		echo "     unreliable — the grant may still have succeeded."
 	fi
 }
 
 if command -v tccutil-rs >/dev/null 2>&1; then
-	verify_grant "$(command -v rift 2>/dev/null || true)"
+	verify_grant Accessibility "$(command -v rift 2>/dev/null || true)"
 else
 	warn "tccutil-rs not found — skipping verification"
 fi
