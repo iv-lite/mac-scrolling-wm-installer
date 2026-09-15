@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+
+MARKER_BEGIN="-- >>> aerospace-installer: WarpMouse.spoon (do not edit between markers)"
+MARKER_END="-- <<< aerospace-installer"
+
+# ─────────────────────────────────────────────────────────────
+# Install Hammerspoon
+# ─────────────────────────────────────────────────────────────
+note "Installing/upgrading Hammerspoon..."
+if brew list --cask hammerspoon >/dev/null 2>&1; then
+	note "Hammerspoon already installed — upgrading..."
+	brew upgrade --cask hammerspoon 2>/dev/null || warn "Hammerspoon upgrade failed (network?) — keeping installed version"
+	ok "Hammerspoon up to date"
+else
+	brew install --cask hammerspoon
+	ok "Hammerspoon installed"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# WarpMouse.spoon — continuous horizontal multi-monitor cursor wrap.
+# Runs inside Hammerspoon's own (once-granted) Accessibility trust, unlike
+# the earlier standalone Swift daemon this replaced, which could never get
+# its own Accessibility/Input Monitoring grants recognized when launched
+# via launchd.
+# ─────────────────────────────────────────────────────────────
+SPOON_DIR="$HOME/.hammerspoon/Spoons/WarpMouse.spoon"
+mkdir -p "$SPOON_DIR"
+cp "$REPO_ROOT/config/hammerspoon/Spoons/WarpMouse.spoon/init.lua" "$SPOON_DIR/init.lua"
+ok "WarpMouse.spoon installed to $SPOON_DIR"
+
+# ─────────────────────────────────────────────────────────────
+# ~/.hammerspoon/init.lua: load + start the Spoon without disturbing any
+# other Hammerspoon config the user may already have (Hammerspoon is a
+# general-purpose tool, unlike this repo's other configs which fully own
+# their file) — append a clearly delimited, idempotent managed block
+# instead of overwriting.
+# ─────────────────────────────────────────────────────────────
+INIT_LUA="$HOME/.hammerspoon/init.lua"
+mkdir -p "$HOME/.hammerspoon"
+
+if [ -f "$INIT_LUA" ] && grep -qF -- "$MARKER_BEGIN" "$INIT_LUA"; then
+	note "WarpMouse.spoon already wired into ~/.hammerspoon/init.lua"
+else
+	if [ -f "$INIT_LUA" ]; then
+		note "Existing ~/.hammerspoon/init.lua found — backing up, appending (not overwriting)"
+		cp "$INIT_LUA" "$INIT_LUA.bak"
+	else
+		touch "$INIT_LUA"
+	fi
+	{
+		echo ""
+		echo "$MARKER_BEGIN"
+		echo 'hs.loadSpoon("WarpMouse")'
+		echo "spoon.WarpMouse:start()"
+		echo "$MARKER_END"
+	} >> "$INIT_LUA"
+	ok "WarpMouse.spoon wired into ~/.hammerspoon/init.lua"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# (Re)launch Hammerspoon so the config takes effect. Hammerspoon shows its
+# own standard Accessibility prompt on first launch if not already
+# trusted — no separate grant-permissions step needed for this.
+# ─────────────────────────────────────────────────────────────
+note "Restarting Hammerspoon..."
+killall Hammerspoon >/dev/null 2>&1 || true
+# Use the full path, not `open -a Hammerspoon` — right after a fresh
+# install, LaunchServices hasn't always indexed the app yet, and name
+# resolution can fail with "Unable to find application named 'Hammerspoon'"
+# even though the app is right there; the full path always works.
+open "/Applications/Hammerspoon.app"
+ok "Hammerspoon started"
+
+warn "If prompted, grant Hammerspoon Accessibility access to enable the edge warp"
+echo "     (System Settings → Privacy & Security → Accessibility → enable Hammerspoon)"
