@@ -20,9 +20,9 @@ mkdir -p "$(dirname "$JSON")"
 
 if [[ ! -d "$APP" ]]; then
   echo "display-shortcuts: mac-cheatsheet-viewer.app is not built." >&2
-  echo "Re-run the installer (install-helpers builds it), or build manually:" >&2
-  echo "  cd <repo>/helpers/mac-cheatsheet-viewer" >&2
-  echo "  cargo install tauri-cli && tauri icon src-tauri/icons/app-icon.png && tauri build -b app" >&2
+  echo "Re-run the installer (install-helpers pulls + builds it), or build from source:" >&2
+  echo "  cd ../mac-cheatsheet-viewer" >&2
+  echo "  cargo install tauri-cli && cargo tauri icon src-tauri/icons/app-icon.png && cargo tauri build -b app" >&2
   exit 1
 fi
 

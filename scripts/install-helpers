@@ -18,7 +18,8 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 # ─────────────────────────────────────────────────────────────
 HELPERS_DIR="$HOME/.config/mac-scrolling-wm/helpers"
 APP_DIR="$HELPERS_DIR/mac-cheatsheet-viewer.app"
-VIEWER_SRC="$REPO_ROOT/helpers/mac-cheatsheet-viewer"
+VIEWER_SRC="$HELPERS_DIR/mac-cheatsheet-viewer-src"
+VIEWER_REPO="${MAC_WM_VIEWER_REPO:-$(cd "$REPO_ROOT/.." && pwd)/mac-cheatsheet-viewer}"
 
 mkdir -p "$HELPERS_DIR"
 cp "$REPO_ROOT/helpers/generate-shortcuts-json" "$HELPERS_DIR/generate-shortcuts-json"
@@ -29,12 +30,28 @@ ok "Helpers installed to $HELPERS_DIR (generate-shortcuts-json, display-shortcut
 # ─────────────────────────────────────────────────────────────
 # mac-cheatsheet-viewer app (built once, cached in the helpers dir)
 # ─────────────────────────────────────────────────────────────
-if [ -d "$APP_DIR" ]; then
+if [ -d "$APP_DIR" ] && [ "${MAC_WM_REBUILD_VIEWER:-0}" != "1" ]; then
 	ok "mac-cheatsheet-viewer.app already built ($APP_DIR) — skipping rebuild"
 	exit 0
 fi
 
-note "Building mac-cheatsheet-viewer.app (first run only)..."
+if [ ! -d "$VIEWER_REPO/.git" ]; then
+	warn "mac-cheatsheet-viewer source repo not found at $VIEWER_REPO"
+	warn "Clone it next to this installer (../mac-cheatsheet-viewer) or point MAC_WM_VIEWER_REPO at it."
+	exit 1
+fi
+
+if [ -d "$VIEWER_SRC/.git" ]; then
+	note "Updating mac-cheatsheet-viewer source (git pull --ff-only)..."
+	git -C "$VIEWER_SRC" pull --ff-only
+else
+	note "Cloning mac-cheatsheet-viewer source ($VIEWER_REPO)..."
+	rm -rf "$VIEWER_SRC"
+	git clone "$VIEWER_REPO" "$VIEWER_SRC"
+fi
+ok "mac-cheatsheet-viewer source ready in $VIEWER_SRC"
+
+note "Building mac-cheatsheet-viewer.app..."
 if ! command -v cargo >/dev/null 2>&1; then
 	note "Installing Rust toolchain via Homebrew..."
 	brew install rust
@@ -47,22 +64,21 @@ if ! command -v cargo-tauri >/dev/null 2>&1; then
 	ok "tauri-cli installed"
 fi
 
-cd "$VIEWER_SRC"
-if [ ! -f src-tauri/icons/icon.icns ]; then
+if [ ! -f "$VIEWER_SRC/src-tauri/icons/icon.icns" ]; then
 	note "Generating app icons from src-tauri/icons/app-icon.png..."
-	cargo tauri icon src-tauri/icons/app-icon.png
+	(cd "$VIEWER_SRC" && cargo tauri icon src-tauri/icons/app-icon.png)
 	ok "App icons generated"
 fi
 
-note "Building mac-cheatsheet-viewer web assets (frontend/build.sh → frontend/dist)..."
-bash frontend/build.sh
+note "Building web assets (frontend/build.sh → frontend/dist)..."
+(cd "$VIEWER_SRC" && bash frontend/build.sh)
 ok "Web assets built"
 
 note "Building the app bundle (embeds the web assets)..."
-cargo tauri build --bundles app
-APP_BUILT="$(ls -d src-tauri/target/release/bundle/macos/*.app 2>/dev/null | head -1 || true)"
+(cd "$VIEWER_SRC" && cargo tauri build --bundles app)
+APP_BUILT="$(ls -d "$VIEWER_SRC"/src-tauri/target/release/bundle/macos/*.app 2>/dev/null | head -1 || true)"
 if [ -z "$APP_BUILT" ]; then
-	warn "Build finished but no .app was found under src-tauri/target/release/bundle/macos/"
+	warn "Build finished but no .app was found under $VIEWER_SRC/src-tauri/target/release/bundle/macos/"
 	warn "Copy the bundle into $HELPERS_DIR manually once it exists."
 	exit 0
 fi

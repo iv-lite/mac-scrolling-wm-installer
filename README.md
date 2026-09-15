@@ -32,7 +32,7 @@ The installer runs these steps from `scripts/`:
 | `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Paneru draws its indicator in it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
 | `install-paneru` | Install Paneru (Homebrew core) + write `~/.config/paneru/init.lua` + install its launchd service |
-| `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and build the macOS cheat-sheet viewer app (Cmd+Shift+?) |
+| `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and pull + build the macOS cheat-sheet viewer app (`Cmd+Shift+?`) |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
 | `enable-services` | Start Paneru |
 
@@ -136,9 +136,12 @@ borderless always-on-top overlay (Esc / Cmd+W to close). The pieces:
   `~/.config/paneru/cheatsheet.json` (curated action labels; unknown bindings
   fall back to their command name).
 - `helpers/display-shortcuts` — runs the generator and opens the viewer.
-- `helpers/mac-cheatsheet-viewer/` — Tauri app (static vanilla frontend, no
-  npm) whose CLI arg is the JSON path; validates it strictly
-  (`cheatsheet-core` crate) and renders it as bordered groups.
+- `mac-cheatsheet-viewer` — a separate repo (`../mac-cheatsheet-viewer`) holding
+  the Tauri app (static vanilla frontend, no npm) whose CLI arg is the JSON
+  path; it validates strictly (`cheatsheet-core` crate) and renders bordered
+  groups. `install-helpers` clones/pulls and builds it locally (override the
+  source location with `MAC_WM_VIEWER_REPO`; a CI workflow in that repo builds
+  DMG + `.app` releases for later use).
 - Paneru itself runs the launcher via its Lua API
   (`paneru.exec`), which is why the config is `init.lua` (a Lua config
   replaces the legacy `paneru.toml`; TOML bindings cannot launch scripts).
@@ -320,8 +323,9 @@ uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
 config/paneru/            Paneru config (sliding strip, bindings, rules) — init.lua
 config/ghostty/           Ghostty config (frameless title bar)
-helpers/                  shortcut cheat-sheet: mac-cheatsheet-viewer (Tauri),
-                          generate-shortcuts-json, display-shortcuts
+helpers/                  shortcut cheat-sheet: generate-shortcuts-json,
+                          display-shortcuts (mac-cheatsheet-viewer app lives in
+                          its own repo at ../mac-cheatsheet-viewer)
 tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
