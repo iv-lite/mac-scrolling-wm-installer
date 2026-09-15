@@ -248,12 +248,16 @@ paneru query state --json                   # must print a JSON snapshot (servic
 
 - Paneru gives each display its **own independent window strip** and its own
   set of native workspaces (with "Displays have separate Spaces" on).
-- The sliding strip works best when displays are arranged **vertically**
-  (laptop above/below the external monitor, System Settings → Displays);
-  side-by-side layouts can confuse Paneru when macOS relocates fully off-screen
-  windows to a neighbouring display. If you must run side-by-side, the
-  `horizontal_mouse_warp` option makes a vertical arrangement of displays
-  "feel" horizontal for the mouse.
+- The shipped config targets **horizontally stacked** (side-by-side) monitors:
+  arrange the displays **vertically** in System Settings → Displays (laptop
+  above/below the external monitor) but place them physically side-by-side.
+  `horizontal_mouse_warp = -1` (in `options` in `config/paneru/init.lua`) then
+  makes the cursor cross screen edges left↔right exactly as if the monitors
+  were side-by-side — matching macOS's native behavior while keeping Paneru's
+  vertical display traversal intact.
+- If one display physically sits higher or lower than the other (e.g. a
+  portrait monitor on a stand), adjust `horizontal_mouse_warp_offset` (px) to
+  line the warp landing up with the desk positions.
 - A window can be sent to another display with `Cmd+Ctrl+→` (follow) or
   `Cmd+Ctrl+Shift+→` (stay), and `Cmd+Ctrl+↑` warps the mouse there.
 
