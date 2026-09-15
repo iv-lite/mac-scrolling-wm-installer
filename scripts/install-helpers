@@ -19,7 +19,8 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 HELPERS_DIR="$HOME/.config/mac-scrolling-wm/helpers"
 APP_DIR="$HELPERS_DIR/mac-cheatsheet-viewer.app"
 VIEWER_SRC="$HELPERS_DIR/mac-cheatsheet-viewer-src"
-VIEWER_REPO="${MAC_WM_VIEWER_REPO:-$(cd "$REPO_ROOT/.." && pwd)/mac-cheatsheet-viewer}"
+VIEWER_REPO="${MAC_WM_VIEWER_REPO:-iv-lite/mac-cheatsheet-viewer}"
+VIEWER_TAG="${MAC_WM_VIEWER_TAG:-latest}"
 
 mkdir -p "$HELPERS_DIR"
 cp "$REPO_ROOT/helpers/generate-shortcuts-json" "$HELPERS_DIR/generate-shortcuts-json"
@@ -28,16 +29,63 @@ chmod +x "$HELPERS_DIR/generate-shortcuts-json" "$HELPERS_DIR/display-shortcuts"
 ok "Helpers installed to $HELPERS_DIR (generate-shortcuts-json, display-shortcuts)"
 
 # ─────────────────────────────────────────────────────────────
-# mac-cheatsheet-viewer app (built once, cached in the helpers dir)
+# mac-cheatsheet-viewer app (fetched once, cached in the helpers dir)
 # ─────────────────────────────────────────────────────────────
 if [ -d "$APP_DIR" ] && [ "${MAC_WM_REBUILD_VIEWER:-0}" != "1" ]; then
-	ok "mac-cheatsheet-viewer.app already built ($APP_DIR) — skipping rebuild"
+	ok "mac-cheatsheet-viewer.app already installed ($APP_DIR) — skipping fetch"
 	exit 0
 fi
 
-if [ ! -d "$VIEWER_REPO/.git" ]; then
-	warn "mac-cheatsheet-viewer source repo not found at $VIEWER_REPO"
-	warn "Clone it next to this installer (../mac-cheatsheet-viewer) or point MAC_WM_VIEWER_REPO at it."
+# Fetch the pre-built app from a GitHub release (curl only, no gh).
+fetch_release() {
+	local zip_url tmp found app="$1"
+	tmp="$(mktemp -d)"
+	note "Fetching mac-cheatsheet-viewer release ($VIEWER_REPO, $VIEWER_TAG)..."
+	zip_url="$(curl -fsSL "https://api.github.com/repos/$VIEWER_REPO/releases/$VIEWER_TAG" \
+		| grep -o '"browser_download_url": *"[^"]*\.app\.zip"' | head -1 | cut -d'"' -f4 || true)"
+	if [ -z "$zip_url" ]; then
+		note "No .app.zip asset on release ($VIEWER_REPO, $VIEWER_TAG)"
+		rm -rf "$tmp"
+		return 1
+	fi
+	note "Downloading $(basename "$zip_url")..."
+	if ! curl -fsSL "$zip_url" -o "$tmp/app.zip"; then
+		note "Download failed"
+		rm -rf "$tmp"
+		return 1
+	fi
+	note "Extracting app.zip..."
+	if ! ditto -x -k --sequesterRsrc "$tmp/app.zip" "$tmp"; then
+		note "Extraction failed"
+		rm -rf "$tmp"
+		return 1
+	fi
+	found="$(find "$tmp" -maxdepth 2 -name '*.app' -type d | head -1 || true)"
+	if [ -z "$found" ]; then
+		note "No .app bundle inside the release zip"
+		rm -rf "$tmp"
+		return 1
+	fi
+	cp -R "$found" "$app"
+	rm -rf "$tmp"
+	ok "mac-cheatsheet-viewer.app installed to $APP_DIR (from GitHub release)"
+	return 0
+}
+
+if fetch_release "$APP_DIR"; then
+	note "Cmd+Shift+? will now open the shortcut cheat sheet."
+	note "Regenerated JSON on every launch from ~/.config/paneru/init.lua."
+	exit 0
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Fallback: build the app locally from source (needs Rust + tauri-cli)
+# ─────────────────────────────────────────────────────────────
+warn "GitHub release fetch failed — falling back to a local source build."
+LOCAL_SRC="$REPO_ROOT/../mac-cheatsheet-viewer"
+if [ ! -d "$LOCAL_SRC/.git" ]; then
+	warn "Local source not found at $LOCAL_SRC either."
+	warn "Clone the repo to build it, or check your network and re-run."
 	exit 1
 fi
 
@@ -45,9 +93,9 @@ if [ -d "$VIEWER_SRC/.git" ]; then
 	note "Updating mac-cheatsheet-viewer source (git pull --ff-only)..."
 	git -C "$VIEWER_SRC" pull --ff-only
 else
-	note "Cloning mac-cheatsheet-viewer source ($VIEWER_REPO)..."
+	note "Cloning mac-cheatsheet-viewer source ($LOCAL_SRC)..."
 	rm -rf "$VIEWER_SRC"
-	git clone "$VIEWER_REPO" "$VIEWER_SRC"
+	git clone "$LOCAL_SRC" "$VIEWER_SRC"
 fi
 ok "mac-cheatsheet-viewer source ready in $VIEWER_SRC"
 
@@ -83,7 +131,7 @@ if [ -z "$APP_BUILT" ]; then
 	exit 0
 fi
 cp -R "$APP_BUILT" "$APP_DIR"
-ok "mac-cheatsheet-viewer.app installed to $APP_DIR"
+ok "mac-cheatsheet-viewer.app installed to $APP_DIR (from local build)"
 
 note "Cmd+Shift+? (Paneru) will now open the shortcut cheat sheet."
 note "The viewer JSON is regenerated on every launch from ~/.config/paneru/init.lua."

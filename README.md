@@ -32,7 +32,7 @@ The installer runs these steps from `scripts/`:
 | `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Paneru draws its indicator in it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
 | `install-paneru` | Install Paneru (Homebrew core) + write `~/.config/paneru/init.lua` + install its launchd service |
-| `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and pull + build the macOS cheat-sheet viewer app (`Cmd+Shift+?`) |
+| `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build) |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
 | `enable-services` | Start Paneru |
 
@@ -136,12 +136,14 @@ borderless always-on-top overlay (Esc / Cmd+W to close). The pieces:
   `~/.config/paneru/cheatsheet.json` (curated action labels; unknown bindings
   fall back to their command name).
 - `helpers/display-shortcuts` — runs the generator and opens the viewer.
-- `mac-cheatsheet-viewer` — a separate repo (`../mac-cheatsheet-viewer`) holding
-  the Tauri app (static vanilla frontend, no npm) whose CLI arg is the JSON
-  path; it validates strictly (`cheatsheet-core` crate) and renders bordered
-  groups. `install-helpers` clones/pulls and builds it locally (override the
-  source location with `MAC_WM_VIEWER_REPO`; a CI workflow in that repo builds
-  DMG + `.app` releases for later use).
+- `mac-cheatsheet-viewer` — a separate repo (`iv-lite/mac-cheatsheet-viewer`)
+  holding the Tauri app (static vanilla frontend, no npm) whose CLI arg is the
+  JSON path; it validates strictly (`cheatsheet-core` crate) and renders
+  bordered groups. `install-helpers` fetches the latest **release** (`.app.zip`)
+  via the GitHub API by default (`MAC_WM_VIEWER_REPO`/`MAC_WM_VIEWER_TAG`
+  override the source); a CI workflow in that repo builds DMG + `.app` releases
+  for every `v*` tag. If the fetch fails, it falls back to a local source build
+  at `../mac-cheatsheet-viewer` (now only used as a fallback).
 - Paneru itself runs the launcher via its Lua API
   (`paneru.exec`), which is why the config is `init.lua` (a Lua config
   replaces the legacy `paneru.toml`; TOML bindings cannot launch scripts).
@@ -325,7 +327,7 @@ config/paneru/            Paneru config (sliding strip, bindings, rules) — ini
 config/ghostty/           Ghostty config (frameless title bar)
 helpers/                  shortcut cheat-sheet: generate-shortcuts-json,
                           display-shortcuts (mac-cheatsheet-viewer app lives in
-                          its own repo at ../mac-cheatsheet-viewer)
+                          its own repo at iv-lite/mac-cheatsheet-viewer)
 tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
