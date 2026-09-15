@@ -33,6 +33,7 @@ The installer runs these steps from `scripts/`:
 | `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Rift draws its indicators in it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
 | `install-rift` | Install Rift (`acsandmann/tap`) + write `~/.config/rift/config.toml` + install the `cycle-column-width` helper + install its launchd service |
+| `install-hammerspoon` | Install Hammerspoon + deploy `WarpMouse.spoon` (continuous horizontal cursor wrap between displays, on by default) |
 | `install-borders` | Install JankyBorders + write `~/.config/borders/bordersrc` |
 | `install-helpers` | Install the shortcut cheat-sheet helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build) |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
@@ -179,14 +180,35 @@ Installed helpers live in `~/.config/mac-scrolling-wm/helpers/` (copied on
   monitors are physically side-by-side and arranged vertically per the
   requirement above, the *up/down* keys are what actually move left/right in
   real life.
-- **Physically moving the mouse to a screen edge only crosses to the next
-  monitor if that edge matches the System Settings arrangement.** This is
-  native macOS behavior, not something Rift controls — with vertical
-  arrangement, only the top/bottom edges auto-cross, and there's no setting
-  (unlike Paneru's old `horizontal_mouse_warp`) to fake a right-edge crossing
-  while arranged vertically. Use the `Cmd+Ctrl+Option+Arrows` hotkey (warps
-  just the pointer) or `Cmd+Ctrl+Arrows` (focuses the display) instead of
-  relying on physical mouse movement for left/right navigation.
+- **Physically moving the mouse to a screen edge only auto-crosses to the
+  next monitor natively if that edge matches the System Settings
+  arrangement** — with the required vertical arrangement, that's only the
+  top/bottom edges. **`WarpMouse.spoon`** (installed and enabled by
+  default, `scripts/install-hammerspoon`) closes this gap for the
+  left/right edges: it watches the cursor and, when it hits a display's
+  left or right edge, warps it to the far edge of the next display in a
+  logical left-to-right cycle (wrapping past either end) — no hotkey
+  needed, it feels like one continuous horizontal desktop. The logical
+  order defaults to the displays' top-to-bottom System Settings order
+  (topmost = logical leftmost); set `spoon.WarpMouse.invertOrder = true`
+  in `~/.hammerspoon/init.lua` (before `:start()`) if that guess is
+  backwards for your desk layout, and `spoon.WarpMouse.quietMs` (default
+  `150`) tunes the cooldown between warps. It only ever moves the cursor —
+  a window being **dragged** across that same virtual boundary is not
+  carried along. The `Cmd+Ctrl+Option+Arrows` hotkey (warps just the
+  pointer, no cycling) and `Cmd+Ctrl+Arrows` (focuses the display) remain
+  available too.
+
+  This runs as a [Hammerspoon](https://www.hammerspoon.org) Spoon rather
+  than a standalone process: Hammerspoon is a well-established, signed
+  automation app that needs **one** Accessibility grant through its own
+  standard first-run prompt, and everything a Spoon does (including
+  watching/warping the mouse) then runs inside that single already-trusted
+  process — no separate code-signing or background-service machinery of
+  our own. If the prompt doesn't appear or the warp isn't happening, check
+  System Settings → Privacy & Security → Accessibility and enable
+  Hammerspoon there, then reload its config (menu bar icon → Reload
+  Config, or `killall Hammerspoon && open -a Hammerspoon`).
 - Per-display gap overrides are supported in the config (commented template
   in `[settings.layout.gaps.per_display]`). Get display UUIDs with
   `rift-cli query displays`.
@@ -236,13 +258,48 @@ RIFT_CLI_PRETTY=1 rift-cli query displays   # lists connected monitors
 (`hot_reload = true`); force it with `Cmd+Option+Shift+R`
 (`reload_config`) or `rift-cli execute config reload`.
 
+**WarpMouse.spoon is installed but the cursor never crosses at a screen
+edge.** First confirm Hammerspoon itself is running (menu bar icon) and
+has Accessibility: System Settings → Privacy & Security → Accessibility →
+Hammerspoon enabled. If you just granted it, reload Hammerspoon's config
+(menu bar icon → Reload Config, or `killall Hammerspoon && open -a
+Hammerspoon`) — a grant made while it was already running doesn't always
+take effect until it restarts. If it's still not working, open
+Hammerspoon's Console (menu bar icon → Console) and check for Lua errors
+from `WarpMouse`, or add temporary logging inside
+`~/.hammerspoon/Spoons/WarpMouse.spoon/init.lua` (e.g. a `print()` at the
+top of the `hs.eventtap.new` callback) and watch the Console live while
+moving the mouse to an edge — empty output means the event tap isn't
+receiving events (an Accessibility problem), while output that never
+reaches the warp call means the edge-detection math isn't triggering for
+your actual display arrangement (`hs.screen.allScreens()` in the Console
+shows each screen's frame to compare against).
+
+An earlier version of this feature was a standalone Swift
+`CGEventTap`/LaunchAgent daemon (`mouse-edge-warp`) that could never get
+its own Accessibility/Input Monitoring grants recognized when launched via
+`launchd` on this project's development machine (macOS 26 beta) — tried:
+stable code signing, `.app` bundling, `LimitLoadToSessionType=Aqua`,
+`tccd` restarts, and a full logout/login, none of which changed the
+outcome. Running as a Hammerspoon Spoon instead sidesteps that class of
+problem entirely, since Hammerspoon's own grant (made through its
+standard, widely-used first-run flow) covers everything a Spoon does. If
+Hammerspoon's own Accessibility grant doesn't take effect either, that
+likely points to something specific to your macOS version rather than
+this repo — the `Cmd+Ctrl+Option+Arrows` hotkey (`move_mouse_to_display`)
+works independently of Hammerspoon and needs no extra permissions beyond
+what Rift itself already requires, and is a reasonable fallback.
+
 ## Uninstall
 
 ```sh
 ./uninstall
 ```
 
-Stops and removes Rift (launchd service) and JankyBorders, cleans up any
+Stops and removes Rift (launchd service) and JankyBorders, removes
+`WarpMouse.spoon` and its entry from `~/.hammerspoon/init.lua` (leaving
+Hammerspoon itself installed — it's offered separately in the brew
+keep/remove menu below, same as any other package), cleans up any
 **legacy** Paneru / `rift-swipe` / AeroSpace / AeroSpaceBar / Aegis residue
 (services, LaunchAgents, apps), moves configs (from `~/.config/rift`,
 `~/.config/borders`, `~/.config/ghostty`, plus any legacy `~/.config/paneru`,
@@ -312,6 +369,9 @@ scripts/                  Per-component install/system/accessibility steps,
 config/rift/              Rift config (scrolling strip, bindings, gaps, menu bar) — config.toml
 config/borders/           JankyBorders focus-border config — bordersrc
 config/ghostty/           Ghostty config (frameless title bar)
+config/hammerspoon/       WarpMouse.spoon (continuous horizontal cursor
+                          wrap), deployed to ~/.hammerspoon/Spoons/ by
+                          install-hammerspoon
 helpers/                  shortcut cheat-sheet: generate-shortcuts-json,
                           display-shortcuts (mac-cheatsheet-viewer app lives
                           in its own repo at iv-lite/mac-cheatsheet-viewer)
@@ -319,8 +379,9 @@ tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
 Configs are installed to `~/.config/{rift,borders,ghostty}` (plus shortcut
-helpers under `~/.config/mac-scrolling-wm/`); existing files are backed up
-(`.bak`) before overwriting, and Rift has `hot_reload`, so editing
+helpers under `~/.config/mac-scrolling-wm/` and `WarpMouse.spoon` under
+`~/.hammerspoon/Spoons/`); existing files are backed up (`.bak`) before
+overwriting, and Rift has `hot_reload`, so editing
 `~/.config/rift/config.toml` applies live.
 
 > **Note on the history:** an early version of this installer targeted
