@@ -89,6 +89,12 @@ cmd_check() {
   echo ""
   echo "── Ghostty frameless config (should be present) ──"
   guest "grep -q 'macos-titlebar-style = hidden' ~/.config/ghostty/config && echo '(configured)' || echo '(missing)'"
+  echo ""
+  echo "── Shortcut helpers + cheat-sheet JSON (should be valid) ──"
+  guest "test -x ~/.config/mac-scrolling-wm/helpers/generate-shortcuts-json && echo '(generator installed)' || echo '(missing)'"
+  guest "test -x ~/.config/mac-scrolling-wm/helpers/display-shortcuts && echo '(launcher installed)' || echo '(missing)'"
+  guest "ls -d ~/.config/mac-scrolling-wm/helpers/mac-cheatsheet-viewer.app >/dev/null 2>&1 && echo '(viewer app built)' || echo '(viewer app NOT built)'"
+  guest "cd /tmp && ~/.config/mac-scrolling-wm/helpers/generate-shortcuts-json --output /tmp/cheatsheet.json && python3 -m json.tool /tmp/cheatsheet.json >/dev/null && echo '(cheat-sheet JSON valid — derived from live init.lua)' || echo '(cheat-sheet JSON INVALID)'"
   ask_cleanup
 }
 
