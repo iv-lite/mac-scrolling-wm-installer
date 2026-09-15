@@ -22,6 +22,9 @@ CONFIG_CANDIDATES = [
 
 BINDING_RE = re.compile(r'^\s*\["([a-z0-9_ ]+)"\]\s*=\s*"((?:[^"\\]|\\.)*)"\s*,?\s*(?:--.*)?$')
 
+# paneru.bind("chord", function(ws) ... end) — function-bound shortcuts.
+LUA_BIND_RE = re.compile(r'^\s*paneru\.bind\("((?:[^"\\]|\\.)*)"\s*,\s*(?:function\b|[\w_]+)')
+
 # Ordered curated map: command string -> (category, action label).
 # Unknown commands fall back to "Other" with a title-cased action.
 CURATED = {
@@ -41,8 +44,11 @@ CURATED = {
     "window virtualmove north": ("Workspaces", "Move window, follow to previous row"),
     "window virtualmove south": ("Workspaces", "Move window, follow to next row"),
     "window focus managed": ("Workspaces", "Cycle managed windows"),
-    "window nextdisplay": ("Displays", "Focus next display"),
-    "window nextdisplaysend": ("Displays", "Send window to next display"),
+    "cmd + ctrl - leftarrow": ("Displays", "Focus previous display (maximized)"),
+    "cmd + ctrl - rightarrow": ("Displays", "Focus next display (maximized)"),
+    "cmd + ctrl + shift - leftarrow": ("Displays", "Send window to previous display (maximized)"),
+    "cmd + ctrl + shift - rightarrow": ("Displays", "Send window to next display (maximized)"),
+    "cmd + shift - slash": ("Cheat sheet", "Show this cheat sheet"),
     "mouse nextdisplay": ("Displays", "Warp mouse to next display"),
     "window manage": ("Window state", "Toggle tiled / floating"),
     "window stack": ("Window state", "Stack into neighbour column"),
@@ -107,6 +113,10 @@ def parse_bindings(text):
         m = BINDING_RE.match(line)
         if m:
             bindings.append((m.group(1), m.group(2)))
+            continue
+        lm = LUA_BIND_RE.match(line)
+        if lm:
+            bindings.append((lm.group(1), lm.group(1)))
     return bindings
 
 
@@ -123,9 +133,6 @@ def build_groups(bindings):
             {"action": "Swipe through windows", "keys": ["3-finger swipe \u2190/\u2192"]},
             {"action": "Switch workspace rows", "keys": ["3-finger swipe \u2191/\u2193"]},
             {"action": "Scroll the strip", "keys": ["Cmd+Option+scroll"]},
-        ]),
-        ("Cheat sheet", [
-            {"action": "Show this cheat sheet", "keys": ["Cmd+Shift+?"]},
         ]),
     ]
     for name, items in static:

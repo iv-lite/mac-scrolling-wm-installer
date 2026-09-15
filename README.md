@@ -93,18 +93,24 @@ window in the same lane), **Ctrl**.
 
 | Shortcut | Action |
 |---|---|
+| `Cmd` + `Ctrl` + `←` | Focus the previous display (moves the focused window there and follows) |
 | `Cmd` + `Ctrl` + `→` | Focus the next display (moves the focused window there and follows) |
+| `Cmd` + `Ctrl` + `Shift` + `←` | Move the focused window to the previous display (stay here) |
 | `Cmd` + `Ctrl` + `Shift` + `→` | Move the focused window to the next display (stay here) |
 | `Cmd` + `Ctrl` + `↑` | Warp the mouse to the next display |
 | `Cmd` + `Option` + `↑`/`↓` | Focus a column above/below — crosses displays when no window is there |
 | `Cmd` + `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
 
-> **No "previous display" shortcut:** Paneru's only display commands are
+> **Previous display is synthesized:** Paneru's only display commands are
 > `nextdisplay` / `nextdisplaysend`, which move to the *next* display and wrap
 > around (verified in Paneru's `argv` parser and
 > `QUERY_AND_SUBSCRIBE_FORMAT.md` — there is no previous-direction variant).
-> `Cmd+Ctrl+←`/`Cmd+Ctrl+Shift+←` are therefore intentionally unbound; with
-> exactly two displays, `Cmd+Ctrl+→` already covers both directions.
+> The four shortcuts above are function binds in `config/paneru/init.lua` that
+> synthesize "previous" by repeating `nextdisplay` (displays − 1) times, and
+> they full-width the window before the hop so it lands maximized on the other
+> display (Paneru carries the source width ratio across the move). With exactly
+> two displays, previous and next are the same display, so `Cmd+Ctrl+Shift+←`
+> is an alias of `Cmd+Ctrl+Shift+→`.
 
 ### Window state
 

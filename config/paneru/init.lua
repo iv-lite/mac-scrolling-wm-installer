@@ -34,9 +34,8 @@ local BINDINGS = {
   -- Workspace rows are created on demand (south past the last row spawns one)
   -- and reaped when empty; the 3-finger vertical swipe also cycles them.
 
-  -- ─── Displays (Cmd+Ctrl+→ = focus next display; +Shift = move & stay; ↑ = warp mouse) ───
-  ["window nextdisplay"] = "cmd + ctrl - rightarrow",
-  ["window nextdisplaysend"] = "cmd + ctrl + shift - rightarrow",
+  -- ─── Displays: navigation is handled by function binds below (they add a
+  -- full-width maximize before the hop). Mouse warp stays here: ↑ = next. ───
   ["mouse nextdisplay"] = "cmd + ctrl - uparrow",
 
   -- ─── Window state ───
@@ -131,6 +130,49 @@ paneru.setup {
     missing_windows = "ignore",
   },
 }
+
+-- ─── Display navigation ───
+-- Paneru only ships `nextdisplay` / `nextdisplaysend` (wrap-around; no
+-- previous-direction variant), so "previous" is synthesized as `nextdisplay`
+-- repeated (displays - 1) times. Every move maximizes the window first: Paneru
+-- carries a moved window's source width ratio to the target display, so
+-- full-width on the source lands it maximized on the target.
+local function filled(ws, wid)
+  local win, disp = ws:window(wid), ws:display_of(wid)
+  if not win or not disp then return true end
+  return win.frame.width >= disp.width - 32 -- outer padding 15+15, +2 epsilon
+end
+
+-- Best-effort distinct display count (a bare display with no windows is missed).
+local function display_count(ws)
+  local seen, count = {}, 0
+  for _, w in ipairs(ws:windows()) do
+    local d = ws:display_of(w.id)
+    if d and not seen[d.id] then seen[d.id], count = true, count + 1 end
+  end
+  return count
+end
+
+local function move_to_display(ws, target) -- move window there and follow
+  local wid = ws:focused()
+  if wid and not filled(ws, wid) then paneru.run("window fullwidth") end
+  local hops = 1
+  if target == "previous" then hops = math.max(1, display_count(ws) - 1) end
+  for _ = 1, hops do paneru.run("window nextdisplay") end
+end
+
+local function send_to_other_display(ws) -- move the window, stay on this display
+  local wid = ws:focused()
+  if wid and not filled(ws, wid) then paneru.run("window fullwidth") end
+  paneru.run("window nextdisplaysend")
+end
+
+-- Cmd+Ctrl+←/→ move focus between displays; with two displays "previous"
+-- and "next" are the same display, so Shift+← aliases Shift+→.
+paneru.bind("cmd + ctrl - leftarrow", function(ws) move_to_display(ws, "previous") end)
+paneru.bind("cmd + ctrl - rightarrow", function(ws) move_to_display(ws, "next") end)
+paneru.bind("cmd + ctrl + shift - leftarrow", send_to_other_display)
+paneru.bind("cmd + ctrl + shift - rightarrow", send_to_other_display)
 
 -- Cmd+Shift+? (slash key) opens the shortcut cheat sheet: regenerate the JSON
 -- from BINDINGS above, then show it in mac-cheatsheet-viewer.
