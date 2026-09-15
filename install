@@ -66,6 +66,7 @@ run_step install-deps
 run_step configure-system
 run_step install-ghostty
 run_step install-paneru
+run_step install-helpers
 run_step grant-permissions
 run_step enable-services
 
@@ -110,6 +111,7 @@ echo "     Cmd+Option+V             toggle floating"
 echo "     Cmd+Option+O             stack / unstack"
 echo "     Cmd+Option+Ctrl+Arrows   move between displays"
 echo "     Cmd+Option+Shift+R       restart Paneru (config live-reloads anyway)"
+echo "     Cmd+Shift+?              show the shortcut cheat sheet"
 echo ""
 if [ "$MODE" = "upgrade" ]; then
 	echo "  'Displays have separate Spaces' is already configured; no logout required."

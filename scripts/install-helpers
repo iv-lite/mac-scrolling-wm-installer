@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+
+# ─────────────────────────────────────────────────────────────
+# Shortcut helpers: ~/.config/mac-scrolling-wm/helpers/
+# ─────────────────────────────────────────────────────────────
+HELPERS_DIR="$HOME/.config/mac-scrolling-wm/helpers"
+APP_DIR="$HELPERS_DIR/mac-cheatsheet-viewer.app"
+VIEWER_SRC="$REPO_ROOT/helpers/mac-cheatsheet-viewer"
+
+mkdir -p "$HELPERS_DIR"
+cp "$REPO_ROOT/helpers/generate-shortcuts-json" "$HELPERS_DIR/generate-shortcuts-json"
+cp "$REPO_ROOT/helpers/display-shortcuts" "$HELPERS_DIR/display-shortcuts"
+chmod +x "$HELPERS_DIR/generate-shortcuts-json" "$HELPERS_DIR/display-shortcuts"
+ok "Helpers installed to $HELPERS_DIR (generate-shortcuts-json, display-shortcuts)"
+
+# ─────────────────────────────────────────────────────────────
+# mac-cheatsheet-viewer app (built once, cached in the helpers dir)
+# ─────────────────────────────────────────────────────────────
+if [ -d "$APP_DIR" ]; then
+	ok "mac-cheatsheet-viewer.app already built ($APP_DIR) — skipping rebuild"
+	exit 0
+fi
+
+note "Building mac-cheatsheet-viewer.app (first run only)..."
+if ! command -v cargo >/dev/null 2>&1; then
+	note "Installing Rust toolchain via Homebrew..."
+	brew install rust
+	ok "Rust installed"
+fi
+
+if ! command -v cargo-tauri >/dev/null 2>&1; then
+	note "Installing tauri-cli (this compiles for a few minutes)..."
+	cargo install tauri-cli --locked
+	ok "tauri-cli installed"
+fi
+
+cd "$VIEWER_SRC"
+if [ ! -f src-tauri/icons/icon.icns ]; then
+	note "Generating app icons from src-tauri/icons/app-icon.png..."
+	cargo tauri icon src-tauri/icons/app-icon.png
+	ok "App icons generated"
+fi
+
+note "Building the app bundle..."
+cargo tauri build --bundles app
+APP_BUILT="$(ls -d src-tauri/target/release/bundle/macos/*.app 2>/dev/null | head -1 || true)"
+if [ -z "$APP_BUILT" ]; then
+	warn "Build finished but no .app was found under src-tauri/target/release/bundle/macos/"
+	warn "Copy the bundle into $HELPERS_DIR manually once it exists."
+	exit 0
+fi
+cp -R "$APP_BUILT" "$APP_DIR"
+ok "mac-cheatsheet-viewer.app installed to $APP_DIR"
+
+note "Cmd+Shift+? (Paneru) will now open the shortcut cheat sheet."
+note "The viewer JSON is regenerated on every launch from ~/.config/paneru/init.lua."

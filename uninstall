@@ -23,7 +23,7 @@ echo "  This will:"
 echo "   • Stop/remove Paneru (plus legacy Rift, JankyBorders,"
 echo "     rift-swipe, AeroSpace/AeroSpaceBar/Aegis if present)"
 echo "   • Revoke Accessibility permissions"
-echo "   • Move configs to ~/.config/backups (not deleted)"
+echo "   • Move configs to ~/.config/backups (not deleted, incl. shortcut helpers)"
 echo "   • Uninstall brew packages (you'll choose which to keep)"
 echo "     paneru, tccutil-rs, ghostty"
 echo "     (+ legacy rift, borders, aerospace, aerospacebar if still present)"
@@ -148,7 +148,7 @@ if [ -f ~/.aerospace.toml ] || [ -f ~/.aerospace.toml.bak ]; then
 	warn "~/.aerospace.toml* exists outside ~/.config — leaving untouched (not ours to remove)"
 fi
 
-for dir in ~/.config/paneru ~/.config/rift ~/.config/aerospace ~/.config/borders ~/.config/aegis ~/.config/ghostty; do
+for dir in ~/.config/paneru ~/.config/mac-scrolling-wm ~/.config/rift ~/.config/aerospace ~/.config/borders ~/.config/aegis ~/.config/ghostty; do
 	if [ -d "$dir" ]; then
 		mv "$dir" "$BACKUP_DIR/"
 		ok "Moved $dir → $BACKUP_DIR/$(basename "$dir")"
