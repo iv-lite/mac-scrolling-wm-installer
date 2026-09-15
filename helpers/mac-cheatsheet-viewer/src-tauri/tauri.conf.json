@@ -4,8 +4,9 @@
   "version": "0.1.0",
   "identifier": "dev.macwm.mac-cheatsheet-viewer",
   "build": {
-    "frontendDist": "../frontend",
-    "devUrl": "http://localhost:1420"
+    "frontendDist": "../frontend/dist",
+    "beforeDevCommand": "bash frontend/build.sh",
+    "beforeBuildCommand": "bash frontend/build.sh"
   },
   "app": {
     "withGlobalTauri": true,

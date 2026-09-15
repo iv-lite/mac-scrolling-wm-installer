@@ -54,7 +54,11 @@ if [ ! -f src-tauri/icons/icon.icns ]; then
 	ok "App icons generated"
 fi
 
-note "Building the app bundle..."
+note "Building mac-cheatsheet-viewer web assets (frontend/build.sh → frontend/dist)..."
+bash frontend/build.sh
+ok "Web assets built"
+
+note "Building the app bundle (embeds the web assets)..."
 cargo tauri build --bundles app
 APP_BUILT="$(ls -d src-tauri/target/release/bundle/macos/*.app 2>/dev/null | head -1 || true)"
 if [ -z "$APP_BUILT" ]; then

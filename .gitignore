@@ -1,5 +1,9 @@
 # Rust build artifacts inside helpers/mac-cheatsheet-viewer
 helpers/mac-cheatsheet-viewer/target/
+helpers/mac-cheatsheet-viewer/src-tauri/gen/
+
+# Built web assets of helpers/mac-cheatsheet-viewer (produced by frontend/build.sh)
+helpers/mac-cheatsheet-viewer/frontend/dist/
 
 # Python bytecode from helper scripts
 __pycache__/
