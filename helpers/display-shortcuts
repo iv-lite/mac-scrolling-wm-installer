@@ -3,25 +3,51 @@
 # Paneru config and open it in mac-cheatsheet-viewer.
 #
 # Bound to Cmd+Shift+? by config/paneru/init.lua (paneru.exec this script).
+# paneru.exec swallows stdout/stderr, so every run and failure is also logged
+# to display-shortcuts.log next to this script.
 set -euo pipefail
 
 HELPERS_DIR="${MAC_WM_HELPERS_DIR:-$HOME/.config/mac-scrolling-wm/helpers}"
 APP="$HELPERS_DIR/mac-cheatsheet-viewer.app"
+APP_NAME="mac-cheatsheet-viewer"
 GEN="$HELPERS_DIR/generate-shortcuts-json"
 JSON="$HOME/.config/paneru/cheatsheet.json"
+LOG="$HELPERS_DIR/display-shortcuts.log"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >>"$LOG"; }
+
+log "run"
+mkdir -p "$(dirname "$JSON")"
 
 if [[ ! -x "$GEN" ]]; then
+  log "error: $GEN not found — re-run the installer to restore helpers."
   echo "display-shortcuts: $GEN not found — re-run the installer to restore helpers." >&2
   exit 1
 fi
 
-mkdir -p "$(dirname "$JSON")"
-"$GEN" --output "$JSON"
+if ! "$GEN" --output "$JSON"; then
+  log "error: $GEN failed to generate $JSON"
+  exit 1
+fi
+log "generated $JSON"
 
 if [[ ! -d "$APP" ]]; then
+  log "error: $APP is not installed"
   echo "display-shortcuts: mac-cheatsheet-viewer.app is not installed." >&2
   echo "Re-run the installer (install-helpers fetches the GitHub release, or builds from source)." >&2
   exit 1
 fi
 
-open -a "$APP" --args "$JSON"
+# macOS ignores --args for a running app, so relaunch a fresh instance every
+# time (otherwise the overlay would never reopen after being closed with Esc).
+if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
+  log "killing running $APP_NAME instance"
+  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+fi
+
+if open "$APP" --args "$JSON"; then
+  log "opened $APP with $JSON"
+else
+  log "error: open failed"
+  exit 1
+fi
