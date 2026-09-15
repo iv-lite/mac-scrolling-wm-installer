@@ -1,0 +1,6 @@
+# Rust build artifacts inside helpers/mac-cheatsheet-viewer
+helpers/mac-cheatsheet-viewer/target/
+
+# Python bytecode from helper scripts
+__pycache__/
+*.pyc

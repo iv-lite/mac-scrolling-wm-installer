@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/cheatsheet-core", "src-tauri"]
+resolver = "2"
