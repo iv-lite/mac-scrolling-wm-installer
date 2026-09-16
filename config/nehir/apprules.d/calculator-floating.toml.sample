@@ -1,0 +1,10 @@
+# Float Calculator instead of tiling it. Inactive by default (this repo's
+# previous Rift config shipped the same rule commented out) — rename to
+# .toml to enable.
+[match]
+bundleId = "com.apple.calculator"
+
+[effect]
+layout = "float"
+minWidth = 360
+minHeight = 480
