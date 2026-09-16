@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Test workflow for the rift-wm-installer project. Runs the real ./install
-# inside a fresh macOS guest VM and lets you verify Rift tiling +
-# the native menu bar with Rift's indicators visually via screenshots.
+# Test workflow for the nehir-wm-installer project. Runs the real ./install
+# inside a fresh macOS guest VM and lets you verify Nehir tiling +
+# the native menu bar with Nehir's indicators visually via screenshots.
 #
 # Host is auto-detected:
 #   macOS (Apple Silicon) -> Tart hypervisor  (requires macOS 15+, Homebrew)
@@ -40,13 +40,12 @@ main() {
     -h|--help|help) usage;;
     setup)          cmd_setup;;
     clean)          cmd_clean;;
-    up|install|access|login|check|shot|snapshot|restore|ssh|stop|delete)
+    up|install|access|check|shot|snapshot|restore|ssh|stop|delete)
       ensure_deps
       case "$1" in
         up)        cmd_up "${2:-}";;
         install)   cmd_install;;
         access)    cmd_access;;
-        login)     cmd_login;;
         check)     cmd_check;;
         shot)      cmd_shot;;
         snapshot)  cmd_snapshot;;
