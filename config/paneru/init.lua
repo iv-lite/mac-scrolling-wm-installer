@@ -62,7 +62,7 @@ paneru.setup {
     -- mouse_follows_focus = true,
     -- Horizontally stacked (side-by-side) monitors: arrange displays
     -- vertically in macOS, set this to -1 so edge crossings feel left/right.
-    horizontal_mouse_warp = -1,
+    horizontal_mouse_warp = 1,
     horizontal_mouse_warp_offset = 0,
     preset_column_widths = { 0.3, 0.5, 1.0 },
     animation_speed = 12.0,
