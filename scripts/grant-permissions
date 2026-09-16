@@ -42,7 +42,8 @@ grant() {
 
 note "Granting Accessibility permissions..."
 
-grant Accessibility "$(command -v rift 2>/dev/null || true)"
+NEHIR_BIN="/Applications/Nehir.app/Contents/MacOS/Nehir"
+grant Accessibility "$NEHIR_BIN"
 
 # ─────────────────────────────────────────────────────────────
 # Post-grant verification: check the TCC database via tccutil-rs
@@ -68,7 +69,7 @@ verify_grant() {
 }
 
 if command -v tccutil-rs >/dev/null 2>&1; then
-	verify_grant Accessibility "$(command -v rift 2>/dev/null || true)"
+	verify_grant Accessibility "$NEHIR_BIN"
 else
 	warn "tccutil-rs not found — skipping verification"
 fi

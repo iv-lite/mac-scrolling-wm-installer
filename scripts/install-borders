@@ -14,7 +14,10 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
-# Install JankyBorders (Rift has no built-in window-border setting)
+# Install JankyBorders. Nehir does have a native [borders] setting, but
+# it's a single color for the focused window only — no distinct
+# inactive-window color the way JankyBorders gives us (kept off in
+# ~/.config/nehir/settings.toml to avoid drawing two borders at once).
 # ─────────────────────────────────────────────────────────────
 if command -v borders >/dev/null 2>&1; then
 	note "JankyBorders already installed — upgrading..."
