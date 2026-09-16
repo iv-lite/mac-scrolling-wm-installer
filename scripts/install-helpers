@@ -24,33 +24,42 @@ VIEWER_REPO="${MAC_WM_VIEWER_REPO:-iv-lite/mac-cheatsheet-viewer}"
 mkdir -p "$HELPERS_DIR"
 cp "$REPO_ROOT/helpers/generate-shortcuts-json" "$HELPERS_DIR/generate-shortcuts-json"
 cp "$REPO_ROOT/helpers/display-shortcuts" "$HELPERS_DIR/display-shortcuts"
-cp "$REPO_ROOT/helpers/display-geometry" "$HELPERS_DIR/display-geometry"
-cp "$REPO_ROOT/helpers/mouse-display" "$HELPERS_DIR/mouse-display"
-chmod +x "$HELPERS_DIR/generate-shortcuts-json" "$HELPERS_DIR/display-shortcuts" \
-  "$HELPERS_DIR/display-geometry" "$HELPERS_DIR/mouse-display"
-ok "Helpers installed to $HELPERS_DIR (generate-shortcuts-json, display-shortcuts, display-geometry, mouse-display)"
+chmod +x "$HELPERS_DIR/generate-shortcuts-json" "$HELPERS_DIR/display-shortcuts"
+ok "Helpers installed to $HELPERS_DIR (generate-shortcuts-json, display-shortcuts)"
 
-# move-display and focus-display need the Accessibility API (AXUIElement /
-# synthetic CGEvent posting), which requires a one-time permission grant
-# tied to a specific binary's path/identity. An ephemeral `swift -e` process
-# (like the two CG helpers above, which need no permission at all) gets a
-# fresh identity on every run and could never hold that grant — and for
-# focus-display specifically, that ephemeral-compile tax was the dominant
-# cost of the focus shortcut (commonly 150-400ms) — so both are compiled
-# once here into stable binaries.
+# move-display, focus-display, mouse-display and display-geometry are all
+# compiled once here into stable binaries. move-display and focus-display
+# need the Accessibility API (AXUIElement / synthetic CGEvent posting),
+# which requires a one-time permission grant tied to a specific binary's
+# path/identity — an ephemeral `swift -e` process gets a fresh identity on
+# every run and could never hold that grant. mouse-display and
+# display-geometry need no permission at all, but they run on every
+# move/focus dispatch, and as `swift -e` scripts they each paid a 150-400ms
+# JIT-compile tax per keypress (the same tax the focus-display header
+# documents) — compiling them removes that dominant cost, same as focus.
 if command -v swiftc >/dev/null 2>&1; then
   note "Compiling move-display (Accessibility helper)..."
-  swiftc -O "$REPO_ROOT/helpers/move-display.swift" -o "$HELPERS_DIR/move-display"
+  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/move-display.swift" -o "$HELPERS_DIR/move-display"
   chmod +x "$HELPERS_DIR/move-display"
   ok "move-display compiled to $HELPERS_DIR/move-display"
 
   note "Compiling focus-display (Accessibility + IPC helper)..."
-  swiftc -O "$REPO_ROOT/helpers/focus-display.swift" -o "$HELPERS_DIR/focus-display"
+  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/focus-display.swift" -o "$HELPERS_DIR/focus-display"
   chmod +x "$HELPERS_DIR/focus-display"
   ok "focus-display compiled to $HELPERS_DIR/focus-display"
+
+  note "Compiling mouse-display (current-display lookup)..."
+  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/mouse-display.swift" -o "$HELPERS_DIR/mouse-display"
+  chmod +x "$HELPERS_DIR/mouse-display"
+  ok "mouse-display compiled to $HELPERS_DIR/mouse-display"
+
+  note "Compiling display-geometry (display enumeration)..."
+  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/display-geometry.swift" -o "$HELPERS_DIR/display-geometry"
+  chmod +x "$HELPERS_DIR/display-geometry"
+  ok "display-geometry compiled to $HELPERS_DIR/display-geometry"
 else
-  warn "swiftc not found — skipping move-display and focus-display"
-  warn "(moving windows across 3+ displays, and focusing displays at all, will not work)"
+  warn "swiftc not found — skipping move-display, focus-display, mouse-display and display-geometry"
+  warn "(moving windows across displays, and focusing displays at all, will not work)"
   warn "Install the Xcode Command Line Tools (xcode-select --install) and re-run to enable them."
 fi
 

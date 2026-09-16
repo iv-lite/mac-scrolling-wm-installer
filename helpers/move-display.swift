@@ -1,5 +1,4 @@
-// move-display — teleport a window onto another display (v9, self-contained
-// float/re-tile via CLI round-trips).
+// move-display — teleport a window onto another display (v10, fast path).
 //
 // Paneru can only move a window to a single fixed display ("other().next()"
 // in its ECS), which cannot reach every monitor on a 3+ display setup, and
@@ -12,38 +11,52 @@
 // config/paneru/lib/displays.lua (Cmd+Ctrl+Shift+arrows) and must be
 // installed (compiled) at $HOME/.config/mac-scrolling-wm/helpers/move-display.
 //
-// This helper owns the ENTIRE move sequence for tiled windows:
-//   1. Float the window  (paneru window manage — CLI round-trip)
-//   2. Teleport via AX   (AXUIElement set-position + verify landing)
-//   3. Click to rotate   (synthetic click on target display)
-//   4. Re-tile the window (paneru window manage — CLI round-trip)
+// Sequence:
+//   1. Teleport via AX (set-position to a centered landing point + verify)
+//   2. Warp pointer + synthetic mouseMoved so focus_follows_mouse and
+//      paneru's ActiveDisplayMarker rotate to the target display (no click —
+//      a real press/release causes press animations and can hit window
+//      contents; focus-display uses the same mouseMoved mechanism)
+//   3. Raise the moved window, then ask paneru to settle it (fullwidth) via
+//      a fire-and-forget CLI launch — the helper exits without waiting for
+//      it, so the keypress feels instant while paneru animates on its own.
+//      Lua confirms adoption afterward and pins focus explicitly.
 //
-// Why CLI round-trips instead of Lua paneru.run: paneru batches all
-// `paneru.run`/`ws:focus` commands in a Lua-side outbox that is only flushed
-// to the ECS *after the keybind dispatch returns* (worker.rs Task::finish).
-// So any in-dispatch poll of `paneru.query_json("state")` can never observe
-// the effect of a `paneru.run` within the same dispatch — the poll always
-// reads pre-command state and times out. CLI commands, by contrast, are
-// separate Mach port messages that the daemon processes independently; by the
-// time the next CLI invocation (query) arrives, the previous command has
-// been applied. A short poll with retries covers the edge case where the
-// daemon's frame hasn't run yet.
+// Performance notes (v10):
+//   - No AppKit import: resolving/activating via NSRunningApplication pulled
+//     AppKit init (~50-100ms) plus a 150ms unconditional activation sleep on
+//     every run. Activation is now lazy: the first set-position is attempted
+//     immediately, and only on failure is the window AX-raised with a short
+//     30ms pause before retry.
+//   - No pre-loop readFrame and no size re-reads: size is read once (to
+//     compute a centered landing point), landing checks poll position only
+//     (1 AX IPC instead of 2 per iteration).
+//   - Corner teleport (display origin) is avoided: (tx, ty) sits under the
+//     menu bar / in the notch area, so macOS clamps it and paneru then has to
+//     animate a large correction. The window keeps its size and is placed so
+//     its center lands at the target display's center (clamped on-screen),
+//     minimizing the trailing settle animation.
+//   - Retry loop is 4 attempts with ~5ms backoff only on a miss (was up to
+//     10 attempts with 20ms sleeps plus 2 AX calls per pass).
+//   - The trailing `paneru window fullwidth` no longer blocks helper exit
+//     (was Process.waitUntilExit + full IPC round-trip on the critical path).
 //
 // Usage: move-display <window_id> <x> <y> <width> <height> <was_floating>
 // <window_id> is the exact CGWindowID Lua wants moved.
 // <x> <y> <width> <height> is the target display's frame in CG coordinates.
-// <was_floating> is "0" (tiled — helper floats, teleports, re-tiles) or
-// "1" (already floating — helper only teleports; Lua leaves it floating).
+// <was_floating> is accepted for CLI compatibility with displays.lua ("0"/"1")
+// but currently ignored: both tiled and floating windows are teleported as-is
+// and left for paneru to settle, per the Lua-side disposition handling.
 //
 // Exit 0 = success. Nonzero = failure (stderr has diagnostics).
 //
 // Needs Accessibility access granted to this specific compiled binary (a
 // one-time macOS prompt) — see scripts/install-helpers for why this is built
 // once with swiftc instead of run as an ephemeral `swift -e` script like the
-// other helpers: an ephemeral script gets a fresh, effectively anonymous
-// identity on every run, which never keeps a TCC grant across invocations.
+// other helpers used to be: an ephemeral script gets a fresh, effectively
+// anonymous identity on every run, which never keeps a TCC grant across
+// invocations.
 import ApplicationServices
-import AppKit
 import CoreGraphics
 import Foundation
 
@@ -51,8 +64,7 @@ import Foundation
 func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
 
 let args = CommandLine.arguments
-guard args.count == 7, let windowIDArg = Int(args[1]),
-      let windowID = UInt32(args[1]),
+guard args.count == 7, let windowID = UInt32(args[1]),
       let tx = Double(args[2]), let ty = Double(args[3]),
       let tw = Double(args[4]), let th = Double(args[5]),
       (args[6] == "0" || args[6] == "1") else {
@@ -61,9 +73,11 @@ guard args.count == 7, let windowIDArg = Int(args[1]),
       .data(using: .utf8)!)
   exit(1)
 }
-let wasFloating = args[6] == "1"
+// Accepted for CLI compatibility; teleport behavior is identical either way.
+// (Tiled vs floating settle is owned by paneru / the Lua side.)
+_ = args[6]
 
-// ─── paneru CLI helpers ───────────────────────────────────────────────────
+// ─── paneru CLI (fire-and-forget settle) ──────────────────────────────────
 
 func resolvePaneruBinary() -> String {
   for candidate in ["/opt/homebrew/bin/paneru", "/usr/local/bin/paneru"] {
@@ -74,54 +88,28 @@ func resolvePaneruBinary() -> String {
   return "paneru"
 }
 
-let PANERU = resolvePaneruBinary()
-
-func runPaneruCLI(_ argv: [String]) -> (code: Int32, stdout: String, stderr: String) {
+/// Launch `paneru <argv>` without waiting: stdout/stderr go to /dev/null so
+/// the child can never block on a pipe after we exit, and the helper returns
+/// immediately while the daemon settles the window on its own.
+func launchPaneruDetached(_ argv: [String]) -> Bool {
   let process = Process()
   if #available(macOS 10.13, *) {
-    process.executableURL = URL(fileURLWithPath: PANERU)
+    process.executableURL = URL(fileURLWithPath: resolvePaneruBinary())
   } else {
-    process.launchPath = PANERU
+    process.launchPath = resolvePaneruBinary()
   }
   process.arguments = argv
-  let outPipe = Pipe(), errPipe = Pipe()
-  process.standardOutput = outPipe
-  process.standardError = errPipe
+  process.standardOutput = FileHandle.nullDevice
+  process.standardError = FileHandle.nullDevice
   do {
     try process.run()
   } catch {
-    return (-1, "", "failed to run paneru: \(error.localizedDescription)")
+    FileHandle.standardError.write(
+      "failed to run paneru \(argv.joined(separator: " ")): \(error.localizedDescription)\n"
+        .data(using: .utf8)!)
+    return false
   }
-  process.waitUntilExit()
-  let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-  let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-  return (process.terminationStatus, out, err)
-}
-
-func findWindowState(_ wid: Int) -> [String: Any]? {
-  let (_, stdout, _) = runPaneruCLI(["query", "state"])
-  guard let data = stdout.data(using: .utf8),
-        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-        let workspaces = json["virtual_workspaces"] as? [[String: Any]] else {
-    return nil
-  }
-  for ws in workspaces {
-    guard let windows = ws["windows"] as? [[String: Any]] else { continue }
-    if let match = windows.first(where: { ($0["window_id"] as? Int) == wid }) {
-      return match
-    }
-  }
-  return nil
-}
-
-/// Poll `paneru query state` until `predicate(w)` holds, or exhaust retries.
-func pollWindow(_ wid: Int, retries: Int = 10, delay: TimeInterval = 0.05,
-                _ predicate: @escaping ([String: Any]) -> Bool) -> Bool {
-  for _ in 0..<retries {
-    if let w = findWindowState(wid), predicate(w) { return true }
-    Thread.sleep(forTimeInterval: delay)
-  }
-  return false
+  return true
 }
 
 // ─── Resolve the AX window element ────────────────────────────────────────
@@ -138,13 +126,6 @@ func ownerPID(ofWindow wid: CGWindowID) -> pid_t? {
 guard let pid = ownerPID(ofWindow: windowID) else {
   FileHandle.standardError.write("window \(windowID) not found\n".data(using: .utf8)!)
   exit(1)
-}
-
-// Some apps only permit repositioning their windows via Accessibility while
-// the app itself is active.
-if let app = NSRunningApplication(processIdentifier: pid), !app.isActive {
-  app.activate(options: [])
-  Thread.sleep(forTimeInterval: 0.15)
 }
 
 let appElement = AXUIElementCreateApplication(pid)
@@ -168,124 +149,113 @@ guard let window = matchedWindow else {
   exit(1)
 }
 
-// ─── Float (if tiled) ─────────────────────────────────────────────────────
+// ─── Teleport via AX (centered landing, position-only verify) ─────────────
 
-// if !wasFloating {
-//   // `paneru send-cmd window manage` toggles whatever window paneru
-//   // currently considers focused, and the app activation above (or a prior
-//   // focus_follows_mouse hover) can have drifted that to a sibling window of
-//   // a multi-window app. Steer macOS focus to this exact window first — AX
-//   // raise fires the same window-list events paneru tracks focus with — so
-//   // the toggle lands on the window we actually want to move.
-//   AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-//   Thread.sleep(forTimeInterval: 0.1)
-//   let (code, _, err) = runPaneruCLI(["send-cmd", "window", "manage"])
-//   guard code == 0 else {
-//     FileHandle.standardError.write("paneru window manage (float) failed: \(err)\n"
-//       .data(using: .utf8)!)
-//     exit(1)
-//   }
-//   guard pollWindow(windowIDArg, retries: 20, delay: 0.05, { ($0["floating"] as? Bool) == true }) else {
-//     FileHandle.standardError.write("window \(windowID) did not become floating after toggle\n"
-//       .data(using: .utf8)!)
-//     exit(1)
-//   }
-// }
-
-// ─── Teleport via AX ──────────────────────────────────────────────────────
-
-func readFrame(_ window: AXUIElement) -> (position: CGPoint, size: CGSize) {
-  var positionRef: CFTypeRef?
+func readSize(_ window: AXUIElement) -> CGSize {
   var sizeRef: CFTypeRef?
-  AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionRef)
   AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeRef)
-  var position = CGPoint.zero
   var size = CGSize.zero
-  if let positionRef { _ = AXValueGetValue((positionRef as! AXValue), .cgPoint, &position) }
   if let sizeRef { _ = AXValueGetValue((sizeRef as! AXValue), .cgSize, &size) }
-  return (position, size)
+  return size
 }
 
-func center(of frame: (position: CGPoint, size: CGSize)) -> CGPoint {
-  CGPoint(x: frame.position.x + frame.size.width / 2,
-          y: frame.position.y + frame.size.height / 2)
+func readPosition(_ window: AXUIElement) -> CGPoint {
+  var positionRef: CFTypeRef?
+  AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionRef)
+  var position = CGPoint.zero
+  if let positionRef { _ = AXValueGetValue((positionRef as! AXValue), .cgPoint, &position) }
+  return position
 }
 
-func isOnTarget(_ point: CGPoint) -> Bool {
-  point.x >= tx && point.x < tx + tw && point.y >= ty && point.y < ty + th
+func setPosition(_ window: AXUIElement, _ point: CGPoint) -> AXError {
+  var p = point
+  guard let value = AXValueCreate(.cgPoint, &p) else { return .failure }
+  return AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, value)
 }
 
-var landedFrame = readFrame(window)
+func isOnTarget(center: CGPoint) -> Bool {
+  center.x >= tx && center.x < tx + tw && center.y >= ty && center.y < ty + th
+}
+
+// Keep the window's size; land its center at the display's center, clamped
+// so the frame stays on-screen when it fits. Top edge gets a small inset so
+// we don't park under the menu bar (the old corner teleport hit exactly
+// that clamping path on every run). If the window is bigger than the
+// display, fall back to the display origin + inset.
+let menuBarInset = 28.0
+let winSize = readSize(window)
+var landingOrigin: CGPoint
+if winSize.width > 0 && winSize.height > 0 && winSize.width <= tw && winSize.height <= th {
+  let cx = tx + (tw - winSize.width) / 2
+  let cy = ty + menuBarInset + max(0, (th - menuBarInset - winSize.height) / 2)
+  landingOrigin = CGPoint(x: cx, y: cy)
+} else if winSize.width > 0 && winSize.height > 0 {
+  landingOrigin = CGPoint(x: tx, y: ty + menuBarInset)
+} else {
+  // Size unreadable — still teleport; verify via position below.
+  landingOrigin = CGPoint(x: tx + tw / 2, y: ty + th / 2)
+}
+
+let approxCenter = CGPoint(x: landingOrigin.x + winSize.width / 2,
+                           y: landingOrigin.y + winSize.height / 2)
+
+var landedCenter = approxCenter
 var landed = false
-for attempt in 1...10 {
-  var targetPoint = CGPoint(x: tx, y: ty)
-  guard let positionValue = AXValueCreate(.cgPoint, &targetPoint) else { exit(1) }
-  let setResult = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
-  guard setResult == .success else {
-    FileHandle.standardError.write("set position failed (attempt \(attempt)): \(setResult.rawValue)\n"
-      .data(using: .utf8)!)
-    exit(1)
+var lastError: AXError = .success
+for attempt in 0..<4 {
+  if attempt > 0 {
+    // Back off only between retries, never on the fast path.
+    Thread.sleep(forTimeInterval: 0.005)
   }
-  landedFrame = readFrame(window)
-  if isOnTarget(center(of: landedFrame)) {
-    landed = true
-    break
+  lastError = setPosition(window, landingOrigin)
+  if lastError == .success {
+    let pos = readPosition(window)
+    // Position reads are synchronous with the set; derive the center from
+    // the known size to avoid a second AX call per pass.
+    let center: CGPoint
+    if winSize.width > 0 && winSize.height > 0 {
+      center = CGPoint(x: pos.x + winSize.width / 2, y: pos.y + winSize.height / 2)
+    } else {
+      center = pos
+    }
+    if isOnTarget(center: center) {
+      landedCenter = center
+      landed = true
+      break
+    }
+    // Missed (clamped or still animating) — retry the same landing point.
+    landedCenter = center
+    continue
   }
-  Thread.sleep(forTimeInterval: 0.02)
+  // The set itself failed. Some apps refuse repositioning while inactive:
+  // raise via AX (same events paneru tracks focus with) and retry once
+  // after a brief pause instead of paying an activation sleep every run.
+  if attempt == 0 {
+    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+    Thread.sleep(forTimeInterval: 0.03)
+  }
 }
 guard landed else {
-  let c = center(of: landedFrame)
-  FileHandle.standardError.write(
-    "window \(windowID) did not land on target display: center (\(c.x), \(c.y)) not within [\(tx), \(tx + tw)) x [\(ty), \(ty + th))\n"
-      .data(using: .utf8)!)
+  if lastError != .success {
+    FileHandle.standardError.write(
+      "set position failed: \(lastError.rawValue)\n".data(using: .utf8)!)
+  } else {
+    FileHandle.standardError.write(
+      "window \(windowID) did not land on target display: center (\(landedCenter.x), \(landedCenter.y)) not within [\(tx), \(tx + tw)) x [\(ty), \(ty + th))\n"
+        .data(using: .utf8)!)
+  }
   exit(1)
 }
 
-// ─── Click to rotate active display ───────────────────────────────────────
+// ─── Warp + mouseMoved to rotate active display (no click) ────────────────
 
-let finalCenter = center(of: landedFrame)
-CGWarpMouseCursorPosition(finalCenter)
+CGWarpMouseCursorPosition(landedCenter)
 CGAssociateMouseAndMouseCursorPosition(1)
-CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-        mouseCursorPosition: finalCenter, mouseButton: .left)?.post(tap: .cghidEventTap)
-CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
-        mouseCursorPosition: finalCenter, mouseButton: .left)?.post(tap: .cghidEventTap)
+CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
+        mouseCursorPosition: landedCenter, mouseButton: .left)?.post(tap: .cghidEventTap)
 
-// ─── Re-tile (if was tiled) ───────────────────────────────────────────────
+// ─── Settle via paneru without blocking helper exit ───────────────────────
 
-// if !wasFloating {
-//   // Brief pause so the click event propagates and paneru's
-//   // ActiveDisplayMarker rotates to the target display before the re-tile
-//   // appends the window to the active strip.
-//   Thread.sleep(forTimeInterval: 0.05)
-//   AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-//   Thread.sleep(forTimeInterval: 0.1)
-//   let (code, _, err) = runPaneruCLI(["send-cmd", "window", "manage"])
-//   guard code == 0 else {
-//     FileHandle.standardError.write("paneru window manage (re-tile) failed: \(err)\n"
-//       .data(using: .utf8)!)
-//     exit(1)
-//   }
-//   let reTiled = pollWindow(windowIDArg, retries: 20, delay: 0.05,
-//     { ($0["floating"] as? Bool) == false })
-//   if !reTiled {
-//     // First re-tile missed — focus race likely stole the toggle. Retry once:
-//     // raise the window via AX to restore macOS focus, wait for paneru to
-//     // track it, then toggle again.
-//     FileHandle.standardError.write(
-//       "window \(windowID) still floating after first re-tile; retrying\n"
-//         .data(using: .utf8)!)
-//     AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-//     Thread.sleep(forTimeInterval: 0.1)
-//     let (_, _, _) = runPaneruCLI(["send-cmd", "window", "manage"])
-//     let retried = pollWindow(windowIDArg, retries: 20, delay: 0.05,
-//       { ($0["floating"] as? Bool) == false })
-//     guard retried else {
-//       FileHandle.standardError.write(
-//         "window \(windowID) did not re-tile after retry\n"
-//           .data(using: .utf8)!)
-//       exit(1)
-//     }
-//   }
-// }
-runPaneruCLI(["send-cmd", "window", "fullwidth"])
+if !launchPaneruDetached(["send-cmd", "window", "fullwidth"]) {
+  exit(1)
+}
