@@ -15,8 +15,7 @@ usage() {
   echo "  up         Boot the VM (GUI by default; --no-graphics for headless) and wait for SSH"
   echo "  install    Sync the repo into the guest and run ./install"
   echo "  access     Re-run the accessibility grant script in the guest"
-  echo "  login      Log out/in the GUI session to apply the separate-Spaces setting"
-  echo "  check      Query Rift state, separate-Spaces mode, installed formulae, and the Ghostty config in the guest"
+  echo "  check      Query Nehir state, installed formulae, and the Ghostty config in the guest"
   echo "  shot       Capture a screenshot into tests/screenshots/"
   echo "  snapshot   Create 'bare' (fresh macOS) + 'provisioned' (after install) snapshots"
   echo "  restore    Restore a snapshot: './tests/preview restore bare'"
@@ -62,27 +61,16 @@ cmd_access() {
   sync_repo
   guest "bash '${GUEST_DIR}/scripts/grant-permissions'" || true
   warn "If grants failed above, open the VM window and grant manually:"
-  warn "System Settings → Privacy & Security → Accessibility → enable Rift, Borders"
-}
-
-cmd_login() {
-  ensure_running
-  note "Restarting the login window to apply the separate-Spaces setting..."
-  guest_sudo "killall loginwindow" || true
-  sleep 15
-  note "The GUI session is logging back in (auto-login)."
+  warn "System Settings → Privacy & Security → Accessibility → enable Nehir, Borders"
 }
 
 cmd_check() {
   ensure_running
-  echo "── Separate Spaces (must be mode 1) ──"
-  guest "\"${GUEST_DIR}/scripts/ensure-separate-spaces\" check" 2>&1 || true
+  echo "── Nehir state (requires ipcEnabled = true in settings.toml) ──"
+  guest "/Applications/Nehir.app/Contents/MacOS/nehirctl query workspaces" 2>&1 || true
   echo ""
-  echo "── Rift service + state ──"
-  guest "RIFT_CLI_PRETTY=1 rift-cli query workspaces" 2>&1 || true
-  echo ""
-  echo "── Installed formulae ──"
-  guest "brew list | grep -Ei 'paneru|rift|aerospace|aerospacebar|borders|tccutil|ghostty' || echo '(none found)'"
+  echo "── Installed formulae/casks ──"
+  guest "brew list | grep -Ei 'nehir|paneru|rift|aerospace|aerospacebar|borders|tccutil|ghostty|hammerspoon' || echo '(none found)'"
   echo ""
   echo "── Aegis.app (should NOT be present) ──"
   guest "ls -d /Applications/Aegis.app 2>&1 || echo '(not installed — correct)'"
@@ -94,7 +82,7 @@ cmd_check() {
   guest "test -x ~/.config/mac-scrolling-wm/helpers/generate-shortcuts-json && echo '(generator installed)' || echo '(missing)'"
   guest "test -x ~/.config/mac-scrolling-wm/helpers/display-shortcuts && echo '(launcher installed)' || echo '(missing)'"
   guest "ls -d ~/.config/mac-scrolling-wm/helpers/mac-cheatsheet-viewer.app >/dev/null 2>&1 && echo '(viewer app built)' || echo '(viewer app NOT built)'"
-  guest "cd /tmp && ~/.config/mac-scrolling-wm/helpers/generate-shortcuts-json --output /tmp/cheatsheet.json && python3 -m json.tool /tmp/cheatsheet.json >/dev/null && echo '(cheat-sheet JSON valid — derived from live config.toml)' || echo '(cheat-sheet JSON INVALID)'"
+  guest "cd /tmp && ~/.config/mac-scrolling-wm/helpers/generate-shortcuts-json --output /tmp/cheatsheet.json && python3 -m json.tool /tmp/cheatsheet.json >/dev/null && echo '(cheat-sheet JSON valid — derived from live hotkeys.toml)' || echo '(cheat-sheet JSON INVALID)'"
   ask_cleanup
 }
 
