@@ -117,22 +117,20 @@ design; summary below.
 > them — by their macOS arrangement position (`y` then `x`) and stepped ±1
 > through to get previous/next.
 >
-> **Focus goes through a compiled helper, for speed.** `Cmd+Ctrl+←/→` is a
-> thin dispatch (`config/paneru/lib/displays.lua`) into
+> **Focus resolves in-process, warps via a compiled helper.** `Cmd+Ctrl+←/→`
+> is handled in `config/paneru/lib/displays.lua`: the target display comes
+> from the geometric ordering + the mouse's display, and the target point
+> from the live state snapshot (the focused window's center when it is on
+> the target display, else the first window there, else the display center)
+> — no subprocess. Only the warp itself goes through
 > `~/.config/mac-scrolling-wm/helpers/focus-display`, a compiled Swift
-> binary — not run as an ephemeral `swift -e` script, since that JIT-compile
-> tax (commonly 150-400ms) was the dominant cost of the shortcut and focus
-> is pressed far more often than move. It enumerates displays and finds the
-> mouse's current one via CoreGraphics (the same source
-> `helpers/mouse-display`/`helpers/display-geometry` use), asks the running
-> paneru daemon over IPC (`paneru query on-screen`) which on-screen window
-> belongs to the target display, and warps the pointer to it — plus a
-> synthetic `.mouseMoved` event, since `CGWarpMouseCursorPosition` alone
-> doesn't post a real mouse-moved event to any `CGEventTap`, including
-> paneru's own `focus_follows_mouse` tap — so that option (on by default in
-> this config) picks it up. No window is moved. If the target display has no
-> on-screen window, it just warps to the display's own center instead (the
-> same idea as Paneru's native `mouse nextdisplay`), no event needed.
+> binary that warps the pointer plus a synthetic `.mouseMoved` event, since
+> `CGWarpMouseCursorPosition` alone doesn't post a real mouse-moved event
+> to any `CGEventTap`, including paneru's own `focus_follows_mouse` tap —
+> so that option (on by default in this config) picks it up. No window is
+> moved. If the target display has no on-screen window, it just warps to
+> the display's own center instead (the same idea as Paneru's native
+> `mouse nextdisplay`), no event needed.
 > "Current display" this way is always the mouse pointer's display, not the
 > focused window's: a window is only tracked by Paneru's Lua `display_of`
 > via strip membership, which doesn't exist when the display you're on has
@@ -179,9 +177,9 @@ design; summary below.
 > cached in Lua, re-read on display events and whenever a window appears on
 > an unknown display; move targets an occupied *or* empty display (the
 > `move-display` helper teleports the window onto the blank monitor's frame
-> and it is adopted by that strip). For focus, `focus-display` does its own
-> CoreGraphics enumeration internally and warps to the empty display's
-> center directly when `paneru query on-screen` has nothing for it.
+> and it is adopted by that strip). For focus, the target point is resolved
+> in-process from the state snapshot and geometry cache, warping to the
+> empty display's center directly when it has no windows.
 >
 > One-time cost: grant Accessibility access to the compiled
 > `~/.config/mac-scrolling-wm/helpers/move-display` **and**
@@ -419,8 +417,8 @@ config/paneru/lib/        Display-navigation Lua modules, required by init.lua
                           (displays.lua, query.lua, log.lua)
 config/ghostty/           Ghostty config (frameless title bar)
 helpers/                  display navigation: display-geometry, mouse-display
-                          (CoreGraphics, used by move); focus-display.swift,
-                          move-display.swift (Accessibility + IPC, compiled
+                           (CoreGraphics, used by move); focus-display.swift,
+                           move-display.swift (Accessibility + IPC, compiled
                           at install time); shortcut cheat-sheet:
                           generate-shortcuts-json, display-shortcuts
                           (mac-cheatsheet-viewer app lives in its own repo at

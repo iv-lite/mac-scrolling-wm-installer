@@ -5,17 +5,15 @@
 -- Cmd+Ctrl+Shift+←/→ moves the focused window to the previous/next display
 -- and follows it.
 --
--- Focus is delegated entirely to the compiled
--- ~/.config/mac-scrolling-wm/helpers/focus-display helper (see that file):
--- it enumerates displays and the mouse's current one via CoreGraphics, asks
--- the running paneru daemon over IPC (`paneru query on-screen`) which
--- window (if any) belongs to the target display, and warps the pointer
--- there. Being compiled rather than run as an ephemeral `swift -e` script
--- (like move/geometry/mouse helpers below still are) matters here
--- specifically: focus is the far more frequently pressed of the two
--- shortcuts, and the JIT-compile tax of an ephemeral script (commonly
--- 150-400ms) was the dominant cost of every keypress. focus_display below
--- is therefore just a thin dispatch into that helper, guarded by MOVE_BUSY.
+-- Focus is resolved in-process and only the warp itself is delegated to the
+-- compiled ~/.config/mac-scrolling-wm/helpers/focus-display helper (see that
+-- file): the target display comes from the geometric ordering + the mouse's
+-- display, and the target point from the live state snapshot (the focused
+-- window's center when it is on the target display, else the first window
+-- there, else the display center) — no subprocess, where the old helper paid
+-- a `paneru query on-screen` spawn + JSON parse on every keypress.
+-- focus_display below is therefore target math plus one thin helper exec,
+-- guarded by MOVE_BUSY.
 --
 -- Move is also fully delegated to compiled helpers — both the 2-display
 -- path (paneru's own `window nextdisplay` via CLI) and the 3+ display
@@ -49,7 +47,7 @@ local query_state_safe = query.state
 local find_window = query.find_window
 
 -- Helpers (see helpers/, all compiled by scripts/install-helpers):
---   focus-display    — focus a display via CG + paneru IPC (query on-screen)
+--   focus-display    — warp-only: pointer to x y + mouseMoved; the target is resolved in-process
 --   move-display     — teleport via AX at near-final geometry, warp + mouseMoved, settle via CLI
 --   display-geometry — real CG frames of every online display, empties included
 --   mouse-display    — which display id currently has the pointer
@@ -156,18 +154,112 @@ end
 -- yield happens between the check and the set.
 local MOVE_BUSY = false
 
--- Focus is a thin dispatch into the compiled focus-display helper (see that
--- file for the full logic: CG display enumeration, mouse-based "current
--- display", the paneru IPC lookup of a window on the target display, and
--- the warp/synthetic-move that makes focus_follows_mouse pick it up). The
--- only thing worth doing in-process is the MOVE_BUSY check — no reason to
--- pay a subprocess launch just to find out a move is in flight.
+local function display_frame(ws, display_id)
+  ensure_geometry(ws)
+  local t = DISPLAYS[display_id]
+  if t then return t end
+  for _, w in ipairs(ws:windows()) do
+    local d = ws:display_of(w.id)
+    if d and d.id == display_id then return d end
+  end
+end
+
+-- A window frame's center as {x, y}, or nil when the frame is missing or
+-- malformed. State frames are plain Lua numbers (no Swift-side casts).
+local function frame_center(frame)
+  if type(frame) ~= "table" then return nil end
+  local x, y, w, h = frame.x, frame.y, frame.width, frame.height
+  if type(x) ~= "number" or type(y) ~= "number"
+      or type(w) ~= "number" or type(h) ~= "number" then
+    return nil
+  end
+  return { x = x + w / 2, y = y + h / 2 }
+end
+
+-- Locate the mouse pointer's display in the geometric ordering, refreshing
+-- the geometry cache once when it isn't there. Returns ids, idx (both nil
+-- when the current display can't be determined). Shared by the focus and
+-- move paths: both step previous/next off the pointer's display, never the
+-- focused window — Lua can't see empty displays, the pointer is always
+-- somewhere.
+local function current_index(kind, ws, ids)
+  local cur_id = current_display_id()
+  if not cur_id then
+    log(kind .. ": mouse-display helper failed")
+    return nil, nil
+  end
+  if not DISPLAYS[cur_id] then
+    log(kind .. ": cur_id " .. cur_id .. " not in geometry cache, refreshing")
+    GEOM_STALE = true
+    if refresh_geometry() then ids = ORDERED_IDS end
+  end
+  for i, id in ipairs(ids) do
+    if id == cur_id then return ids, i end
+  end
+  log(kind .. ": cur_id " .. cur_id .. " not in ids [" .. table.concat(ids, ",") .. "] even after refresh")
+  return nil, nil
+end
+
+-- Where to warp for `target_id`: the focused window's center when it is on
+-- the target display, else the first window there, else the display center.
+-- Resolved in-process from the state snapshot — no subprocess.
+local function focus_point(ws, target, target_id)
+  local state = query_state_safe()
+  if state then
+    local first = nil
+    for _, row in ipairs(state.virtual_workspaces or {}) do
+      for _, w in ipairs(row.windows or {}) do
+        if w.display_id == target_id then
+          if w.focused then
+            local p = frame_center(w.frame)
+            if p then return p end
+          end
+          if first == nil then first = w end
+        end
+      end
+    end
+    if first ~= nil then
+      local p = frame_center(first.frame)
+      if p then return p end
+    end
+  end
+  local t = display_frame(ws, target_id)
+  if t and type(t.x) == "number" and type(t.y) == "number" then
+    local w, h = t.width or 0, t.height or 0
+    if type(w) ~= "number" then w = 0 end
+    if type(h) ~= "number" then h = 0 end
+    return { x = t.x + w / 2, y = t.y + h / 2 }
+  end
+  log("focus " .. target .. ": no geometry for target display " .. target_id)
+  return nil
+end
+
+-- Focus is resolved in-process (target display + point, see above) and the
+-- compiled focus-display helper only performs the warp: pointer there plus
+-- the synthetic mouseMoved that makes focus_follows_mouse pick it up. The
+-- only thing worth skipping in-process is a move in flight (MOVE_BUSY).
 local function focus_display(ws, target)
   if MOVE_BUSY then
     log("focus " .. target .. ": busy (a move is in flight)")
     return
   end
-  local ok, res = pcall(paneru.exec, FOCUS_HELPER, { target })
+  local ids = ordered_displays(ws)
+  if #ids < 2 then
+    log("focus " .. target .. ": fewer than 2 displays (" .. #ids .. ")")
+    return
+  end
+  local _, idx = current_index("focus " .. target, ws, ids)
+  if not idx then return end
+  local n = #ids
+  local step = (target == "previous") and (n - 1) or 1
+  local target_id = ids[((idx - 1 + step) % n) + 1]
+  local point = focus_point(ws, target, target_id)
+  if not point then return end
+  log(string.format("focus %s: -> display %d (%.0f, %.0f)",
+    target, target_id, point.x, point.y))
+  local ok, res = pcall(paneru.exec, FOCUS_HELPER, {
+    tostring(math.floor(point.x)), tostring(math.floor(point.y)),
+  })
   if not ok or not res or res.code ~= 0 then
     log("focus " .. target .. ": focus-display helper failed" ..
       ((res and res.stderr and res.stderr ~= "") and (": " .. res.stderr) or ""))
@@ -176,32 +268,29 @@ end
 
 -- Leave focus (and the pointer) on the moved window once the move settled.
 -- On the 2-display path the pointer is still on the source display, so warp
--- it over with the focus helper (same mouseMoved mechanism Cmd+Ctrl+arrows
--- use, so focus_follows_mouse picks the window up, and later presses compute
--- "current display" from the right place). On the 3+ path the helper already
--- warped onto the moved window — warping again from there would step one
--- display too far, so only focus is pinned. The explicit ws:focus flushes
+-- it exactly onto the moved window's live center (same mouseMoved mechanism
+-- Cmd+Ctrl+arrows use, so focus_follows_mouse picks it up, and later presses
+-- compute "current display" from the right place). On the 3+ path the helper
+-- already warped onto the moved window — warping again from there would step
+-- one display too far, so only focus is pinned. The explicit ws:focus flushes
 -- through the Lua-side outbox at dispatch end, i.e. after all CLI-applied
--- moves. The helper is invoked directly — not via focus_display(), which
--- refuses to run while MOVE_BUSY is set, which is exactly the case from
--- inside a move dispatch.
+-- moves. This runs inside a move dispatch (MOVE_BUSY is set), never via
+-- focus_display(), which refuses to run while a move is in flight.
 local function follow_moved_window(ws, focused, target, warp)
   if warp then
-    pcall(paneru.exec, FOCUS_HELPER, { target })
+    local w = find_window(query_state_safe(), focused)
+    local p = w and frame_center(w.frame) or nil
+    if p then
+      pcall(paneru.exec, FOCUS_HELPER, {
+        tostring(math.floor(p.x)), tostring(math.floor(p.y)),
+      })
+    else
+      log("move " .. target .. ": no live frame for window " .. tostring(focused) .. ", skipping warp")
+    end
   end
   local fok, ferr = pcall(function() ws:focus(focused) end)
   if not fok then
     log("move " .. target .. ": ws:focus(" .. tostring(focused) .. ") failed: " .. tostring(ferr))
-  end
-end
-
-local function display_frame(ws, display_id)
-  ensure_geometry(ws)
-  local t = DISPLAYS[display_id]
-  if t then return t end
-  for _, w in ipairs(ws:windows()) do
-    local d = ws:display_of(w.id)
-    if d and d.id == display_id then return d end
   end
 end
 
@@ -240,22 +329,10 @@ local function move_to_display(ws, target)
       log("move " .. target .. ": fewer than 2 displays (" .. #ids .. ")")
       return
     end
-    local cur_id = current_display_id()
-    if not cur_id then
-      log("move " .. target .. ": mouse-display helper failed")
-      return
-    end
-    if not DISPLAYS[cur_id] then
-      log("move " .. target .. ": cur_id " .. cur_id .. " not in geometry cache, refreshing")
-      GEOM_STALE = true
-      if refresh_geometry() then ids = ORDERED_IDS end
-    end
-    local idx
-    for i, id in ipairs(ids) do if id == cur_id then idx = i break end end
-    if not idx then
-      log("move " .. target .. ": cur_id " .. cur_id .. " not in ids [" .. table.concat(ids, ",") .. "] even after refresh")
-      return
-    end
+    local ids2, idx = current_index("move " .. target, ws, ids)
+    if not idx then return end
+    ids = ids2
+    local cur_id = ids[idx]
     local n = #ids
     local step = (target == "previous") and (n - 1) or 1
     local target_id = ids[((idx - 1 + step) % n) + 1]

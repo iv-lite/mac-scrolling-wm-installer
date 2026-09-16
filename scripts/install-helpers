@@ -43,7 +43,7 @@ if command -v swiftc >/dev/null 2>&1; then
   chmod +x "$HELPERS_DIR/move-display"
   ok "move-display compiled to $HELPERS_DIR/move-display"
 
-  note "Compiling focus-display (Accessibility + IPC helper)..."
+  note "Compiling focus-display (warp-only pointer helper)..."
   swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/focus-display.swift" -o "$HELPERS_DIR/focus-display"
   chmod +x "$HELPERS_DIR/focus-display"
   ok "focus-display compiled to $HELPERS_DIR/focus-display"
