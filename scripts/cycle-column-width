@@ -22,7 +22,7 @@ min="${minmax%%$'\t'*}"; max="${minmax##*$'\t'}"
 
 delta="$(awk -v min="$min" -v max="$max" -v ratio="$ratio" 'BEGIN {
 	snap = 0.02; eps = 1e-6
-	mid = int(100 * (min + max) / 2 + 0.5) / 100
+	mid = 0.5
 	if      (ratio - min < snap && min - ratio < snap) r = min
 	else if (ratio - mid < snap && mid - ratio < snap) r = mid
 	else if (ratio - max < snap && max - ratio < snap) r = max
