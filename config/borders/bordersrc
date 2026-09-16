@@ -4,9 +4,9 @@
 
 options=(
 	style=round
-	width=4.0
+	width=8.0
 	hidpi=on
-	active_color=0x9e2b303c
+	active_color=0xd42b303c
 	inactive_color=0xd62b303c
 )
 

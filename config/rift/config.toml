@@ -58,9 +58,9 @@ propagate_to_workspace_swipe = true
 [settings.layout.gaps]
 [settings.layout.gaps.outer]
 top = 12
-left = 12
+left = 6
 bottom = 12
-right = 12
+right = 6
 
 [settings.layout.gaps.inner]
 horizontal = 12
