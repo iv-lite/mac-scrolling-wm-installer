@@ -6,12 +6,6 @@
 macos-titlebar-style = hidden
 macos-window-buttons = hidden
 
-theme = Nord
-background = 2b303b
-foreground = ffffff
-
-font-family = "Roboto Mono"
-font-size = 12
 mouse-hide-while-typing = true
 
 window-padding-x = 2
