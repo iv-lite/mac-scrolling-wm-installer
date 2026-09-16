@@ -42,9 +42,9 @@ mode = "scrolling"
 window_insertion_point = "end_of_tree"
 
 [settings.layout.scrolling]
-column_width_ratio = 0.9
+column_width_ratio = 0.5
 min_column_width_ratio = 0.3
-max_column_width_ratio = 0.9
+max_column_width_ratio = 1.0
 alignment = "center"
 focus_navigation_style = "niri"
 animate = true
@@ -148,20 +148,14 @@ wsShift    = "Ctrl + Alt + Shift"   # Ctrl+Option+Shift: move window to workspac
 "mainShift + Up"    = { move_node = "up" }
 "mainShift + Down"  = { move_node = "down" }
 
-# ─── Column width (Cmd+Option+W) — matches Paneru's preset_column_widths ───
-# Neither `resize_window_grow`/`resize_window_shrink` (named mode only, no
-# numeric amount) nor a plain `resize-by <fixed amount>` land on Paneru's
-# 0.3/0.5/1.0 presets (they're unevenly spaced). `cycle-column-width`
-# (recovered from this repo's pre-Paneru history, scripts/cycle-column-width)
-# measures the focused column's exact current width via `rift-cli query
-# layout` and resizes by the precise delta to the next/previous preset.
-"main + W"      = { exec = ["/bin/bash", "-c", "$HOME/.config/rift/cycle-column-width next"] }
-"mainShift + W" = { exec = ["/bin/bash", "-c", "$HOME/.config/rift/cycle-column-width prev"] }
-# Paneru's dedicated "jump to full width" (Cmd+Option+M), staying tiled.
-# `toggle_fullscreen`/`toggle_fullscreen_within_gaps` also float the window
-# (undocumented side effect) — this reuses the same resize-by mechanism as
-# W/Shift+W instead, which never touches floating state.
-"main + M" = { exec = ["/bin/bash", "-c", "$HOME/.config/rift/cycle-column-width max"] }
+# ─── Column width (Cmd+Option+W) ───
+# `cycle-column-width` measures the focused column's exact width via
+# `rift-cli query layout` and resizes by the precise delta to the next
+# preset (min → mid → max → min), matching Paneru's column cycling.
+"main + W" = { exec = ["/bin/bash", "-c", "$HOME/.config/rift/cycle-column-width"] }
+
+# Cmd+Option+M: maximize within the outer gaps (native Rift action).
+"main + M" = "toggle_fullscreen_within_gaps"
 
 # ─── Workspaces (Ctrl+Option+Up/Down) ───
 # Rift workspaces are fixed/numbered, not dynamic rows, so this cycles
