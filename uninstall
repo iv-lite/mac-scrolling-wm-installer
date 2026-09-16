@@ -20,19 +20,17 @@ echo "  ║          niri-like macOS setup — uninstall        ║"
 echo "  ╚══════════════════════════════════════════════════╝"
 echo ""
 echo "  This will:"
-echo "   • Stop/remove Rift + JankyBorders (plus legacy Paneru, rift-swipe,"
+echo "   • Quit Nehir, stop JankyBorders (plus legacy Paneru, Rift, rift-swipe,"
 echo "     AeroSpace/AeroSpaceBar/Aegis if present)"
-echo "   • Remove WarpMouse.spoon and its entry from ~/.hammerspoon/init.lua"
-echo "     (Hammerspoon itself is left installed/running — it's a"
-echo "     general-purpose tool you may use for other things)"
 echo "   • Revoke Accessibility permissions"
 echo "   • Move configs to ~/.config/backups (not deleted, incl. shortcut helpers)"
 echo "   • Uninstall brew packages (you'll choose which to keep)"
-echo "     rift, borders, tccutil-rs, ghostty"
-echo "     (+ legacy paneru, aerospace, aerospacebar if still present)"
+echo "     nehir, borders, tccutil-rs, ghostty"
+echo "     (+ legacy rift, paneru, aerospace, aerospacebar, hammerspoon if"
+echo "     still present)"
 echo "   • Clean up legacy Aegis.app + its LaunchAgent/preferences (if present)"
-echo "   • Untap repos no longer needed (acsandmann/tap, FelixKratz/formulae,"
-echo "     nikitabobko/tap, rdrkr/tap, uinaf/tap)"
+echo "   • Untap repos no longer needed (guria/tap, FelixKratz/formulae,"
+echo "     uinaf/tap, and legacy acsandmann/tap, nikitabobko/tap, rdrkr/tap)"
 echo "   • Revert system defaults (show the native menu bar again)"
 echo ""
 read -r -p "  Continue? [y/N] " answer
@@ -48,13 +46,10 @@ fi
 echo ""
 note "Stopping services..."
 
-if command -v rift >/dev/null 2>&1; then
-	if rift service stop >/dev/null 2>&1; then
-		ok "Rift stopped"
-	fi
-	if rift service uninstall >/dev/null 2>&1; then
-		ok "Rift service removed"
-	fi
+# Nehir — plain menu-bar app, no launchd service to remove.
+if pgrep -qx Nehir >/dev/null 2>&1; then
+	osascript -e 'tell application "Nehir" to quit' >/dev/null 2>&1 || killall Nehir >/dev/null 2>&1 || true
+	ok "Nehir quit"
 fi
 
 # JankyBorders
@@ -63,16 +58,28 @@ if command -v borders >/dev/null 2>&1; then
 	ok "JankyBorders service stopped"
 fi
 
-# WarpMouse.spoon — remove only what we added (the Spoon directory and our
-# marker-delimited block in ~/.hammerspoon/init.lua), leaving Hammerspoon
-# itself and any other config the user has there untouched.
+# Legacy: Rift launchd service (this repo used Rift before switching to Nehir)
+if command -v rift >/dev/null 2>&1; then
+	if rift service stop >/dev/null 2>&1; then
+		ok "Legacy Rift stopped"
+	fi
+	if rift service uninstall >/dev/null 2>&1; then
+		ok "Legacy Rift service removed"
+	fi
+fi
+
+# Legacy: WarpMouse.spoon — remove only what the Rift-era installer added
+# (the Spoon directory and its marker-delimited block in
+# ~/.hammerspoon/init.lua), leaving Hammerspoon itself and any other config
+# the user has there untouched. Nehir has native mouse edge-warp, so this
+# is no longer installed by a fresh setup.
 if [ -d ~/.hammerspoon/Spoons/WarpMouse.spoon ]; then
 	rm -rf ~/.hammerspoon/Spoons/WarpMouse.spoon
-	ok "WarpMouse.spoon removed"
+	ok "Legacy WarpMouse.spoon removed"
 fi
 if [ -f ~/.hammerspoon/init.lua ] && grep -qF -- "-- >>> aerospace-installer: WarpMouse.spoon" ~/.hammerspoon/init.lua; then
 	sed -i '' '/-- >>> aerospace-installer: WarpMouse.spoon/,/-- <<< aerospace-installer/d' ~/.hammerspoon/init.lua
-	ok "Removed WarpMouse.spoon entry from ~/.hammerspoon/init.lua"
+	ok "Removed legacy WarpMouse.spoon entry from ~/.hammerspoon/init.lua"
 	note "Reload Hammerspoon's config (menu bar icon → Reload Config) to apply"
 fi
 
@@ -136,7 +143,8 @@ fi
 echo ""
 note "Revoking Accessibility permissions..."
 if command -v tccutil-rs >/dev/null 2>&1; then
-	for bin in "$(command -v rift 2>/dev/null || true)" \
+	for bin in "/Applications/Nehir.app/Contents/MacOS/Nehir" \
+	           "$(command -v rift 2>/dev/null || true)" \
 	           "$(command -v paneru 2>/dev/null || true)" \
 	           "/Applications/AeroSpace.app/Contents/MacOS/AeroSpace" \
 	           "$(command -v borders 2>/dev/null || true)" \
@@ -167,7 +175,7 @@ if [ -f ~/.aerospace.toml ] || [ -f ~/.aerospace.toml.bak ]; then
 	warn "~/.aerospace.toml* exists outside ~/.config — leaving untouched (not ours to remove)"
 fi
 
-for dir in ~/.config/paneru ~/.config/mac-scrolling-wm ~/.config/rift ~/.config/aerospace ~/.config/borders ~/.config/aegis ~/.config/ghostty; do
+for dir in ~/.config/nehir ~/.config/paneru ~/.config/mac-scrolling-wm ~/.config/rift ~/.config/aerospace ~/.config/borders ~/.config/aegis ~/.config/ghostty; do
 	if [ -d "$dir" ]; then
 		mv "$dir" "$BACKUP_DIR/"
 		ok "Moved $dir → $BACKUP_DIR/$(basename "$dir")"
@@ -222,14 +230,15 @@ if command -v brew >/dev/null 2>&1; then
 		fi
 	}
 
-	add_pkg rift        formula acsandmann/tap
-	add_pkg borders     formula FelixKratz/formulae
+	add_pkg nehir        cask    guria/tap
+	add_pkg borders      formula FelixKratz/formulae
+	add_pkg rift         formula acsandmann/tap      # legacy
 	add_pkg paneru       formula              # legacy
 	add_pkg aerospace    cask    nikitabobko/tap      # legacy
 	add_pkg aerospacebar cask    rdrkr/tap            # legacy
+	add_pkg hammerspoon  cask                         # legacy (WarpMouse.spoon)
 	add_pkg tccutil-rs   formula uinaf/tap
 	add_pkg ghostty      cask
-	add_pkg hammerspoon  cask
 
 	if [ "$n" -eq 0 ]; then
 		warn "No packages from this setup are installed — nothing to uninstall."

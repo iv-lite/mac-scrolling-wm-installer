@@ -34,7 +34,7 @@ for arg in "$@"; do
 		--help|-h)
 			echo "Usage: ./install"
 			echo ""
-			echo "  Installs Rift + JankyBorders + Ghostty with an niri-like"
+			echo "  Installs Nehir + JankyBorders + Ghostty with an niri-like"
 			echo "  scrolling-strip layout (no flags currently)."
 			exit 0
 			;;
@@ -46,7 +46,7 @@ for arg in "$@"; do
 done
 
 # Fresh install vs. upgrade of an existing setup
-if command -v rift >/dev/null 2>&1; then
+if [ -d /Applications/Nehir.app ]; then
 	MODE="upgrade"
 else
 	MODE="install"
@@ -54,7 +54,7 @@ fi
 
 echo ""
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║   Rift + JankyBorders + Ghostty installer            ║"
+echo "  ║   Nehir + JankyBorders + Ghostty installer           ║"
 if [ "$MODE" = "upgrade" ]; then
 	echo "  ║              niri-like macOS setup (upgrade)       ║"
 else
@@ -65,8 +65,7 @@ echo "  ╚═══════════════════════
 run_step install-deps
 run_step configure-system
 run_step install-ghostty
-run_step install-rift
-run_step install-hammerspoon
+run_step install-nehir
 run_step install-borders
 run_step install-helpers
 run_step grant-permissions
@@ -76,50 +75,37 @@ echo ""
 echo "  ${GREEN}══════════════════════════════════════════════${RESET}"
 if [ "$MODE" = "upgrade" ]; then
 	echo "  ${GREEN}  Upgrade complete — configs refreshed & services restarted${RESET}"
-	echo "  ${GREEN}  (Rift, JankyBorders, Ghostty)${RESET}"
+	echo "  ${GREEN}  (Nehir, JankyBorders, Ghostty)${RESET}"
 else
 	echo "  ${GREEN}  Installation complete!${RESET}"
 fi
 echo "  ${GREEN}══════════════════════════════════════════════${RESET}"
-echo ""
-if [ "$MODE" = "upgrade" ]; then
-	echo "  ${YELLOW}⚠ No logout needed for this upgrade.${RESET}"
-	echo "     (A logout is only required if you toggled 'Displays have separate Spaces'.)"
-else
-	echo "  ${YELLOW}⚠ A logout/login is required for this to take effect:${RESET}"
-	echo "     - 'Displays have separate Spaces' enabled (Rift-recommended)"
-fi
-echo ""
-if [ "$MODE" = "upgrade" ]; then
-	echo "  ${YELLOW}⚠ Running now:${RESET}"
-else
-	echo "  ${YELLOW}⚠ After the next login:${RESET}"
-fi
-echo "     - Rift tiles windows on a niri-style scrolling strip"
-echo "     - Rift's native menu bar shows workspaces 1-9"
+echo "  ${YELLOW}⚠ Running now (no logout required):${RESET}"
+echo "     - Nehir tiles windows on a niri-style scrolling strip"
+echo "     - Nehir's native menu bar shows workspaces 1-9"
 echo "     - JankyBorders draws a border around the focused window"
-echo "     - Moving the mouse to a display's left/right edge warps it to the"
-echo "       next monitor, cycling — via Hammerspoon's WarpMouse.spoon"
+echo "     - Moving the mouse to a display's edge warps it to the next"
+echo "       monitor, cycling — native to Nehir, no extra process needed"
 echo "     - Ghostty runs frameless (title bar hidden)"
-echo "     - If accessibility grants failed above, grant them manually:"
-echo "       System Settings → Privacy & Security → Accessibility"
+echo "     - If the Accessibility grant failed above, grant it manually:"
+echo "       System Settings → Privacy & Security → Accessibility → Nehir"
+echo "     - Nehir has no 'start at login' toggle of its own — add it once:"
+echo "       System Settings → General → Login Items & Extensions → '+' → Nehir"
 echo ""
 echo "  ${CYAN}Usage:${RESET}"
-echo "     Cmd+Option+Arrows        move focus between windows"
-echo "     3-finger swipe (←/→)     switch columns"
-echo "     3-finger swipe (↑/↓)     switch workspaces"
-echo "     Cmd+Option+Shift+Arrows  move windows"
-echo "     Ctrl+Option+↑/↓          switch workspace (1-9, fixed)"
-echo "     Ctrl+Option+Shift+↑/↓    move window to workspace"
-echo "     Cmd+Option+W             grow/shrink the focused column"
-echo "     Cmd+Option+V             toggle floating"
-echo "     Cmd+Option+O             stack / unstack"
-echo "     Cmd+Ctrl+Arrows          move focus/window between displays"
-echo "     Cmd+Option+Shift+R       reload Rift config (hot reload also on)"
-echo "     Cmd+Shift+?              show the shortcut cheat sheet"
+echo "     Option+Cmd+Arrows          move focus between windows"
+echo "     3-finger swipe (←/→)       switch columns"
+echo "     3-finger swipe (↑/↓)       switch workspaces"
+echo "     Option+Cmd+Shift+Arrows    move windows"
+echo "     Ctrl+Option+↑/↓            previous/next workspace"
+echo "     Option+Cmd+1..9            switch to workspace 1-9"
+echo "     Option+Cmd+Shift+1..9      move window to workspace 1-9"
+echo "     Option+Cmd+W / Shift+W     cycle column width (0.3/0.5/1.0)"
+echo "     Option+Cmd+M               jump to full width (stays tiled)"
+echo "     Option+Cmd+V               toggle floating"
+echo "     Option+Cmd+O               stack / unstack column"
+echo "     Ctrl+Cmd+Left/Right        focus previous/next display"
 echo ""
-if [ "$MODE" = "upgrade" ]; then
-	echo "  'Displays have separate Spaces' is already configured; no logout required."
-else
-	echo "  Log out now, then back in (Cmd+Shift+Q)."
-fi
+echo "  See README.md for the full keybinding table, including bindings that"
+echo "  changed or were dropped moving from Rift's exec-based config to"
+echo "  Nehir's fixed native action catalog."

@@ -10,31 +10,21 @@ note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
-# Enable "Displays have separate Spaces" — Rift requires it (it probes the
-# private windowserver mode, so `defaults write` alone is not enough on modern
-# macOS/26). Wrapper script verified on macOS 26; see its header for details.
-note "Checking 'Displays have separate Spaces' (Rift requires it ON)..."
-if ! "${0%/*}/ensure-separate-spaces" set; then
-	echo "     Re-run this installer after enabling the setting in System Settings."
-	exit 1
-fi
-echo ""
+# Unlike Rift, Nehir does not require "Displays have separate Spaces" to be
+# enabled — it simulates virtual workspaces itself (by parking windows
+# off-screen within one macOS Space) rather than depending on that private
+# SkyLight mode, so there's nothing to enforce here anymore.
 
-# Show the native macOS menu bar again (Rift's `[settings.ui.menu_bar]` draws
-# workspace indicators in it, and it auto-hides in Rift's fullscreen Spaces).
-# Un-hides the bar even when upgrading from an Aegis-era install.
+# Show the native macOS menu bar again (Nehir's [workspaceBar] draws
+# workspace indicators there). Un-hides the bar even when upgrading from an
+# Aegis-era install.
 if [ "$(defaults read NSGlobalDomain _HIHideMenuBar 2>/dev/null)" = "1" ]; then
-	note "Showing the native menu bar again (Rift draws its indicators there)..."
+	note "Showing the native menu bar again (Nehir draws its indicators there)..."
 	defaults write NSGlobalDomain _HIHideMenuBar -bool false
 	ok "_HIHideMenuBar set to off"
 else
 	ok "'Hide menu bar' already off"
 fi
 
-# Attempt to apply immediately. Separate Spaces is applied live via the
-# private API in ensure-separate-spaces; a logout/login still settles window
-# re-tiling into the new space layout.
 killall SystemUIServer 2>/dev/null || true
 killall Finder 2>/dev/null || true
-
-warn "A logout/login is recommended to settle windows into the new space layout."

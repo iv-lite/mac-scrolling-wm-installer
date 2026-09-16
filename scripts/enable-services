@@ -11,27 +11,24 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
-# Rift (per-user launchd service)
+# Nehir (plain menu-bar app — no launchd service the way Rift had one)
 # ─────────────────────────────────────────────────────────────
-if command -v rift >/dev/null 2>&1; then
-	if pgrep -qx rift >/dev/null 2>&1; then
-		note "Restarting Rift (refreshes launchd plist + applies upgraded binary)..."
-		# `service start` regenerates a stale plist in place (Rift compares it
-		# to what the current binary would generate, rewrites atomically, and
-		# re-bootstraps if it changed) — then `service restart` (kickstart -k)
-		# relaunches the (new) binary.
-		rift service start >/dev/null 2>&1 || true
-		if rift service restart; then
-			ok "Rift restarted"
+if [ -d /Applications/Nehir.app ]; then
+	if pgrep -qx Nehir >/dev/null 2>&1; then
+		note "Relaunching Nehir (applies upgraded binary + refreshed config)..."
+		killall Nehir >/dev/null 2>&1 || true
+		sleep 1
+		if open -a Nehir; then
+			ok "Nehir relaunched"
 		else
-			warn "Rift restart failed — verify Accessibility permission, then run: rift service restart"
+			warn "Nehir failed to relaunch — verify Accessibility permission, then run: open -a Nehir"
 		fi
 	else
-		note "Starting Rift..."
-		if rift service start; then
-			ok "Rift service started"
+		note "Starting Nehir..."
+		if open -a Nehir; then
+			ok "Nehir started"
 		else
-			warn "Rift failed to start — verify Accessibility permission was granted, then run: rift service start"
+			warn "Nehir failed to start — verify Accessibility permission was granted, then run: open -a Nehir"
 		fi
 	fi
 fi
