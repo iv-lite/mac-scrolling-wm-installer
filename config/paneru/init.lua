@@ -158,6 +158,18 @@ paneru.bind("cmd + ctrl - rightarrow", function(ws) return displays.focus(ws, "n
 paneru.bind("cmd + ctrl + shift - leftarrow", function(ws) displays.move(ws, "previous") end)
 paneru.bind("cmd + ctrl + shift - rightarrow", function(ws) displays.move(ws, "next") end)
 
+-- Cmd+Ctrl+T opens a new Ghostty window on every press: AppleScript
+-- `new terminal` (Ghostty 1.3.0+) creates a window in the running instance
+-- (or launches it when it isn't running); if that fails, fall back to plain
+-- `open -a`, which at least activates/opens Ghostty.
+paneru.bind("cmd + ctrl - t", function()
+  local ok, res = pcall(paneru.exec, "/usr/bin/osascript",
+    { "-e", 'tell application "Ghostty" to new terminal' })
+  if not ok or not res or res.code ~= 0 then
+    pcall(paneru.exec, "/usr/bin/open", { "-a", "Ghostty" })
+  end
+end)
+
 -- Workspace rows (window virtual north/south, window virtualmove north/south)
 -- are plain BINDINGS-table entries above: Paneru already restores the right
 -- scroll position after a virtual-workspace switch on its own (a one-tick-
