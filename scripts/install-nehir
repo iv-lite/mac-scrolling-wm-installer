@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+
+NEHIR_APP="/Applications/Nehir.app"
+
+# ─────────────────────────────────────────────────────────────
+# Install Nehir (Homebrew cask — guria/tap, not a core cask). Unlike Rift,
+# Nehir has no CLI shim on PATH by default (nehirctl lives inside the app
+# bundle), so upgrade-detection is keyed off the installed cask/app instead
+# of `command -v`.
+# ─────────────────────────────────────────────────────────────
+if brew list --cask nehir >/dev/null 2>&1; then
+	before="$(brew list --cask --versions nehir 2>/dev/null | tr ' ' '\n' | tail -1 || true)"
+	note "Nehir already installed (${before:-unknown}) — upgrading..."
+	brew tap guria/tap >/dev/null 2>&1 || true
+	if brew upgrade --cask nehir >/dev/null 2>&1; then
+		after="$(brew list --cask --versions nehir 2>/dev/null | tr ' ' '\n' | tail -1 || true)"
+		if [ "$before" = "$after" ]; then
+			ok "Nehir is at ${after:-current}"
+		else
+			ok "Nehir updated: ${before:-old} → ${after:-new}"
+		fi
+	else
+		warn "Nehir upgrade failed (network?) — keeping ${before:-current}"
+	fi
+else
+	note "Installing Nehir via Homebrew..."
+	brew tap guria/tap
+	brew install --cask nehir
+	ok "Nehir installed"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Config: ~/.config/nehir/ (split TOML files, all live-reloaded)
+# ─────────────────────────────────────────────────────────────
+mkdir -p ~/.config/nehir/apprules.d ~/.config/nehir/monitors.d
+
+for f in settings.toml hotkeys.toml workspaces.toml; do
+	if [ -f ~/.config/nehir/"$f" ]; then
+		note "Existing $f found — backing up"
+		cp ~/.config/nehir/"$f" ~/.config/nehir/"$f".bak
+	fi
+	cp "$REPO_ROOT/config/nehir/$f" ~/.config/nehir/"$f"
+done
+ok "Nehir config installed to ~/.config/nehir/{settings,hotkeys,workspaces}.toml"
+
+for f in "$REPO_ROOT"/config/nehir/apprules.d/*; do
+	cp "$f" ~/.config/nehir/apprules.d/
+done
+ok "App rule samples installed to ~/.config/nehir/apprules.d/ (inactive .toml.sample files)"
+
+# monitors.d ships empty from this repo (no per-monitor overrides needed by
+# default) — nothing to copy beyond the directory itself.
+
+# ─────────────────────────────────────────────────────────────
+# Launch (no launchd service the way Rift had — Nehir is a plain menu-bar
+# app; enable-services starts/relaunches it after permissions are granted).
+# ─────────────────────────────────────────────────────────────
+if [ ! -d "$NEHIR_APP" ]; then
+	warn "Nehir.app not found at $NEHIR_APP after install — check the cask output above."
+fi
+
+warn "Nehir will be launched by enable-services after permissions are granted."
+warn "Nehir has no 'start at login' setting of its own — add it once yourself:"
+echo "     System Settings → General → Login Items & Extensions → '+' → Nehir."

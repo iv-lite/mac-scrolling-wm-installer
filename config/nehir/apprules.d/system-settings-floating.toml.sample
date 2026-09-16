@@ -1,0 +1,9 @@
+# Float System Settings instead of tiling it. Inactive by default — rename
+# to .toml to enable. Bundle ID stayed `com.apple.systempreferences`
+# across the System Preferences → System Settings rename.
+[match]
+bundleId = "com.apple.systempreferences"
+appName = "System Settings"
+
+[effect]
+layout = "float"
