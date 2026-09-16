@@ -17,8 +17,8 @@
 --
 -- Move is also fully delegated to compiled helpers — both the 2-display
 -- path (paneru's own `window nextdisplay` via CLI) and the 3+ display
--- path (move-display: AX teleport, warp + mouseMoved, fire-and-forget
--- settle). This is because paneru batches all
+-- path (move-display: AX teleport, warp + mouseMoved, blocking settle with
+-- adoption confirm). This is because paneru batches all
 -- `paneru.run`/`ws:focus` commands in a Lua-side outbox that is only
 -- flushed to the ECS *after the keybind dispatch returns* (worker.rs
 -- Task::finish), so any in-dispatch poll of `paneru.query_json("state")`
@@ -274,18 +274,28 @@ local function focus_display(ws, target)
   end
 end
 
--- Leave focus (and the pointer) on the moved window once the move settled.
--- On the 2-display path the pointer is still on the source display, so warp
--- it exactly onto the moved window's live center (same mouseMoved mechanism
--- Cmd+Ctrl+arrows use, so focus_follows_mouse picks it up, and later presses
--- compute "current display" from the right place). On the 3+ path the helper
--- already warped onto the moved window — warping again from there would step
--- one display too far, so only focus is pinned. The explicit ws:focus flushes
--- through the Lua-side outbox at dispatch end, i.e. after all CLI-applied
--- moves. This runs inside a move dispatch (MOVE_BUSY is set), never via
--- focus_display(), which refuses to run while a move is in flight.
-local function follow_moved_window(ws, focused, target, warp)
-  if warp then
+-- Finish a move once the window settled on the target display.
+-- `source` is { display_id = <source id>, neighbor = <window id or nil> }:
+-- the neighbor left behind (next in strip order, else previous, captured
+-- before the move; nil when the source is left empty or the moved window
+-- was floating).
+--
+-- Three steps, in order:
+--   1. Warp exactly onto the moved window's live center on both paths (the
+--      3+ helper warped pre-settle and fullwidth shifts geometry after, so
+--      re-warp explicitly — warping to x/y can't overshoot a display).
+--   2. Center the neighbor left behind: focus it so paneru scrolls it into
+--      view, then snap it into the viewport. Viewport-only — focus returns
+--      below, never stays behind. Skipped when the neighbor already sits
+--      inside the source viewport (common case, and avoids racing paneru's
+--      own visibility correction).
+--   3. Focus the moved window. All three flush through the Lua-side outbox
+--      in order at dispatch end, i.e. after all CLI-applied moves.
+-- This runs inside a move dispatch (MOVE_BUSY is set), never via
+-- focus_display(), which refuses to run while a move is in flight. Every
+-- step is guarded: a miss degrades to today's behavior, never a broken move.
+local function finish_move(ws, focused, target, source)
+  do
     local w = find_window(query_state_safe(), focused)
     local p = w and frame_center(w.frame) or nil
     if p then
@@ -296,6 +306,30 @@ local function follow_moved_window(ws, focused, target, warp)
       log("move " .. target .. ": no live frame for window " .. tostring(focused) .. ", skipping warp")
     end
   end
+  if source and source.neighbor then
+    local t = DISPLAYS[source.display_id]
+    local nw = find_window(query_state_safe(), source.neighbor)
+    local np = nw and frame_center(nw.frame) or nil
+    local inside = np ~= nil and t ~= nil
+      and type(t.x) == "number" and type(t.y) == "number"
+      and type(t.width) == "number" and type(t.height) == "number"
+      and np.x >= t.x and np.x < t.x + t.width
+      and np.y >= t.y and np.y < t.y + t.height
+    if nw and nw.display_id == source.display_id and not inside then
+      local nok, nerr = pcall(function() ws:focus(source.neighbor) end)
+      if nok then
+        local sok, serr = pcall(paneru.run, "window snap")
+        if sok then
+          log("move " .. target .. ": centered window " .. tostring(source.neighbor) ..
+            " left on display " .. tostring(source.display_id))
+        else
+          log("move " .. target .. ": paneru.run(window snap) failed: " .. tostring(serr))
+        end
+      else
+        log("move " .. target .. ": ws:focus(" .. tostring(source.neighbor) .. ") failed: " .. tostring(nerr))
+      end
+    end
+  end
   local fok, ferr = pcall(function() ws:focus(focused) end)
   if not fok then
     log("move " .. target .. ": ws:focus(" .. tostring(focused) .. ") failed: " .. tostring(ferr))
@@ -304,9 +338,9 @@ end
 
 -- Poll `find_window(query_state_safe(), wid)` until `predicate(w)` holds
 -- or the budget runs out. Returns true if the predicate was satisfied.
--- Used by both settle paths: the 2-display `nextdisplay` confirm and the
--- 3+ adoption confirm after the move-display helper returns (its settle is
--- fire-and-forget, so Lua confirms here before restoring focus).
+-- Used by the 2-display `nextdisplay` confirm (that CLI is blocking, so the
+-- window is already moved when the poll starts). The 3+ adoption confirm
+-- lives in the move-display helper instead, where real sleeps are possible.
 local function poll_window(wid, ticks, predicate)
   for _ = 1, ticks do
     local w = find_window(query_state_safe(), wid)
@@ -350,6 +384,29 @@ local function move_to_display(ws, target)
       log("move " .. target .. ": target == current, nothing to do")
       return
     end
+    -- Neighbor to re-center on the source display once we're gone: next in
+    -- strip order, else previous, else nil (source left empty). Captured
+    -- pre-move — post-move the moved window is gone from this list.
+    -- Floating windows leave no strip gap behind, so skip them.
+    local neighbor = nil
+    if not was_floating then
+      local pre = query_state_safe()
+      if pre then
+        local order = {}
+        for _, row in ipairs(pre.virtual_workspaces or {}) do
+          for _, w in ipairs(row.windows or {}) do
+            if w.display_id == cur_id then order[#order + 1] = w.window_id end
+          end
+        end
+        for i, id in ipairs(order) do
+          if id == focused then
+            neighbor = order[i + 1] or order[i - 1]
+            break
+          end
+        end
+      end
+    end
+    local source = { display_id = cur_id, neighbor = neighbor }
     if n == 2 then
       -- 2-display path: `paneru window nextdisplay` via CLI (not
       -- paneru.run, which would batch until dispatch-end and make
@@ -367,13 +424,14 @@ local function move_to_display(ws, target)
         log("move " .. target .. ": window " .. focused .. " never reported display " .. target_id)
         paneru.flash("move display: failed to settle on target display", 3.0)
       else
-        follow_moved_window(ws, focused, target, true)
+        finish_move(ws, focused, target, source)
       end
       return
     end
     -- 3+ display path: the move-display helper owns the teleport (AX
-    -- teleport, warp + mouseMoved, fire-and-forget settle). Lua checks the
-    -- exit code, confirms adoption, then restores focus to the moved window.
+    -- teleport, warp + mouseMoved, blocking settle with adoption confirm).
+    -- Lua checks the exit code — the helper only reports success once the
+    -- window is adopted — then restores focus to the moved window.
     local t = display_frame(ws, target_id)
     if not t then
       log("move " .. target .. ": no geometry for target display " .. target_id)
@@ -384,6 +442,7 @@ local function move_to_display(ws, target)
       tostring(focused), tostring(math.floor(t.x)), tostring(math.floor(t.y)),
       tostring(math.floor(t.width)), tostring(math.floor(t.height)),
       was_floating and "1" or "0",
+      tostring(target_id),
     })
     if not exec_ok or not res or res.code ~= 0 then
       log("move " .. target .. ": move-display failed for window " .. focused ..
@@ -392,18 +451,7 @@ local function move_to_display(ws, target)
       paneru.flash("move display: move failed", 3.0)
       return
     end
-    log("move " .. target .. ": move-display helper teleported window " .. focused ..
-      " to display " .. target_id)
-    -- The helper's settle is fire-and-forget: confirm paneru adopted the
-    -- window on the target display before restoring focus to it.
-    local adopted = poll_window(focused, 200,
-      function(w) return w.display_id == target_id end)
-    if not adopted then
-      log("move " .. target .. ": window " .. focused .. " never reported display " .. target_id)
-      paneru.flash("move display: failed to settle on target display", 3.0)
-      return
-    end
-    follow_moved_window(ws, focused, target, false)
+    finish_move(ws, focused, target, source)
     log("move " .. target .. ": window " .. focused .. " moved to display " .. target_id)
   end)
   MOVE_BUSY = false

@@ -17,10 +17,13 @@
 //      paneru's ActiveDisplayMarker rotate to the target display (no click —
 //      a real press/release causes press animations and can hit window
 //      contents; warp-pointer uses the same mouseMoved mechanism)
-//   3. Raise the moved window, then ask paneru to settle it (fullwidth) via
-//      a fire-and-forget CLI launch — the helper exits without waiting for
-//      it, so the keypress feels instant while paneru animates on its own.
-//      Lua confirms adoption afterward and pins focus explicitly.
+//   3. Raise the moved window, settle it via a blocking `paneru window
+//      fullwidth`, then poll `paneru query state` until the window reports
+//      the target display (one raise + fullwidth retry on timeout). The
+//      settle must be observed, not fire-and-forget: a detached launch
+//      returns before the daemon applies it, so any caller-side adoption
+//      check races and fails. Lua trusts this helper's exit code and pins
+//      focus explicitly afterward.
 //
 // Performance notes (v10):
 //   - No AppKit import: resolving/activating via NSRunningApplication pulled
@@ -38,15 +41,18 @@
 //     minimizing the trailing settle animation.
 //   - Retry loop is 4 attempts with ~5ms backoff only on a miss (was up to
 //     10 attempts with 20ms sleeps plus 2 AX calls per pass).
-//   - The trailing `paneru window fullwidth` no longer blocks helper exit
-//     (was Process.waitUntilExit + full IPC round-trip on the critical path).
+//   - The trailing `paneru window fullwidth` blocks until applied and the
+//     adoption poll confirms it (a detached launch let the caller's check
+//     race and fail); the teleport path above keeps the keypress fast.
 //
-// Usage: move-display <window_id> <x> <y> <width> <height> <was_floating>
+// Usage: move-display <window_id> <x> <y> <width> <height> <was_floating> <target_display_id>
 // <window_id> is the exact CGWindowID Lua wants moved.
 // <x> <y> <width> <height> is the target display's frame in CG coordinates.
 // <was_floating> is accepted for CLI compatibility with displays.lua ("0"/"1")
 // but currently ignored: both tiled and floating windows are teleported as-is
 // and left for paneru to settle, per the Lua-side disposition handling.
+// <target_display_id> is paneru's display id for the target display, used to
+// confirm adoption via `paneru query state` before exiting 0.
 //
 // Exit 0 = success. Nonzero = failure (stderr has diagnostics).
 //
@@ -64,12 +70,14 @@ import Foundation
 func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
 
 let args = CommandLine.arguments
-guard args.count == 7, let windowID = UInt32(args[1]),
+guard args.count == 8, let windowIDArg = Int(args[1]),
+      let windowID = UInt32(args[1]),
       let tx = Double(args[2]), let ty = Double(args[3]),
       let tw = Double(args[4]), let th = Double(args[5]),
-      (args[6] == "0" || args[6] == "1") else {
+      (args[6] == "0" || args[6] == "1"),
+      let targetDisplayID = Int(args[7]) else {
   FileHandle.standardError.write(
-    "usage: move-display <window_id> <x> <y> <width> <height> <was_floating(0|1)>\n"
+    "usage: move-display <window_id> <x> <y> <width> <height> <was_floating(0|1)> <target_display_id>\n"
       .data(using: .utf8)!)
   exit(1)
 }
@@ -77,7 +85,7 @@ guard args.count == 7, let windowID = UInt32(args[1]),
 // (Tiled vs floating settle is owned by paneru / the Lua side.)
 _ = args[6]
 
-// ─── paneru CLI (fire-and-forget settle) ──────────────────────────────────
+// ─── paneru CLI (blocking settle + adoption poll) ─────────────────────────
 
 func resolvePaneruBinary() -> String {
   for candidate in ["/opt/homebrew/bin/paneru", "/usr/local/bin/paneru"] {
@@ -88,10 +96,8 @@ func resolvePaneruBinary() -> String {
   return "paneru"
 }
 
-/// Launch `paneru <argv>` without waiting: stdout/stderr go to /dev/null so
-/// the child can never block on a pipe after we exit, and the helper returns
-/// immediately while the daemon settles the window on its own.
-func launchPaneruDetached(_ argv: [String]) -> Bool {
+/// Run `paneru <argv>` and wait for it, capturing output.
+func runPaneruCLI(_ argv: [String]) -> (code: Int32, stdout: String, stderr: String) {
   let process = Process()
   if #available(macOS 10.13, *) {
     process.executableURL = URL(fileURLWithPath: resolvePaneruBinary())
@@ -99,17 +105,60 @@ func launchPaneruDetached(_ argv: [String]) -> Bool {
     process.launchPath = resolvePaneruBinary()
   }
   process.arguments = argv
-  process.standardOutput = FileHandle.nullDevice
-  process.standardError = FileHandle.nullDevice
+  let outPipe = Pipe(), errPipe = Pipe()
+  process.standardOutput = outPipe
+  process.standardError = errPipe
   do {
     try process.run()
   } catch {
+    return (-1, "", "failed to run paneru: \(error.localizedDescription)")
+  }
+  process.waitUntilExit()
+  let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+  let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+  return (process.terminationStatus, out, err)
+}
+
+/// The window record for `wid` in `paneru query state`, or nil.
+func findWindowState(_ wid: Int) -> [String: Any]? {
+  let (_, stdout, _) = runPaneruCLI(["query", "state"])
+  guard let data = stdout.data(using: .utf8),
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let workspaces = json["virtual_workspaces"] as? [[String: Any]] else {
+    return nil
+  }
+  for ws in workspaces {
+    guard let windows = ws["windows"] as? [[String: Any]] else { continue }
+    if let match = windows.first(where: { ($0["window_id"] as? Int) == wid }) {
+      return match
+    }
+  }
+  return nil
+}
+
+/// Poll state until the window reports the target display, or time out.
+/// Sleeps between ticks so the daemon has wall-clock time to apply the
+/// settle — a sleep-less busy poll would exhaust before it lands.
+func pollAdoption(retries: Int = 40, delay: TimeInterval = 0.05) -> Bool {
+  for i in 0..<retries {
+    if i > 0 { Thread.sleep(forTimeInterval: delay) }
+    if let w = findWindowState(windowIDArg),
+       (w["display_id"] as? Int) == targetDisplayID {
+      return true
+    }
+  }
+  return false
+}
+
+/// Settle via `window fullwidth` (blocking) and confirm adoption.
+func settle() -> Bool {
+  let (code, _, err) = runPaneruCLI(["send-cmd", "window", "fullwidth"])
+  if code != 0 {
     FileHandle.standardError.write(
-      "failed to run paneru \(argv.joined(separator: " ")): \(error.localizedDescription)\n"
-        .data(using: .utf8)!)
+      "paneru window fullwidth failed: \(err)\n".data(using: .utf8)!)
     return false
   }
-  return true
+  return pollAdoption()
 }
 
 // ─── Resolve the AX window element ────────────────────────────────────────
@@ -254,14 +303,25 @@ CGAssociateMouseAndMouseCursorPosition(1)
 CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
         mouseCursorPosition: landedCenter, mouseButton: .left)?.post(tap: .cghidEventTap)
 
-// ─── Raise + settle via paneru without blocking helper exit ───────────────
+// ─── Raise, settle, and confirm adoption ──────────────────────────────────
 
 // Raise the moved window before asking paneru to settle it, so the settle
 // operates on (and leaves focus on) this window rather than a sibling the
-// pointer may have hovered on the way over. Best-effort: the Lua side pins
-// focus explicitly after confirming adoption regardless.
+// pointer may have hovered on the way over.
 AXUIElementPerformAction(window, kAXRaiseAction as CFString)
 
-if !launchPaneruDetached(["send-cmd", "window", "fullwidth"]) {
+if settle() { exit(0) }
+// First settle missed — a focus race likely sent fullwidth at the wrong
+// window. Raise again to restore macOS focus, wait briefly for paneru to
+// track it, and settle once more before giving up.
+FileHandle.standardError.write(
+  "window \(windowID) not adopted by display \(targetDisplayID) after first settle; retrying\n"
+    .data(using: .utf8)!)
+AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+Thread.sleep(forTimeInterval: 0.1)
+guard settle() else {
+  FileHandle.standardError.write(
+    "window \(windowID) did not settle on display \(targetDisplayID) after retry\n"
+      .data(using: .utf8)!)
   exit(1)
 }
