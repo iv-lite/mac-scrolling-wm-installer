@@ -19,8 +19,8 @@
 --
 -- Move is also fully delegated to compiled helpers — both the 2-display
 -- path (paneru's own `window nextdisplay` via CLI) and the 3+ display
--- path (move-display, which handles the full float→teleport→re-tile
--- sequence via CLI round-trips). This is because paneru batches all
+-- path (move-display: AX teleport, warp + mouseMoved, fire-and-forget
+-- settle). This is because paneru batches all
 -- `paneru.run`/`ws:focus` commands in a Lua-side outbox that is only
 -- flushed to the ECS *after the keybind dispatch returns* (worker.rs
 -- Task::finish), so any in-dispatch poll of `paneru.query_json("state")`
@@ -48,11 +48,11 @@ local query_active_safe = query.active
 local query_state_safe = query.state
 local find_window = query.find_window
 
--- Helpers (see helpers/):
---   focus-display   — compiled: focus a display via CG + paneru IPC (query on-screen)
---   move-display    — compiled: full move sequence (float, teleport, re-tile) via CLI
+-- Helpers (see helpers/, all compiled by scripts/install-helpers):
+--   focus-display    — focus a display via CG + paneru IPC (query on-screen)
+--   move-display     — teleport via AX at near-final geometry, warp + mouseMoved, settle via CLI
 --   display-geometry — real CG frames of every online display, empties included
---   mouse-display   — which display id currently has the pointer
+--   mouse-display    — which display id currently has the pointer
 local HELPERS_DIR = os.getenv("HOME") .. "/.config/mac-scrolling-wm/helpers/"
 local FOCUS_HELPER = HELPERS_DIR .. "focus-display"
 local MOVE_HELPER = HELPERS_DIR .. "move-display"
@@ -174,6 +174,27 @@ local function focus_display(ws, target)
   end
 end
 
+-- Leave focus (and the pointer) on the moved window once the move settled.
+-- On the 2-display path the pointer is still on the source display, so warp
+-- it over with the focus helper (same mouseMoved mechanism Cmd+Ctrl+arrows
+-- use, so focus_follows_mouse picks the window up, and later presses compute
+-- "current display" from the right place). On the 3+ path the helper already
+-- warped onto the moved window — warping again from there would step one
+-- display too far, so only focus is pinned. The explicit ws:focus flushes
+-- through the Lua-side outbox at dispatch end, i.e. after all CLI-applied
+-- moves. The helper is invoked directly — not via focus_display(), which
+-- refuses to run while MOVE_BUSY is set, which is exactly the case from
+-- inside a move dispatch.
+local function follow_moved_window(ws, focused, target, warp)
+  if warp then
+    pcall(paneru.exec, FOCUS_HELPER, { target })
+  end
+  local fok, ferr = pcall(function() ws:focus(focused) end)
+  if not fok then
+    log("move " .. target .. ": ws:focus(" .. tostring(focused) .. ") failed: " .. tostring(ferr))
+  end
+end
+
 local function display_frame(ws, display_id)
   ensure_geometry(ws)
   local t = DISPLAYS[display_id]
@@ -186,8 +207,9 @@ end
 
 -- Poll `find_window(query_state_safe(), wid)` until `predicate(w)` holds
 -- or the budget runs out. Returns true if the predicate was satisfied.
--- Used only by the 2-display settle path (the 3+ path is fully handled
--- by the move-display helper, which does its own CLI-based polling).
+-- Used by both settle paths: the 2-display `nextdisplay` confirm and the
+-- 3+ adoption confirm after the move-display helper returns (its settle is
+-- fire-and-forget, so Lua confirms here before restoring focus).
 local function poll_window(wid, ticks, predicate)
   for _ = 1, ticks do
     local w = find_window(query_state_safe(), wid)
@@ -259,12 +281,14 @@ local function move_to_display(ws, target)
       if not settled then
         log("move " .. target .. ": window " .. focused .. " never reported display " .. target_id)
         paneru.flash("move display: failed to settle on target display", 3.0)
+      else
+        follow_moved_window(ws, focused, target, true)
       end
       return
     end
-    -- 3+ display path: the move-display helper owns the full sequence
-    -- (float, AX teleport, click, re-tile) via CLI round-trips, each
-    -- processed independently by the daemon. Lua just checks the exit code.
+    -- 3+ display path: the move-display helper owns the teleport (AX
+    -- teleport, warp + mouseMoved, fire-and-forget settle). Lua checks the
+    -- exit code, confirms adoption, then restores focus to the moved window.
     local t = display_frame(ws, target_id)
     if not t then
       log("move " .. target .. ": no geometry for target display " .. target_id)
@@ -283,6 +307,18 @@ local function move_to_display(ws, target)
       paneru.flash("move display: move failed", 3.0)
       return
     end
+    log("move " .. target .. ": move-display helper teleported window " .. focused ..
+      " to display " .. target_id)
+    -- The helper's settle is fire-and-forget: confirm paneru adopted the
+    -- window on the target display before restoring focus to it.
+    local adopted = poll_window(focused, 200,
+      function(w) return w.display_id == target_id end)
+    if not adopted then
+      log("move " .. target .. ": window " .. focused .. " never reported display " .. target_id)
+      paneru.flash("move display: failed to settle on target display", 3.0)
+      return
+    end
+    follow_moved_window(ws, focused, target, false)
     log("move " .. target .. ": window " .. focused .. " moved to display " .. target_id)
   end)
   MOVE_BUSY = false

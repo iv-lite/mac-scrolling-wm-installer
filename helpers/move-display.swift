@@ -254,7 +254,13 @@ CGAssociateMouseAndMouseCursorPosition(1)
 CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
         mouseCursorPosition: landedCenter, mouseButton: .left)?.post(tap: .cghidEventTap)
 
-// ─── Settle via paneru without blocking helper exit ───────────────────────
+// ─── Raise + settle via paneru without blocking helper exit ───────────────
+
+// Raise the moved window before asking paneru to settle it, so the settle
+// operates on (and leaves focus on) this window rather than a sibling the
+// pointer may have hovered on the way over. Best-effort: the Lua side pins
+// focus explicitly after confirming adoption regardless.
+AXUIElementPerformAction(window, kAXRaiseAction as CFString)
 
 if !launchPaneruDetached(["send-cmd", "window", "fullwidth"]) {
   exit(1)
