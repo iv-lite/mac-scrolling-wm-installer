@@ -26,11 +26,12 @@ cp "$REPO_ROOT/helpers/generate-shortcuts-json" "$HELPERS_DIR/generate-shortcuts
 cp "$REPO_ROOT/helpers/display-shortcuts" "$HELPERS_DIR/display-shortcuts"
 chmod +x "$HELPERS_DIR/generate-shortcuts-json" "$HELPERS_DIR/display-shortcuts"
 ok "Helpers installed to $HELPERS_DIR (generate-shortcuts-json, display-shortcuts)"
-# Multi-display focus/move has no helper here anymore: Rift has native
-# directional display commands (focus_display / move_window_to_display in
-# config/rift/config.toml), unlike Paneru which needed compiled Swift/CG
-# helpers (display-geometry, mouse-display, move-display, focus-display) to
-# work around its single-hop "next display" limitation.
+# No multi-display helper binaries needed: neither Rift nor Nehir needed
+# compiled Swift/CG helpers the way the older Paneru setup did
+# (display-geometry, mouse-display, move-display, focus-display).
+warn "display-shortcuts has no global hotkey anymore — Nehir's hotkeys.toml"
+echo "     can only bind Nehir's own actions, not arbitrary exec commands."
+echo "     Run it manually, or bind your own shortcut to it (see README)."
 
 # ─────────────────────────────────────────────────────────────
 # mac-cheatsheet-viewer app (fetched on every run, overwrites the bundle)
@@ -85,8 +86,8 @@ fetch_release() {
 }
 
 if fetch_release "$APP_DIR"; then
-	note "Cmd+Shift+? will now open the shortcut cheat sheet."
-	note "Regenerated JSON on every launch from ~/.config/rift/config.toml."
+	note "Run display-shortcuts to open the shortcut cheat sheet."
+	note "Regenerated JSON on every launch from ~/.config/nehir/hotkeys.toml."
 	exit 0
 fi
 
@@ -147,5 +148,5 @@ rm -rf "$APP_DIR"
 cp -R "$APP_BUILT" "$APP_DIR"
 ok "mac-cheatsheet-viewer.app installed to $APP_DIR (from local build)"
 
-note "Cmd+Shift+? (Rift) will now open the shortcut cheat sheet."
-note "The viewer JSON is regenerated on every launch from ~/.config/rift/config.toml."
+note "Run display-shortcuts to open the shortcut cheat sheet."
+note "The viewer JSON is regenerated on every launch from ~/.config/nehir/hotkeys.toml."
