@@ -202,28 +202,36 @@ end
 
 -- Where to warp for `target_id`: the focused window's center when it is on
 -- the target display, else the first window there, else the display center.
--- Resolved in-process from the state snapshot — no subprocess.
+-- Resolved in-process from the state snapshot — no subprocess. Candidates
+-- must be visible and geometrically on the target display: state also lists
+-- windows on hidden workspaces (and strip positions past the viewport)
+-- whose display_id matches but whose frames sit nowhere near the display —
+-- warping to one of those misses every monitor.
 local function focus_point(ws, target, target_id)
+  local t = display_frame(ws, target_id)
+  local function contains(p)
+    return p ~= nil and t ~= nil
+      and type(t.x) == "number" and type(t.y) == "number"
+      and type(t.width) == "number" and type(t.height) == "number"
+      and p.x >= t.x and p.x < t.x + t.width
+      and p.y >= t.y and p.y < t.y + t.height
+  end
   local state = query_state_safe()
   if state then
     local first = nil
     for _, row in ipairs(state.virtual_workspaces or {}) do
       for _, w in ipairs(row.windows or {}) do
-        if w.display_id == target_id then
-          if w.focused then
-            local p = frame_center(w.frame)
-            if p then return p end
+        if w.display_id == target_id and w.visible ~= false then
+          local p = frame_center(w.frame)
+          if contains(p) then
+            if w.focused then return p end
+            if first == nil then first = p end
           end
-          if first == nil then first = w end
         end
       end
     end
-    if first ~= nil then
-      local p = frame_center(first.frame)
-      if p then return p end
-    end
+    if first ~= nil then return first end
   end
-  local t = display_frame(ws, target_id)
   if t and type(t.x) == "number" and type(t.y) == "number" then
     local w, h = t.width or 0, t.height or 0
     if type(w) ~= "number" then w = 0 end
