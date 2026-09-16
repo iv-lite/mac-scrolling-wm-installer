@@ -42,9 +42,9 @@ mode = "scrolling"
 window_insertion_point = "end_of_tree"
 
 [settings.layout.scrolling]
-column_width_ratio = 1.0
+column_width_ratio = 0.9
 min_column_width_ratio = 0.3
-max_column_width_ratio = 1.0
+max_column_width_ratio = 0.9
 alignment = "center"
 focus_navigation_style = "niri"
 animate = true
@@ -57,14 +57,14 @@ propagate_to_workspace_swipe = true
 
 [settings.layout.gaps]
 [settings.layout.gaps.outer]
-top = 15
-left = 15
-bottom = 15
-right = 15
+top = 12
+left = 12
+bottom = 12
+right = 12
 
 [settings.layout.gaps.inner]
-horizontal = 8
-vertical = 8
+horizontal = 12
+vertical = 12
 
 # Per-display gap overrides (optional, multi-monitor).
 # Get your display UUIDs with:  rift-cli query displays
@@ -112,18 +112,18 @@ workspace_names = [
 # ─── App rules (same intent as Paneru's `windows.calculator`/`windows.preferences`) ───
 # Nested under virtual_workspaces per the current schema (each `[[...]]`
 # below appends one table to `virtual_workspaces.app_rules`).
-[[virtual_workspaces.app_rules]]
-app_id = "com.apple.calculator"
-floating = true
-size = { w = 360, h = 480 }
+# [[virtual_workspaces.app_rules]]
+# app_id = "com.apple.calculator"
+# floating = true
+# size = { w = 360, h = 480 }
 
-[[virtual_workspaces.app_rules]]
-app_name = "System Settings"
-floating = true
+# [[virtual_workspaces.app_rules]]
+# app_name = "System Settings"
+# floating = true
 
-[[virtual_workspaces.app_rules]]
-title_substring = "Preferences"
-floating = true
+# [[virtual_workspaces.app_rules]]
+# title_substring = "Preferences"
+# floating = true
 
 # ─── Modifier lanes, named to mirror Paneru's current scheme ───
 [modifier_combinations]
