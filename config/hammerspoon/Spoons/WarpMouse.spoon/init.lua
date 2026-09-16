@@ -1,63 +1,33 @@
 --- === WarpMouse ===
----
---- Continuous horizontal multi-monitor cursor wrap.
----
---- Rift's scrolling (niri-style) layout requires displays arranged
---- VERTICALLY in macOS System Settings even when they sit physically
---- side-by-side (avoids an off-screen-column leak bug). That means native
---- macOS mouse edge-crossing only auto-continues on the top/bottom edges
---- (matching the vertical arrangement); moving the cursor to the real
---- physical left/right edge does nothing, since Rift has no equivalent of
---- Paneru's old `horizontal_mouse_warp` setting.
----
---- This Spoon fills that gap: an hs.eventtap watches mouseMoved events,
---- and when the cursor hits the left/right edge of its current screen,
---- warps it to the far edge of the "next"/"previous" screen in a logical
---- left-to-right cycle (wrapping past either end) — giving the feel of
---- one continuous horizontal desktop. It only ever moves the cursor:
---- dragged events (a button held) are not in the watched event types, so
---- a window mid-drag is never yanked across displays by this.
----
---- This replaces an earlier from-scratch Swift CGEventTap
---- daemon/LaunchAgent that could never get its own Accessibility/Input
---- Monitoring grants recognized when launched via launchd. Running as a
---- Hammerspoon Spoon instead sidesteps that entirely: Hammerspoon itself
---- is a single, already-trusted (once granted) process, and everything a
---- Spoon does runs inside it — no separate signing/bundling/LaunchAgent
---- machinery needed.
----
---- Usage (in ~/.hammerspoon/init.lua):
----   hs.loadSpoon("WarpMouse")
----   spoon.WarpMouse:start()
----
---- Tunables (set before :start() to override the defaults):
----   spoon.WarpMouse.edgePx = 2.0
----   spoon.WarpMouse.landingInset = 3.0
----   spoon.WarpMouse.quietMs = 150.0
----   spoon.WarpMouse.invertOrder = false
+--- Continuous horizontal multi-monitor cursor wrap with acceleration support.
+--- Watches mouseMoved events; at a screen's left/right edge, warps to the
+--- opposite edge of the next/previous screen and keeps gliding at the captured
+--- velocity (no deceleration) until a real mouse event takes over.
+--- Usage: hs.loadSpoon("WarpMouse"); spoon.WarpMouse:start()
+--- Tunables (before :start): edgePx, landingInset, continueAfterWarp
 
 local obj = {}
 obj.__index = obj
 
 obj.name = "WarpMouse"
-obj.version = "1.0"
+obj.version = "2.0"
 obj.author = "aerospace-installer"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
-obj.homepage = "https://github.com/"
 
 -- ─── Tunables ───
 obj.edgePx = 2.0
 obj.landingInset = 3.0
-obj.quietMs = 0.0
-obj.invertOrder = false
+obj.continueAfterWarp = true
 
 -- ─── Internal state ───
 obj._screens = {}
-obj._lastWarp = 0
 obj._eventtap = nil
 obj._screenWatcher = nil
+obj._posHistory = {}
+obj._warpActive = false
+obj._moveTimer = nil
 
--- ─── Screen enumeration (sorted top-to-bottom -> logical left-to-right) ───
+-- ─── Screen enumeration ───
 function obj:_refreshScreens()
 	local list = {}
 	for _, scr in ipairs(hs.screen.allScreens()) do
@@ -69,16 +39,31 @@ function obj:_refreshScreens()
 		end
 		return a.frame.y < b.frame.y
 	end)
-	if self.invertOrder then
-		local reversed = {}
-		for i = #list, 1, -1 do
-			table.insert(reversed, list[i])
-		end
-		list = reversed
-	end
 	self._screens = list
 end
 
+-- ─── Velocity: 5-point position history, least-squares slope ───
+
+function obj:_appendHistory(pos, ts)
+	if self._warpActive then return end
+	local h = self._posHistory
+	h[#h + 1] = { t = ts, x = pos.x, y = pos.y }
+	if #h > 5 then
+		table.remove(h, 1)
+	end
+end
+
+function obj:_getVelocity()
+	local h = self._posHistory
+	if #h < 2 then return 0, 0 end
+	local dx = h[#h].x - h[1].x
+	local dy = h[#h].y - h[1].y
+	local dt = (h[#h].t - h[1].t) / 1e9
+	if dt <= 0 then return 0, 0 end
+	return dx / dt, dy / dt
+end
+
+-- ─── Warp target calculation ───
 local function frameContains(frame, point)
 	return point.x >= frame.x and point.x < frame.x + frame.w
 		and point.y >= frame.y and point.y < frame.y + frame.h
@@ -93,8 +78,6 @@ function obj:_indexContaining(point)
 	return nil
 end
 
---- Returns the warp target `{x=, y=}`, if the point is at a left/right
---- edge worth acting on, or nil otherwise.
 function obj:_edgeWarpTarget(point)
 	local n = #self._screens
 	if n <= 1 then return nil end
@@ -102,18 +85,15 @@ function obj:_edgeWarpTarget(point)
 	local current = self:_indexContaining(point)
 	if not current then return nil end
 
-	local now = hs.timer.secondsSinceEpoch()
-	if (now - self._lastWarp) * 1000.0 < self.quietMs then return nil end
-
 	local frame = self._screens[current].frame
 	local targetIndex = nil
-	local landOnRightEdge = false -- true: land near target's right edge; false: near its left edge
+	local landOnRightEdge = false
 
 	if point.x <= frame.x + self.edgePx then
-		targetIndex = ((current - 2) % n) + 1 -- previous, 1-based, wraps to n
+		targetIndex = ((current - 2) % n) + 1
 		landOnRightEdge = true
 	elseif point.x >= frame.x + frame.w - self.edgePx then
-		targetIndex = (current % n) + 1 -- next, 1-based, wraps to 1
+		targetIndex = (current % n) + 1
 		landOnRightEdge = false
 	else
 		return nil
@@ -135,28 +115,62 @@ function obj:_edgeWarpTarget(point)
 		targetX = targetFrame.x + self.landingInset
 	end
 
-	self._lastWarp = now
 	return { x = targetX, y = targetY }
 end
 
-function obj:_warp(point)
-	hs.mouse.absolutePosition(point)
-	-- A bare position set posts no real mouse-moved event to any tap —
-	-- including Rift's own focus_follows_mouse tap — so announce it
-	-- synthetically, same rationale as the earlier Swift implementation.
-	hs.eventtap.event.newMouseEvent(hs.eventtap.event.types.mouseMoved, point):post()
+-- ─── Post-warp glide (no deceleration) ───
+
+function obj:_stopContinuation()
+	if self._moveTimer then
+		self._moveTimer:stop()
+		self._moveTimer = nil
+	end
 end
 
---- WarpMouse:init()
---- Method
---- Standard Spoon initializer, called once by hs.loadSpoon().
+function obj:_startContinuation(vx, vy)
+	self:_stopContinuation()
+	if not self.continueAfterWarp then return end
+	if math.abs(vx) < 50 and math.abs(vy) < 50 then return end
+
+	local pos = hs.mouse.absolutePosition()
+	local frames = 0
+	local maxFrames = 12 -- 0.2s at 60Hz
+
+	self._moveTimer = hs.timer.new(1.0 / 60.0, function()
+		frames = frames + 1
+		if frames > maxFrames then
+			self:_stopContinuation()
+			return
+		end
+		pos.x = pos.x + vx / 60.0
+		pos.y = pos.y + vy / 60.0
+		self:_moveCursor(pos)
+	end)
+	self._moveTimer:start()
+end
+
+-- ─── Warp ───
+
+function obj:_moveCursor(pos)
+	self._warpActive = true
+	hs.mouse.absolutePosition(pos)
+	hs.eventtap.event.newMouseEvent(hs.eventtap.event.types.mouseMoved, pos):post()
+	self._warpActive = false
+end
+
+function obj:_warp(point)
+	local vx, vy = self:_getVelocity()
+	self._posHistory = {}
+	self:_moveCursor(point)
+	self:_startContinuation(vx, vy)
+end
+
+-- ─── Public API ───
+
 function obj:init()
 	self:_refreshScreens()
 end
 
---- WarpMouse:start()
---- Method
---- Starts watching the mouse and warping it at screen edges.
 function obj:start()
 	self:_refreshScreens()
 
@@ -166,7 +180,10 @@ function obj:start()
 	self._screenWatcher:start()
 
 	self._eventtap = hs.eventtap.new({ hs.eventtap.event.types.mouseMoved }, function(event)
-		local target = self:_edgeWarpTarget(event:location())
+		local loc = event:location()
+		self:_appendHistory(loc, event:timestamp())
+
+		local target = self:_edgeWarpTarget(loc)
 		if target then
 			self:_warp(target)
 		end
@@ -177,10 +194,8 @@ function obj:start()
 	return self
 end
 
---- WarpMouse:stop()
---- Method
---- Stops watching the mouse and tears down the screen watcher.
 function obj:stop()
+	self:_stopContinuation()
 	if self._eventtap then
 		self._eventtap:stop()
 		self._eventtap = nil
