@@ -1,17 +1,19 @@
 #!/bin/bash
 # display-shortcuts — regenerate the shortcut cheat-sheet JSON from the live
-# Rift config and open it in mac-cheatsheet-viewer.
+# Nehir hotkeys.toml and open it in mac-cheatsheet-viewer.
 #
-# Bound to Cmd+Shift+? by config/rift/config.toml (an `exec` keybinding).
-# Output is captured by Rift like any other exec'd process, so every run and
-# failure is also logged to display-shortcuts.log next to this script.
+# Nehir's hotkeys.toml can only bind Nehir's own built-in actions — there's
+# no `exec`-style binding like Rift had, so this can no longer be triggered
+# by a global hotkey through Nehir itself. Run it manually, or bind it to a
+# shortcut of your own choosing (Raycast, a Shortcuts.app quick action,
+# etc.) — see README's Keybindings section.
 set -euo pipefail
 
 HELPERS_DIR="${MAC_WM_HELPERS_DIR:-$HOME/.config/mac-scrolling-wm/helpers}"
 APP="$HELPERS_DIR/mac-cheatsheet-viewer.app"
 APP_NAME="mac-cheatsheet-viewer"
 GEN="$HELPERS_DIR/generate-shortcuts-json"
-JSON="$HOME/.config/rift/cheatsheet.json"
+JSON="$HOME/.config/nehir/cheatsheet.json"
 LOG="$HELPERS_DIR/display-shortcuts.log"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >>"$LOG"; }

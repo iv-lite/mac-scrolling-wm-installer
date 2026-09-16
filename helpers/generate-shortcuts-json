@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""generate-shortcuts-json — read Rift's `[keys]` table from config.toml and
-emit the shortcut cheat-sheet JSON consumed by mac-cheatsheet-viewer.
+"""generate-shortcuts-json — read Nehir's `hotkeys.toml` and emit the
+shortcut cheat-sheet JSON consumed by mac-cheatsheet-viewer.
 
 The JSON goes to stdout by default; display-shortcuts writes it to
-~/.config/rift/cheatsheet.json and lets the viewer open it.
+~/.config/nehir/cheatsheet.json and lets the viewer open it.
 
-Rift's config is TOML, but this parses the `[keys]` table with regexes
-rather than a full TOML parser (Python 3.9+, no tomllib) — every binding in
-config/rift/config.toml is a single-line `"chord" = value` entry, which is
-all this needs to handle.
+hotkeys.toml is flat `[section]` + `key = "Modifier+Combo"` lines (see
+Sources/Nehir/Core/Config/HotkeysTOMLCodec.swift upstream) — this parses
+it with regexes rather than a full TOML parser, same rationale as the
+Rift-era version of this script: every binding here is a single-line
+`key = "value"` entry (plus the `{N}` digit-group shorthand), which is
+all this needs to handle. Unlike Rift's `config.toml`, there is no
+`[modifier_combinations]` alias table — hotkeys.toml spells out
+modifiers directly on every line.
 """
 import argparse
 import json
@@ -19,178 +23,105 @@ import sys
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 CONFIG_CANDIDATES = [
-    os.path.join(os.environ.get("HOME", ""), ".config", "rift", "config.toml"),
-    os.path.join(REPO_ROOT, "config", "rift", "config.toml"),
+    os.path.join(os.environ.get("HOME", ""), ".config", "nehir", "hotkeys.toml"),
+    os.path.join(REPO_ROOT, "config", "nehir", "hotkeys.toml"),
 ]
 
 SECTION_RE = re.compile(r'^\s*\[([^\]]+)\]\s*$')
-# "chord" = <value>   — value runs to end of line (a trailing `# comment` is
-# stripped separately since TOML strings here never contain a literal '#').
-KEY_LINE_RE = re.compile(r'^\s*"((?:[^"\\]|\\.)+)"\s*=\s*(.+?)\s*$')
-ALIAS_RE = re.compile(r'^\s*(\w+)\s*=\s*"([^"]+)"\s*(?:#.*)?$')
-INLINE_FIELD_RE = re.compile(r'(\w+)\s*=\s*("(?:[^"\\]|\\.)*"|\{[^}]*\}|\[[^\]]*\]|-?\d+)')
+# key = "value"   (key may be a bare identifier or a quoted dotted key like
+# "switch.3"); value runs to the closing quote.
+KEY_LINE_RE = re.compile(r'^\s*"?([A-Za-z0-9_.]+)"?\s*=\s*"((?:[^"\\]|\\.)*)"\s*$')
 
-MODS = {
-    "cmd": "Cmd", "meta": "Cmd",
-    "ctrl": "Ctrl", "control": "Ctrl",
-    "alt": "Option", "option": "Option",
-    "shift": "Shift",
+# Curated (category, label) per "section.key". {n} expands a `{N}`-pattern
+# value into one binding per digit 1-9. Unknown keys fall back to a
+# title-cased guess from the key name, filed under a category named after
+# the section.
+LABELS = {
+    "workspace.switch": ("Workspaces", "Switch to workspace {n}"),
+    "workspace.moveTo": ("Workspaces", "Move window to workspace {n}"),
+    "workspace.backAndForth": ("Workspaces", "Jump to last-focused workspace"),
+    "workspace.next": ("Workspaces", "Next workspace"),
+    "workspace.previous": ("Workspaces", "Previous workspace"),
+    "focus.left": ("Focus", "Focus window left"),
+    "focus.right": ("Focus", "Focus window right"),
+    "focus.up": ("Focus", "Focus window up"),
+    "focus.down": ("Focus", "Focus window down"),
+    "focus.monitorNext": ("Displays", "Focus next display"),
+    "focus.monitorPrevious": ("Displays", "Focus previous display"),
+    "move.left": ("Move", "Move window left"),
+    "move.right": ("Move", "Move window right"),
+    "move.up": ("Move", "Move window up"),
+    "move.down": ("Move", "Move window down"),
+    "move.expelFromColumn": ("Move", "Un-join window from its column"),
+    "layout.cycleColumnWidthForward": ("Column width", "Cycle column width forward (0.3/0.5/1.0)"),
+    "layout.cycleColumnWidthBackward": ("Column width", "Cycle column width backward (0.3/0.5/1.0)"),
+    "layout.toggleColumnFullWidth": ("Column width", "Jump to full width (stays tiled)"),
+    "layout.toggleFocusedFloating": ("Window state", "Toggle floating / tiled"),
+    "layout.toggleColumnTabbed": ("Window state", "Stack / unstack column"),
+    "debugging.toggleTraceCapture": ("Misc", "Toggle debug trace capture"),
 }
 
-KEYS = {
-    "left": "←", "right": "→", "up": "↑", "down": "↓",
+MOD_SYMBOLS = {
+    "command": "Cmd", "option": "Option", "control": "Ctrl", "shift": "Shift",
+    "hyper": "Hyper",
+}
+
+KEY_SYMBOLS = {
+    "left arrow": "←", "right arrow": "→", "up arrow": "↑", "down arrow": "↓",
     "space": "Space", "tab": "Tab", "escape": "Esc", "return": "Return",
-    "enter": "Enter", "delete": "Delete", "backspace": "Backspace",
-    "slash": "/", "comma": ",", "period": ".", "semicolon": ";",
-}
-
-# Curated labels for exec commands that don't speak for themselves.
-EXEC_LABELS = {
-    "open -a ghostty": ("Apps", "Open Ghostty"),
-    "rift-cli execute workspace next": ("Workspaces", "Next workspace"),
-    "rift-cli execute workspace prev": ("Workspaces", "Previous workspace"),
-    "$home/.config/rift/cycle-column-width": ("Column width", "Cycle column width"),
-}
-
-# Curated (category, label) for known native actions. Unknown actions fall
-# back to a title-cased guess in their own "Other" category.
-ACTION_LABELS = {
-    "reload_config": ("Misc", "Reload Rift config"),
-    "debug": ("Misc", "Debug dump"),
-    "toggle_window_floating": ("Window state", "Toggle floating / tiled"),
-    "toggle_stack": ("Window state", "Stack / unstack window"),
-    "center_selection": ("Window state", "Center window"),
-    "unjoin_windows": ("Window state", "Un-join the layout tree"),
-    "toggle_orientation": ("Window state", "Toggle orientation"),
-    "toggle_fullscreen": ("Window state", "Toggle fullscreen"),
-    "toggle_fullscreen_within_gaps": ("Column width", "Full-width column (within gaps)"),
-    "switch_to_last_workspace": ("Workspaces", "Jump to last-focused workspace"),
-}
-
-DIRECTION_ACTION_LABELS = {
-    "move_focus": ("Focus", "Focus window {dir}"),
-    "move_node": ("Move", "Move window {dir}"),
-    "focus_display": ("Displays", "Focus display {dir}"),
-    "move_mouse_to_display": ("Displays", "Warp mouse to display {dir}"),
-}
-
-WORKSPACE_ACTION_LABELS = {
-    "switch_to_workspace": ("Workspaces", "Switch to workspace {n}"),
-    "move_window_to_workspace": ("Workspaces", "Move window to workspace {n}"),
-}
-
-RESIZE_ACTION_LABELS = {
-    "resize_window_grow": ("Column width", "Grow column ({arg})"),
-    "resize_window_shrink": ("Column width", "Shrink column ({arg})"),
+    "grave": "`", "period": ".", "comma": ",", "equal": "=", "minus": "-",
 }
 
 
-def humanize_chord(chord, aliases):
-    tokens = [t.strip() for t in chord.split(" + ") if t.strip()]
-    if not tokens:
+def humanize_chord(chord):
+    parts = [p.strip() for p in chord.split("+") if p.strip()]
+    if not parts:
         return chord
-    *mod_tokens, raw_key = tokens
-    mods = []
-    for tok in mod_tokens:
-        low = tok.lower()
-        if low in aliases:
-            for sub in aliases[low].split(" + "):
-                label = MODS.get(sub.strip().lower(), sub.strip().capitalize())
-                if label not in mods:
-                    mods.append(label)
-        else:
-            label = MODS.get(low, tok.capitalize())
-            if label not in mods:
-                mods.append(label)
-    key = KEYS.get(raw_key.lower(), raw_key if len(raw_key) == 1 else raw_key.capitalize())
-    return "+".join(mods + [key])
+    *mods, raw_key = parts
+    mod_labels = [MOD_SYMBOLS.get(m.lower(), m.capitalize()) for m in mods]
+    key_label = KEY_SYMBOLS.get(raw_key.lower(), raw_key if len(raw_key) == 1 else raw_key.capitalize())
+    return "+".join(mod_labels + [key_label])
 
 
-def strip_quotes(s):
-    s = s.strip()
-    if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
-        return s[1:-1]
-    return s
+def humanize_key_name(key):
+    # camelCase -> "Title Case Words"
+    words = re.findall(r'[A-Z]?[a-z0-9]+|[A-Z]+(?=[A-Z]|$)', key)
+    return " ".join(w.capitalize() for w in words) if words else key
 
 
-def humanize_value(value):
-    """Return (category, label) for a `[keys]` value (string action or inline table)."""
-    value = value.rstrip()
-    # Drop a trailing TOML comment, if any (none of our values contain '#').
-    if "#" in value:
-        value = value.split("#", 1)[0].rstrip()
-
-    if value.startswith('"'):
-        action = strip_quotes(value)
-        return ACTION_LABELS.get(action, ("Other", action.replace("_", " ").capitalize()))
-
-    if value.startswith("{"):
-        inner = value[1:value.rfind("}")]
-        fields = dict(INLINE_FIELD_RE.findall(inner))
-
-        for action, (category, template) in DIRECTION_ACTION_LABELS.items():
-            if action in fields:
-                return category, template.format(dir=strip_quotes(fields[action]))
-
-        if "move_window_to_display" in fields:
-            sub = fields["move_window_to_display"]
-            m = re.search(r'selector\s*=\s*"([^"]+)"', sub)
-            direction = m.group(1) if m else "?"
-            return "Displays", f"Move window to display {direction}"
-
-        for action, (category, template) in WORKSPACE_ACTION_LABELS.items():
-            if action in fields:
-                n = int(fields[action]) + 1
-                return category, template.format(n=n)
-
-        for action, (category, template) in RESIZE_ACTION_LABELS.items():
-            if action in fields:
-                return category, template.format(arg=strip_quotes(fields[action]))
-
-        if "exec" in fields:
-            argv_raw = fields["exec"][1:-1]  # strip [ ]
-            parts = [strip_quotes(p) for p in re.findall(r'"(?:[^"\\]|\\.)*"', argv_raw)]
-            cmd = parts[-1] if parts else "exec"
-            key = cmd.strip().lower().replace("~/.config/mac-scrolling-wm/helpers/display-shortcuts", "")
-            if "display-shortcuts" in cmd:
-                return "Cheat sheet", "Show this cheat sheet"
-            return EXEC_LABELS.get(key, ("Apps", cmd))
-
-        # Unknown inline table shape — best-effort label from its first field.
-        first_key = next(iter(fields), "action")
-        return "Other", first_key.replace("_", " ").capitalize()
-
-    return "Other", value
-
-
-def parse_keys(text):
-    aliases = {}
-    bindings = []
+def parse_hotkeys(text):
+    bindings = []  # (section, key, value)
     section = None
     for line in text.splitlines():
         sm = SECTION_RE.match(line)
         if sm:
             section = sm.group(1).strip()
             continue
-        if section == "modifier_combinations":
-            am = ALIAS_RE.match(line)
-            if am:
-                aliases[am.group(1).lower()] = am.group(2)
+        if section is None:
             continue
-        if section == "keys":
-            km = KEY_LINE_RE.match(line)
-            if km:
-                bindings.append((km.group(1), km.group(2)))
-    return aliases, bindings
+        km = KEY_LINE_RE.match(line)
+        if km:
+            bindings.append((section, km.group(1), km.group(2)))
+    return bindings
 
 
-def build_groups(aliases, bindings):
+def build_groups(bindings):
     groups = {}
-    for chord, value in bindings:
-        category, label = humanize_value(value)
-        groups.setdefault(category, []).append(
-            {"action": label, "keys": [humanize_chord(chord, aliases)]}
-        )
+    for section, key, value in bindings:
+        if value == "Unassigned":
+            continue
+        lookup = "{}.{}".format(section, key)
+        if "{N}" in value:
+            category, template = LABELS.get(lookup, (section.capitalize(), humanize_key_name(key) + " {n}"))
+            for n in range(1, 10):
+                chord = value.replace("{N}", str(n))
+                groups.setdefault(category, []).append(
+                    {"action": template.format(n=n), "keys": [humanize_chord(chord)]}
+                )
+            continue
+        category, label = LABELS.get(lookup, (section.capitalize(), humanize_key_name(key)))
+        groups.setdefault(category, []).append({"action": label, "keys": [humanize_chord(value)]})
+
     static = [
         ("Gestures", [
             {"action": "Switch columns", "keys": ["3-finger swipe ←/→"]},
@@ -204,7 +135,7 @@ def build_groups(aliases, bindings):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--config", help="path to Rift's config.toml (default: ~/.config/rift/config.toml)")
+    ap.add_argument("--config", help="path to Nehir's hotkeys.toml (default: ~/.config/nehir/hotkeys.toml)")
     ap.add_argument("--output", help="write JSON to this file instead of stdout")
     args = ap.parse_args()
 
@@ -212,18 +143,18 @@ def main():
     if not config:
         config = next((c for c in CONFIG_CANDIDATES if os.path.isfile(c)), None)
     if not config or not os.path.isfile(config):
-        sys.exit("generate-shortcuts-json: cannot find config/rift/config.toml (use --config)")
+        sys.exit("generate-shortcuts-json: cannot find config/nehir/hotkeys.toml (use --config)")
 
     with open(config, encoding="utf-8") as fh:
         text = fh.read()
-    aliases, bindings = parse_keys(text)
+    bindings = parse_hotkeys(text)
     if not bindings:
-        sys.exit("generate-shortcuts-json: no [keys] bindings found in {}".format(config))
+        sys.exit("generate-shortcuts-json: no bindings found in {}".format(config))
 
     sheet = {
-        "app": "Rift",
+        "app": "Nehir",
         "config_path": os.path.abspath(config),
-        "groups": build_groups(aliases, bindings),
+        "groups": build_groups(bindings),
     }
 
     if args.output:
