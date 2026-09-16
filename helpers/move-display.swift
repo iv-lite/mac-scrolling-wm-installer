@@ -16,7 +16,7 @@
 //   2. Warp pointer + synthetic mouseMoved so focus_follows_mouse and
 //      paneru's ActiveDisplayMarker rotate to the target display (no click —
 //      a real press/release causes press animations and can hit window
-//      contents; focus-display uses the same mouseMoved mechanism)
+//      contents; warp-pointer uses the same mouseMoved mechanism)
 //   3. Raise the moved window, then ask paneru to settle it (fullwidth) via
 //      a fire-and-forget CLI launch — the helper exits without waiting for
 //      it, so the keypress feels instant while paneru animates on its own.

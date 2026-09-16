@@ -1,6 +1,6 @@
-// focus-display — warp the pointer to a given point (v2, warp-only).
+// warp-pointer — warp the pointer to a given point (v2, warp-only).
 //
-// Usage: focus-display <x> <y>
+// Usage: warp-pointer <x> <y>
 //
 // Previous versions enumerated displays, located the mouse's display, and
 // asked paneru (`query on-screen` + JSON parse) which window to warp to.
@@ -12,9 +12,9 @@
 // tap, so the event is what makes the warp take effect as focus (not a
 // click — nothing on screen should be clicked just to focus it).
 //
-// The source path and installed binary name are unchanged on purpose: the
-// one-time Accessibility grant macOS ties to this binary keeps applying,
-// and no Lua call site or install path has to change.
+// Renamed from focus-display to match the role (same binary, slimmer
+// contract): macOS asks once for Accessibility on the new installed path,
+// and scripts/install-helpers removes the stale focus-display binary.
 //
 // Needs Accessibility access granted to this specific compiled binary (a
 // one-time macOS prompt) — posting a synthetic CGEvent is TCC-gated, which
@@ -26,7 +26,7 @@ import Foundation
 
 let args = CommandLine.arguments
 guard args.count == 3, let x = Double(args[1]), let y = Double(args[2]) else {
-  FileHandle.standardError.write("usage: focus-display <x> <y>\n".data(using: .utf8)!)
+  FileHandle.standardError.write("usage: warp-pointer <x> <y>\n".data(using: .utf8)!)
   exit(1)
 }
 let point = CGPoint(x: x, y: y)

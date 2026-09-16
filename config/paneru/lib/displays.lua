@@ -6,7 +6,7 @@
 -- and follows it.
 --
 -- Focus is resolved in-process and only the warp itself is delegated to the
--- compiled ~/.config/mac-scrolling-wm/helpers/focus-display helper (see that
+-- compiled ~/.config/mac-scrolling-wm/helpers/warp-pointer helper (see that
 -- file): the target display comes from the geometric ordering + the mouse's
 -- display, and the target point from the live state snapshot (the focused
 -- window's center when it is on the target display, else the first window
@@ -47,12 +47,12 @@ local query_state_safe = query.state
 local find_window = query.find_window
 
 -- Helpers (see helpers/, all compiled by scripts/install-helpers):
---   focus-display    — warp-only: pointer to x y + mouseMoved; the target is resolved in-process
+--   warp-pointer     — warp-only: pointer to x y + mouseMoved; the target is resolved in-process
 --   move-display     — teleport via AX at near-final geometry, warp + mouseMoved, settle via CLI
 --   display-geometry — real CG frames of every online display, empties included
 --   mouse-display    — which display id currently has the pointer
 local HELPERS_DIR = os.getenv("HOME") .. "/.config/mac-scrolling-wm/helpers/"
-local FOCUS_HELPER = HELPERS_DIR .. "focus-display"
+local WARP_HELPER = HELPERS_DIR .. "warp-pointer"
 local MOVE_HELPER = HELPERS_DIR .. "move-display"
 local GEOM_HELPER = HELPERS_DIR .. "display-geometry"
 local MOUSE_HELPER = HELPERS_DIR .. "mouse-display"
@@ -235,7 +235,7 @@ local function focus_point(ws, target, target_id)
 end
 
 -- Focus is resolved in-process (target display + point, see above) and the
--- compiled focus-display helper only performs the warp: pointer there plus
+-- compiled warp-pointer helper only performs the warp: pointer there plus
 -- the synthetic mouseMoved that makes focus_follows_mouse pick it up. The
 -- only thing worth skipping in-process is a move in flight (MOVE_BUSY).
 local function focus_display(ws, target)
@@ -257,11 +257,11 @@ local function focus_display(ws, target)
   if not point then return end
   log(string.format("focus %s: -> display %d (%.0f, %.0f)",
     target, target_id, point.x, point.y))
-  local ok, res = pcall(paneru.exec, FOCUS_HELPER, {
+  local ok, res = pcall(paneru.exec, WARP_HELPER, {
     tostring(math.floor(point.x)), tostring(math.floor(point.y)),
   })
   if not ok or not res or res.code ~= 0 then
-    log("focus " .. target .. ": focus-display helper failed" ..
+    log("focus " .. target .. ": warp-pointer helper failed" ..
       ((res and res.stderr and res.stderr ~= "") and (": " .. res.stderr) or ""))
   end
 end
@@ -281,7 +281,7 @@ local function follow_moved_window(ws, focused, target, warp)
     local w = find_window(query_state_safe(), focused)
     local p = w and frame_center(w.frame) or nil
     if p then
-      pcall(paneru.exec, FOCUS_HELPER, {
+      pcall(paneru.exec, WARP_HELPER, {
         tostring(math.floor(p.x)), tostring(math.floor(p.y)),
       })
     else

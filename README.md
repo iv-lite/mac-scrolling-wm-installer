@@ -123,7 +123,7 @@ design; summary below.
 > from the live state snapshot (the focused window's center when it is on
 > the target display, else the first window there, else the display center)
 > — no subprocess. Only the warp itself goes through
-> `~/.config/mac-scrolling-wm/helpers/focus-display`, a compiled Swift
+> `~/.config/mac-scrolling-wm/helpers/warp-pointer`, a compiled Swift
 > binary that warps the pointer plus a synthetic `.mouseMoved` event, since
 > `CGWarpMouseCursorPosition` alone doesn't post a real mouse-moved event
 > to any `CGEventTap`, including paneru's own `focus_follows_mouse` tap —
@@ -183,10 +183,11 @@ design; summary below.
 >
 > One-time cost: grant Accessibility access to the compiled
 > `~/.config/mac-scrolling-wm/helpers/move-display` **and**
-> `~/.config/mac-scrolling-wm/helpers/focus-display` binaries (macOS prompts
+> `~/.config/mac-scrolling-wm/helpers/warp-pointer` binaries (macOS prompts
 > the first time each one posts a synthetic event). Since both are compiled
 > once by `scripts/install-helpers` (not run as ephemeral scripts), those
-> grants stick across reinstalls.
+> grants stick across reinstalls. (`scripts/install-helpers` removes the
+> stale `focus-display` binary it supersedes.)
 
 ### Window state
 
@@ -417,7 +418,7 @@ config/paneru/lib/        Display-navigation Lua modules, required by init.lua
                           (displays.lua, query.lua, log.lua)
 config/ghostty/           Ghostty config (frameless title bar)
 helpers/                  display navigation: display-geometry, mouse-display
-                           (CoreGraphics, used by move); focus-display.swift,
+                           (CoreGraphics, used by move); warp-pointer,
                            move-display.swift (Accessibility + IPC, compiled
                           at install time); shortcut cheat-sheet:
                           generate-shortcuts-json, display-shortcuts

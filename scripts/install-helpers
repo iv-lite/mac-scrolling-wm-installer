@@ -27,26 +27,30 @@ cp "$REPO_ROOT/helpers/display-shortcuts" "$HELPERS_DIR/display-shortcuts"
 chmod +x "$HELPERS_DIR/generate-shortcuts-json" "$HELPERS_DIR/display-shortcuts"
 ok "Helpers installed to $HELPERS_DIR (generate-shortcuts-json, display-shortcuts)"
 
-# move-display, focus-display, mouse-display and display-geometry are all
-# compiled once here into stable binaries. move-display and focus-display
+# move-display, warp-pointer, mouse-display and display-geometry are all
+# compiled once here into stable binaries. move-display and warp-pointer
 # need the Accessibility API (AXUIElement / synthetic CGEvent posting),
 # which requires a one-time permission grant tied to a specific binary's
 # path/identity — an ephemeral `swift -e` process gets a fresh identity on
 # every run and could never hold that grant. mouse-display and
 # display-geometry need no permission at all, but they run on every
 # move/focus dispatch, and as `swift -e` scripts they each paid a 150-400ms
-# JIT-compile tax per keypress (the same tax the focus-display header
-# documents) — compiling them removes that dominant cost, same as focus.
+# JIT-compile tax per keypress (the same tax the old focus-display header
+# documented) — compiling them removes that dominant cost, same as focus.
 if command -v swiftc >/dev/null 2>&1; then
   note "Compiling move-display (Accessibility helper)..."
   swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/move-display.swift" -o "$HELPERS_DIR/move-display"
   chmod +x "$HELPERS_DIR/move-display"
   ok "move-display compiled to $HELPERS_DIR/move-display"
 
-  note "Compiling focus-display (warp-only pointer helper)..."
-  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/focus-display.swift" -o "$HELPERS_DIR/focus-display"
-  chmod +x "$HELPERS_DIR/focus-display"
-  ok "focus-display compiled to $HELPERS_DIR/focus-display"
+  note "Compiling warp-pointer (pointer warp + mouseMoved helper)..."
+  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/warp-pointer.swift" -o "$HELPERS_DIR/warp-pointer"
+  chmod +x "$HELPERS_DIR/warp-pointer"
+  ok "warp-pointer compiled to $HELPERS_DIR/warp-pointer"
+  # focus-display was renamed to warp-pointer (same role, slimmer): drop the
+  # stale binary so its orphaned Accessibility grant doesn't linger.
+  rm -f "$HELPERS_DIR/focus-display"
+  ok "stale focus-display binary removed (superseded by warp-pointer)"
 
   note "Compiling mouse-display (current-display lookup)..."
   swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/mouse-display.swift" -o "$HELPERS_DIR/mouse-display"
@@ -58,7 +62,7 @@ if command -v swiftc >/dev/null 2>&1; then
   chmod +x "$HELPERS_DIR/display-geometry"
   ok "display-geometry compiled to $HELPERS_DIR/display-geometry"
 else
-  warn "swiftc not found — skipping move-display, focus-display, mouse-display and display-geometry"
+  warn "swiftc not found — skipping move-display, warp-pointer, mouse-display and display-geometry"
   warn "(moving windows across displays, and focusing displays at all, will not work)"
   warn "Install the Xcode Command Line Tools (xcode-select --install) and re-run to enable them."
 fi
