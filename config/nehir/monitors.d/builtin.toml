@@ -1,0 +1,11 @@
+# Hide the workspace bar on the MacBook's built-in screen — only show it
+# on external monitors. `name` must match what Nehir reports for the
+# display (e.g. via `nehirctl query displays`); "Built-in Retina Display"
+# is macOS's standard name for a MacBook's internal screen on most
+# current models, but it can vary by model/OS version — adjust if this
+# doesn't match on your machine.
+[match]
+name = "Built-in Retina Display"
+
+[workspaceBar]
+enabled = false

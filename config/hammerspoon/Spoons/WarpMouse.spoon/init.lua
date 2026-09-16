@@ -133,6 +133,8 @@ function obj:_startContinuation(vx, vy)
 	if math.abs(vx) < 50 and math.abs(vy) < 50 then return end
 
 	local pos = hs.mouse.absolutePosition()
+	local landedIndex = self:_indexContaining(pos)
+	local bounds = landedIndex and self._screens[landedIndex].frame or nil
 	local frames = 0
 	local maxFrames = 12 -- 0.2s at 60Hz
 
@@ -142,8 +144,27 @@ function obj:_startContinuation(vx, vy)
 			self:_stopContinuation()
 			return
 		end
-		pos.x = pos.x + vx / 60.0
-		pos.y = pos.y + vy / 60.0
+		local nx = pos.x + vx / 60.0
+		local ny = pos.y + vy / 60.0
+		if bounds then
+			-- Never glide past the edge of the screen just landed on — on
+			-- a screen narrower than the glide distance (e.g. a laptop's
+			-- built-in display next to a wide external monitor), doing so
+			-- would re-arm _edgeWarpTarget and bounce straight back to
+			-- the screen we just came from.
+			local minX, maxX = bounds.x + self.edgePx, bounds.x + bounds.w - self.edgePx
+			local minY, maxY = bounds.y + self.edgePx, bounds.y + bounds.h - self.edgePx
+			local clamped = nx < minX or nx > maxX or ny < minY or ny > maxY
+			nx = math.max(minX, math.min(maxX, nx))
+			ny = math.max(minY, math.min(maxY, ny))
+			pos.x, pos.y = nx, ny
+			self:_moveCursor(pos)
+			if clamped then
+				self:_stopContinuation()
+			end
+			return
+		end
+		pos.x, pos.y = nx, ny
 		self:_moveCursor(pos)
 	end)
 	self._moveTimer:start()

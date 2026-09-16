@@ -22,10 +22,10 @@
 #
 # Also NOT bound, because Nehir has no matching action at all (documented
 # as a real behavior change from Rift, not an oversight):
-#   - move a window to a display in a direction (Rift's dispShift+Arrows)
 #   - warp just the mouse to a display in a direction (Rift's
-#     mouseDisp+Arrows) — mouse warp is automatic/continuous now, native
-#     to Nehir (see [mouseWarp] in settings.toml), no hotkey needed
+#     mouseDisp+Arrows) — Nehir has no built-in cross-display mouse warp
+#     at all; Hammerspoon's WarpMouse.spoon covers this instead (see
+#     README's Multi-monitor section), automatically, no hotkey needed
 #   - "center the focused column" (Rift's main+Space)
 #   - "toggle orientation" (Rift's main+Slash) — orientation is a static
 #     per-monitor setting now (monitors.d/*.toml [orientation]), not a
@@ -43,11 +43,15 @@ left = "Option+Command+Left Arrow"
 down = "Option+Command+Down Arrow"
 up = "Option+Command+Up Arrow"
 right = "Option+Command+Right Arrow"
-# Rift's disp+Left/Right (focus_display in a direction). Nehir's monitor
-# focus model is next/previous/last, not 4-directional — Left/Right are
-# the closest fit; Up/Down have no meaningful equivalent and are dropped.
-monitorNext = "Control+Command+Right Arrow"
-monitorPrevious = "Control+Command+Left Arrow"
+# Rift's disp+Left/Right/Up/Down (focus_display in a direction). Nehir's
+# monitor focus model is next/previous/last, not spatial — approximated
+# here by pairing Left/Up to "previous" and Right/Down to "next" so all 4
+# arrows do something (for the common 2-monitor case, Left/Up and
+# Right/Down are equivalent anyway). Assumption: each hotkey value can be
+# a list of alternate key combos, not just a single string — unverified
+# against a real Nehir install.
+monitorNext = ["Control+Command+Right Arrow", "Control+Command+Down Arrow"]
+monitorPrevious = ["Control+Command+Left Arrow", "Control+Command+Up Arrow"]
 
 [move]
 left = "Option+Shift+Command+Left Arrow"
@@ -57,6 +61,18 @@ right = "Option+Shift+Command+Right Arrow"
 # Closest match for Rift's main+Ctrl+E ("unjoin_windows" out of the
 # layout tree) — expelling a window from its column is the same idea.
 expelFromColumn = "Option+Control+Command+E"
+# Rift's dispShift+Arrows (move_window_to_display in a direction). Nehir
+# has no generic "move window to a display" action — the closest real
+# action moves the window to a specific named workspace that already
+# lives on another monitor (workspaces.toml pins workspace "2" to the
+# secondary monitor). For exactly 2 monitors there's only one possible
+# destination, so all 4 arrows target it; a 3rd monitor's workspace ("3")
+# isn't wired to any direction by default — repoint one arrow at it
+# manually if you have one.
+windowToWorkspaceOnMonitor."2".left = "Control+Command+Shift+Left Arrow"
+windowToWorkspaceOnMonitor."2".right = "Control+Command+Shift+Right Arrow"
+windowToWorkspaceOnMonitor."2".up = "Control+Command+Shift+Up Arrow"
+windowToWorkspaceOnMonitor."2".down = "Control+Command+Shift+Down Arrow"
 
 [layout]
 cycleColumnWidthForward = "Option+Command+W"

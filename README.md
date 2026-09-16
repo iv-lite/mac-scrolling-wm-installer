@@ -46,8 +46,8 @@ The installer runs these steps from `scripts/`:
 1. **No logout required** — unlike this repo's previous Rift setup, Nehir
    doesn't depend on macOS's "Displays have separate Spaces" mode; it
    simulates virtual workspaces itself.
-2. Nehir tiles in a **niri-style scrolling strip**; workspaces `1..9` are
-   persistent (fixed, not dynamic rows).
+2. Nehir tiles in a **niri-style scrolling strip**; one persistent
+   workspace per monitor (fixed, not dynamic rows).
 3. Nehir draws **workspace badges in the native menu bar** — click a badge
    to switch. JankyBorders draws a border around the focused window.
 4. If the Accessibility grant failed, grant it manually: System Settings →
@@ -97,33 +97,46 @@ navigating.
 > `Cmd+Option+/`) — orientation is now a static per-monitor config value,
 > not a runtime toggle (see Multi-monitor below).
 
-### Workspaces (1-9, fixed)
+### Workspaces (one per monitor, fixed)
 
 | Shortcut | Action |
 |---|---|
 | `Ctrl` + `Option` + `↑` / `↓` | Previous/next workspace |
-| `Option` + `Cmd` + `1..9` | Switch directly to workspace 1-9 |
-| `Option` + `Cmd` + `Shift` + `1..9` | Move window to workspace 1-9 |
+| `Option` + `Cmd` + `1..3` | Switch directly to a monitor's workspace (`1` main, `2` secondary, `3` tertiary) |
+| `Option` + `Cmd` + `Shift` + `1..3` | Move window to a monitor's workspace |
 | `Option` + `Cmd` + `Tab` | Jump to the last-focused workspace |
 | 3-finger swipe (↑ / ↓) | Switch workspaces (trackpad) |
+
+> **Behavior change from the earlier Rift-era 9-workspace setup.** Rift's
+> fixed set was 9 numbered workspaces, all on the main display. Nehir's
+> niri-style scrolling strip already handles many windows on a single
+> workspace via horizontal scrolling, so this repo now ships just **one
+> workspace per monitor** (`config/nehir/workspaces.toml`) instead —
+> `"1"` on `main`, `"2"` on `secondary`, `"3"` on `tertiary` (only
+> resolves if a 3rd display is connected).
 
 ### Displays (multi-monitor)
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl` + `Cmd` + `→` | Focus the next display |
-| `Ctrl` + `Cmd` + `←` | Focus the previous display |
+| `Ctrl` + `Cmd` + Arrows | Focus a display (Left/Up = previous, Right/Down = next) |
+| `Ctrl` + `Cmd` + `Shift` + Arrows | Move the focused window to a display |
 
 > **Behavior change from Rift.** Rift had native 4-directional display
-> commands (`focus_display`/`move_window_to_display` with
-> left/right/up/down selectors). Nehir's monitor-focus model is
-> next/previous/last, not directional, and it has **no action at all** for
-> "move a window to a display in a direction" or "warp just the mouse to a
-> display in a direction" — those two Rift hotkeys (`Cmd+Ctrl+Shift+Arrows`,
-> `Cmd+Ctrl+Option+Arrows`) have nothing to bind to and are gone. Moving the
-> mouse to a screen edge still warps it automatically via Hammerspoon's
-> `WarpMouse.spoon` (see Multi-monitor below), so the explicit mouse-warp
-> hotkey isn't needed anyway.
+> commands (`focus_display`/`move_window_to_display` with left/right/up/down
+> selectors). Nehir's monitor-focus model is next/previous/last, not
+> spatial — approximated here by pairing Left/Up to "previous" and
+> Right/Down to "next" (for the common 2-monitor case these are
+> equivalent anyway). "Move window to a display" has no generic Nehir
+> action either; it's approximated via `windowToWorkspaceOnMonitor`,
+> which moves the window to workspace `"2"` (the secondary monitor's
+> workspace, from `workspaces.toml`) regardless of arrow direction, since
+> with 2 monitors there's only one possible destination. Neither
+> approximation is verified against a real Nehir install — see the
+> comments in `config/nehir/hotkeys.toml`. "Warp just the mouse to a
+> display" (Rift's `Cmd+Ctrl+Option+Arrows`) still has nothing to bind to
+> and is gone — moving the mouse to a screen edge warps it automatically
+> via Hammerspoon's `WarpMouse.spoon` instead (see Multi-monitor below).
 
 ### Window state
 
@@ -185,6 +198,12 @@ Installed helpers live in `~/.config/mac-scrolling-wm/helpers/` (copied on
   (`[workspaceBar]` in `config/nehir/settings.toml`): badges for every
   workspace, click to switch. macOS already lays the menu bar around the
   notch, so no notch configuration is needed.
+- **Hidden on the built-in display.** `config/nehir/monitors.d/builtin.toml`
+  overrides `[workspaceBar] enabled = false` for a display matched by
+  `name = "Built-in Retina Display"` (macOS's standard name for a
+  MacBook's internal screen on most current models — adjust the `name`
+  if yours reports differently), so the bar only shows on external
+  monitors.
 - **Focus cues** come from **JankyBorders** (`config/borders/bordersrc`).
   Nehir does have a native `[borders]` setting, but it's a single color for
   the focused window only — no distinct inactive-window color — so it's
@@ -219,15 +238,11 @@ Installed helpers live in `~/.config/mac-scrolling-wm/helpers/` (copied on
   along. Tunables live on the Spoon object in `~/.hammerspoon/init.lua`
   (before `:start()`): `edgePx`, `landingInset`, `continueAfterWarp`.
 
-  This runs as a [Hammerspoon](https://www.hammerspoon.org) Spoon rather
-  than relying on Nehir's own **native** `[mouseWarp]` setting in
-  `settings.toml` (which this repo ships with `enabled = false`) —
-  Nehir's built-in warp teleports the cursor with no glide, so
-  `WarpMouse.spoon` is kept instead for that momentum-preserving feel,
-  the same way JankyBorders is kept over Nehir's own single-color border.
-  Flip `[mouseWarp].enabled` back on (and stop Hammerspoon) if you'd
-  rather use Nehir's built-in warp — running both at once means they can
-  race each other at the same edge.
+  This runs as a [Hammerspoon](https://www.hammerspoon.org) Spoon because
+  Nehir has **no built-in cross-display mouse warp at all** — unlike
+  JankyBorders (kept over Nehir's own single-color border for its
+  two-tone colors), `WarpMouse.spoon` isn't a preference over a native
+  alternative, it's the only mechanism for this behavior.
 - **Horizontal window stacking, if you want it.** Nehir's columns stack
   multiple windows **vertically** by default (same as niri/Rift). Each
   monitor can flip that with a per-monitor override —
@@ -244,10 +259,11 @@ Installed helpers live in `~/.config/mac-scrolling-wm/helpers/` (copied on
   have been a vertical column now stack **horizontally** (side by side)
   instead. It's a per-monitor axis flip, not an independent per-column
   toggle — there's no way to make one column stack horizontally while its
-  neighbors stay vertical on the same monitor. This repo ships
-  `monitors.d/` empty (default `"horizontal"` orientation everywhere); add
-  a file like the one above only if you want that specific monitor
-  flipped.
+  neighbors stay vertical on the same monitor. This repo ships one
+  default override, `monitors.d/builtin.toml` (see "The menu bar &
+  notch" above), and otherwise leaves orientation at `"horizontal"`
+  everywhere; add a file like the one above only if you want a specific
+  monitor's scroll axis flipped.
 
 ## No title bars (the macOS reality)
 
@@ -312,10 +328,8 @@ moving the mouse to an edge — empty output means the event tap isn't
 receiving events (an Accessibility problem), while output that never
 reaches the warp call means the edge-detection math isn't triggering for
 your actual display arrangement (`hs.screen.allScreens()` in the Console
-shows each screen's frame to compare against). As a sanity check, Nehir's
-own native `[mouseWarp]` (off by default in this repo's config, see
-Multi-monitor above) can be flipped on temporarily to confirm the display
-arrangement itself is the problem rather than the Spoon.
+shows each screen's frame to compare against — check it matches the
+System Settings arrangement described in Multi-monitor above).
 
 ## Uninstall
 

@@ -25,18 +25,6 @@ followsMouse = true
 moveMouseToFocusedWindow = true
 followsWindowToMonitor = false
 
-# ─── Native mouse edge-warp between displays ───
-# Nehir can warp the cursor itself when it hits a display's edge, but this
-# repo keeps Hammerspoon's WarpMouse.spoon (config/hammerspoon/Spoons/) for
-# the warp instead — it carries the cursor's velocity across the boundary
-# (a brief momentum glide) instead of a flat teleport, which Nehir's native
-# warp doesn't do. Left off here to avoid two warps racing on the same edge.
-[mouseWarp]
-enabled = false
-axis = "horizontal"
-margin = 2
-monitorOrder = []
-
 # ─── Gaps ───
 # `size` is the gap between tiled windows (Rift's old
 # `[settings.layout.gaps.inner]`); `[gaps.outer]` is the margin against
