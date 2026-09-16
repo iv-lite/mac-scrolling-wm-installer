@@ -10,21 +10,22 @@ note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
-# Enable "Displays have separate Spaces" — Rift requires it (it probes the
+# Enable "Displays have separate Spaces" — Paneru requires it (it probes the
 # private windowserver mode, so `defaults write` alone is not enough on modern
 # macOS/26). Wrapper script verified on macOS 26; see its header for details.
-note "Checking 'Displays have separate Spaces' (Rift requires it ON)..."
+note "Checking 'Displays have separate Spaces' (Paneru requires it ON)..."
 if ! "${0%/*}/ensure-separate-spaces" set; then
 	echo "     Re-run this installer after enabling the setting in System Settings."
 	exit 1
 fi
 echo ""
 
-# Show the native macOS menu bar again (Rift's `[settings.ui.menu_bar]` draws
-# workspace indicators in it, and it auto-hides in Rift's fullscreen Spaces).
+# Show the native macOS menu bar again (Paneru draws its workspace indicator
+# in it, and its separate-Spaces layout auto-hides the bar in the now-native
+# fullscreen Spaces model).
 # Un-hides the bar even when upgrading from an Aegis-era install.
 if [ "$(defaults read NSGlobalDomain _HIHideMenuBar 2>/dev/null)" = "1" ]; then
-	note "Showing the native menu bar again (Rift draws its indicators there)..."
+	note "Showing the native menu bar again (Paneru draws its indicator there)..."
 	defaults write NSGlobalDomain _HIHideMenuBar -bool false
 	ok "_HIHideMenuBar set to off"
 else

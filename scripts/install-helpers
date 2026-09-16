@@ -26,11 +26,6 @@ cp "$REPO_ROOT/helpers/generate-shortcuts-json" "$HELPERS_DIR/generate-shortcuts
 cp "$REPO_ROOT/helpers/display-shortcuts" "$HELPERS_DIR/display-shortcuts"
 chmod +x "$HELPERS_DIR/generate-shortcuts-json" "$HELPERS_DIR/display-shortcuts"
 ok "Helpers installed to $HELPERS_DIR (generate-shortcuts-json, display-shortcuts)"
-# Multi-display focus/move has no helper here anymore: Rift has native
-# directional display commands (focus_display / move_window_to_display in
-# config/rift/config.toml), unlike Paneru which needed compiled Swift/CG
-# helpers (display-geometry, mouse-display, move-display, focus-display) to
-# work around its single-hop "next display" limitation.
 
 # ─────────────────────────────────────────────────────────────
 # mac-cheatsheet-viewer app (fetched on every run, overwrites the bundle)
@@ -86,7 +81,7 @@ fetch_release() {
 
 if fetch_release "$APP_DIR"; then
 	note "Cmd+Shift+? will now open the shortcut cheat sheet."
-	note "Regenerated JSON on every launch from ~/.config/rift/config.toml."
+	note "Regenerated JSON on every launch from ~/.config/paneru/init.lua."
 	exit 0
 fi
 
@@ -147,5 +142,5 @@ rm -rf "$APP_DIR"
 cp -R "$APP_BUILT" "$APP_DIR"
 ok "mac-cheatsheet-viewer.app installed to $APP_DIR (from local build)"
 
-note "Cmd+Shift+? (Rift) will now open the shortcut cheat sheet."
-note "The viewer JSON is regenerated on every launch from ~/.config/rift/config.toml."
+note "Cmd+Shift+? (Paneru) will now open the shortcut cheat sheet."
+note "The viewer JSON is regenerated on every launch from ~/.config/paneru/init.lua."
