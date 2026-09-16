@@ -1,17 +1,17 @@
-# rift-wm-installer
+# nehir-wm-installer
 
-A niri-like window management setup for macOS, built on **Rift**
-(`acsandmann/rift` — niri-style scrolling-strip tiler with hot-reloadable
-TOML config, native menu-bar workspace indicators, and native multi-display
-commands), **JankyBorders** (active-window focus border), and **Ghostty**
-(terminal). Driven by Cmd+Option-key shortcuts that don't fight macOS
-defaults.
+A niri-like window management setup for macOS, built on **Nehir**
+(`apphane-dev/nehir` — niri-style scrolling-strip tiler with a
+live-reloading split-TOML config, native menu-bar workspace indicators,
+and a native mouse edge-warp between displays), **JankyBorders**
+(active/inactive focus border), and **Ghostty** (terminal). Driven by
+Cmd+Option-key shortcuts that don't fight macOS defaults.
 
 ## Requirements
 
-- macOS 13+ (Rift; tested on Sequoia and later)
+- macOS 15+ (Nehir's own minimum — higher than the Rift-era setup this
+  replaced, which supported macOS 13+)
 - Apple Silicon or Intel; Homebrew installed or auto-installed
-- "Displays have separate Spaces" enabled (Rift-recommended; the installer sets it)
 - No Karabiner, no disable of System Integrity Protection
 
 ## Quick start
@@ -21,126 +21,150 @@ defaults.
 ```
 
 Re-running `./install` **upgrades** an existing setup: Homebrew components
-(Rift, JankyBorders, Ghostty, tccutil-rs) are updated (no-op when current),
+(Nehir, JankyBorders, Ghostty, tccutil-rs) are updated (no-op when current),
 configs are refreshed from this repo (previous copies kept as `*.bak`), and
-services are restarted so the new binaries/configs apply immediately.
+Nehir/JankyBorders are restarted so the new binaries/configs apply
+immediately.
 
 The installer runs these steps from `scripts/`:
 
 | Script | Purpose |
 |---|---|
 | `install-deps` | Install Homebrew if missing, tccutil-rs |
-| `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Rift draws its indicators in it) |
+| `configure-system` | Show the native menu bar (Nehir draws its workspace indicators in it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
-| `install-rift` | Install Rift (`acsandmann/tap`) + write `~/.config/rift/config.toml` + install the `cycle-column-width` helper + install its launchd service |
-| `install-hammerspoon` | Install Hammerspoon + deploy `WarpMouse.spoon` (continuous horizontal cursor wrap between displays, on by default) |
+| `install-nehir` | Install Nehir (`guria/tap`) + write `~/.config/nehir/{settings,hotkeys,workspaces}.toml` + app-rule samples |
 | `install-borders` | Install JankyBorders + write `~/.config/borders/bordersrc` |
 | `install-helpers` | Install the shortcut cheat-sheet helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build) |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
-| `enable-services` | Start Rift + JankyBorders |
+| `enable-services` | Launch Nehir + start JankyBorders |
 
 ### After install
 
-1. **Log out and back in** (Cmd+Shift+Q) — applies the enabled
-   separate-Spaces setting.
-2. Rift tiles in a **niri-style scrolling strip**; workspaces `1..9` are
+1. **No logout required** — unlike this repo's previous Rift setup, Nehir
+   doesn't depend on macOS's "Displays have separate Spaces" mode; it
+   simulates virtual workspaces itself.
+2. Nehir tiles in a **niri-style scrolling strip**; workspaces `1..9` are
    persistent (fixed, not dynamic rows).
-3. Rift draws **workspace badges in the native menu bar** — click a badge to
-   switch. JankyBorders draws a border around the focused window.
-4. If the Accessibility grant failed, grant it manually:
-   System Settings → Privacy & Security → Accessibility (enable `rift`).
-5. Ghostty opens **frameless** (`macos-titlebar-style = hidden` in
+3. Nehir draws **workspace badges in the native menu bar** — click a badge
+   to switch. JankyBorders draws a border around the focused window.
+4. If the Accessibility grant failed, grant it manually: System Settings →
+   Privacy & Security → Accessibility (enable `Nehir`).
+5. Nehir has **no "start at login" setting of its own** — add it once via
+   System Settings → General → Login Items & Extensions → `+` → Nehir.
+6. Ghostty opens **frameless** (`macos-titlebar-style = hidden` in
    `~/.config/ghostty/config`) — drag its window edge with `Option+Click`.
 
 ## Keybindings
 
-Rift modifiers: **Cmd+Option** (window focus/state/columns), **Cmd+Ctrl**
-(displays), **Ctrl+Option** (workspaces), **Shift** in any of those lanes
-**moves** the focused window instead of just navigating.
+Nehir modifiers: **Option+Cmd** (window focus/state/columns),
+**Ctrl+Option** (workspace prev/next), **Ctrl+Cmd** (display focus). Shift
+in the Option+Cmd lane **moves** the focused window instead of just
+navigating.
 
-> This keybinding scheme deliberately mirrors this repo's previous Paneru
-> setup (not the plain-Option scheme from the earlier Rift era) so muscle
-> memory carries over. See `config/rift/config.toml` `[keys]` for the exact
-> table and `[modifier_combinations]` for the modifier-lane aliases (`main`,
-> `mainShift`, `disp`, `dispShift`, `ws`, `wsShift`).
+> This re-encodes this repo's Rift-era Cmd+Option/Cmd+Ctrl/Ctrl+Option
+> muscle memory onto **Nehir's fixed action catalog** in
+> `config/nehir/hotkeys.toml`. Nehir's hotkeys can only trigger its own
+> built-in actions — unlike Rift's `{ exec = [...] }` bindings, there is no
+> generic "run a shell command" binding — so a few things that used to be
+> hotkeys are gone or changed. Every gap below is intentional, not an
+> oversight; see the comment block at the top of `hotkeys.toml` for the
+> same list inline with the config.
 
 ### Navigation & layout
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Option` + Arrows | Move focus between windows |
-| `Cmd` + `Option` + `Shift` + Arrows | Move window (swap) |
+| `Option` + `Cmd` + Arrows | Move focus between windows |
+| `Option` + `Cmd` + `Shift` + Arrows | Move window (swap) |
 | 3-finger swipe (← / →) | Switch columns |
-| `Cmd` + `Option` + `W` | Cycle the focused column width forward through 0.3 / 0.5 / 1.0 |
-| `Cmd` + `Option` + `Shift` + `W` | Cycle the focused column width backward through the same presets |
-| `Cmd` + `Option` + `M` | Jump the focused column straight to full width (stays tiled) |
-| `Cmd` + `Option` + `Space` | Center the focused column |
+| `Option` + `Cmd` + `W` | Cycle the focused column width forward through 0.3 / 0.5 / 1.0 |
+| `Option` + `Cmd` + `Shift` + `W` | Cycle the focused column width backward through the same presets |
+| `Option` + `Cmd` + `M` | Jump the focused column straight to full width (stays tiled) |
+
+> **Native now, no more helper script.** Rift had no numeric width-preset
+> primitive, so this repo shipped `scripts/cycle-column-width`, a
+> bash+python script that computed exact resize deltas via `rift-cli query
+> layout`. Nehir has a built-in preset array
+> (`[niri] columnWidthPresets = [0.3, 0.5, 1.0]` in `settings.toml`) and
+> native "cycle column width"/"toggle column full width" actions — the
+> script is gone entirely.
+>
+> **Dropped, no equivalent action exists:** "center the focused column"
+> (Rift's `Cmd+Option+Space`) and "toggle orientation" (Rift's
+> `Cmd+Option+/`) — orientation is now a static per-monitor config value,
+> not a runtime toggle (see Multi-monitor below).
 
 ### Workspaces (1-9, fixed)
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl` + `Option` + `↑` / `↓` | Previous/next workspace (via `rift-cli execute workspace prev\|next`) |
-| `Cmd` + `Option` + `1..9` | Switch directly to workspace 1-9 |
-| `Cmd` + `Option` + `Shift` + `1..9` | Move window to workspace 1-9 |
-| `Cmd` + `Option` + `Tab` | Jump to the last-focused workspace |
+| `Ctrl` + `Option` + `↑` / `↓` | Previous/next workspace |
+| `Option` + `Cmd` + `1..9` | Switch directly to workspace 1-9 |
+| `Option` + `Cmd` + `Shift` + `1..9` | Move window to workspace 1-9 |
+| `Option` + `Cmd` + `Tab` | Jump to the last-focused workspace |
 | 3-finger swipe (↑ / ↓) | Switch workspaces (trackpad) |
-
-> **Behavior change from Paneru:** Paneru's `Ctrl+Option+↑/↓` cycled
-> *dynamically created/reaped* workspace rows (no fixed count). Rift's
-> virtual workspaces are a **fixed, named set** — this config ships 9
-> (`"1".."9"`), matching the workspace count from this repo's earlier
-> Rift-era config. There is no on-demand row creation.
 
 ### Displays (multi-monitor)
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Ctrl` + Arrows | Focus a display in that direction (window stays put) |
-| `Cmd` + `Ctrl` + `Shift` + Arrows | Move the focused window to a display in that direction (follows) |
-| `Cmd` + `Ctrl` + `Option` + Arrows | Warp only the mouse pointer to a display in that direction (no focus/window change) |
+| `Ctrl` + `Cmd` + `→` | Focus the next display |
+| `Ctrl` + `Cmd` + `←` | Focus the previous display |
 
-> **No helper binaries needed.** Rift has native directional display
-> commands (`focus_display` / `move_window_to_display` in `[keys]`), unlike
-> Paneru, which had no N-directional display support and needed
-> `config/paneru/lib/displays.lua` plus four compiled/script helpers
-> (`focus-display.swift`, `move-display.swift`, `display-geometry`,
-> `mouse-display`) to work around it. All of that is gone — Rift resolves
-> direction from actual display geometry itself.
+> **Behavior change from Rift.** Rift had native 4-directional display
+> commands (`focus_display`/`move_window_to_display` with
+> left/right/up/down selectors). Nehir's monitor-focus model is
+> next/previous/last, not directional, and it has **no action at all** for
+> "move a window to a display in a direction" or "warp just the mouse to a
+> display in a direction" — those two Rift hotkeys (`Cmd+Ctrl+Shift+Arrows`,
+> `Cmd+Ctrl+Option+Arrows`) have nothing to bind to and are gone. Moving the
+> mouse to a screen edge now warps it automatically (see Multi-monitor
+> below), so the explicit mouse-warp hotkey isn't needed anyway.
 
 ### Window state
 
 | Shortcut | Action |
 |---|---|
-| `Cmd` + `Option` + `V` | Toggle floating/tiled |
-| `Cmd` + `Option` + `O` | Stack / unstack the window |
-| `Cmd` + `Option` + `Ctrl` + `E` | Un-join the layout tree |
-| `Cmd` + `Option` + `/` | Toggle orientation |
+| `Option` + `Cmd` + `V` | Toggle floating/tiled |
+| `Option` + `Cmd` + `O` | Stack / unstack the focused column |
+| `Option` + `Ctrl` + `Cmd` + `E` | Expel the focused window from its column |
+| `Option` + `Shift` + `Cmd` + `D` | Toggle debug trace capture (Developer Mode) |
 
-> **Removed vs. Paneru:** "balance columns", "equalize stack heights", and
-> "copy window rule" have no Rift equivalent and were dropped rather than
-> forced into a bad fit.
+> Mapped to the closest available Nehir action: "stack/unstack" ≈ Nehir's
+> stacked/tabbed column display; "un-join windows" ≈ Nehir's "expel window
+> from column"; "debug" ≈ Nehir's trace-capture toggle (gated behind
+> Developer Mode in Settings → Diagnostics — the actual behavior differs
+> from Rift's plain debug dump).
 
 ### Apps & misc
 
-| Shortcut | Action |
-|---|---|
-| `Cmd` + `Ctrl` + `T` | Open Ghostty |
-| `Cmd` + `Option` + `Shift` + `R` | Reload Rift config (hot reload is also on) |
-| `Cmd` + `Shift` + `?` | Show the shortcut cheat sheet |
+Rift bound `Cmd+Ctrl+T` (open Ghostty), `Cmd+Shift+?` (cheat sheet), and
+`Cmd+Option+Shift+R` (reload config) as `exec`/native actions. None of
+these have a Nehir equivalent:
 
-### Shortcut cheat sheet (Cmd+Shift+?)
+- **Open Ghostty:** use Spotlight (`Cmd+Space`) or the Dock — no generic
+  "launch app" hotkey action exists in Nehir.
+- **Cheat sheet:** run `~/.config/mac-scrolling-wm/helpers/display-shortcuts`
+  manually (see below), or bind your own shortcut to it with a tool of your
+  choice (Raycast, a Shortcuts.app quick action, etc.) — out of scope for
+  this installer.
+- **Reload config:** unnecessary — every file under `~/.config/nehir/` is
+  watched and applied live, always.
 
-`Cmd+Shift+?` runs `display-shortcuts`, which regenerates the cheat-sheet
-JSON from the live Rift config and opens it in `mac-cheatsheet-viewer`, a
-borderless always-on-top overlay (Esc / Cmd+W to close). The pieces:
+### Shortcut cheat sheet
 
-- `helpers/generate-shortcuts-json` — parses the `[keys]` table (and
-  `[modifier_combinations]` aliases) out of `~/.config/rift/config.toml`,
-  humanizes the chords, and emits `~/.config/rift/cheatsheet.json` (curated
-  action labels; unknown bindings fall back to their action name). This
-  replaced a Lua-table parser when the config format changed back from
-  Paneru's `init.lua` to Rift's TOML.
+`~/.config/mac-scrolling-wm/helpers/display-shortcuts` regenerates the
+cheat-sheet JSON from the live Nehir config and opens it in
+`mac-cheatsheet-viewer`, a borderless always-on-top overlay (Esc / Cmd+W to
+close). It has no global hotkey bound to it anymore (see above) — run it
+directly, or from Spotlight/a Raycast script. The pieces:
+
+- `helpers/generate-shortcuts-json` — parses `~/.config/nehir/hotkeys.toml`
+  (Nehir's `[section]` / `key = "Modifier+Combo"` format), humanizes the
+  chords, and emits `~/.config/nehir/cheatsheet.json` (curated action
+  labels; unknown bindings fall back to a title-cased guess from the key
+  name).
 - `helpers/display-shortcuts` — runs the generator and opens the viewer.
 - `mac-cheatsheet-viewer` — a separate repo (`iv-lite/mac-cheatsheet-viewer`)
   holding the Tauri app whose CLI arg is the JSON path. `install-helpers`
@@ -155,69 +179,63 @@ Installed helpers live in `~/.config/mac-scrolling-wm/helpers/` (copied on
 ## The menu bar & notch
 
 - **Workspace indicators** live in the **native menu bar**
-  (`[settings.ui.menu_bar]` in `config/rift/config.toml`): badges for every
+  (`[workspaceBar]` in `config/nehir/settings.toml`): badges for every
   workspace, click to switch. macOS already lays the menu bar around the
   notch, so no notch configuration is needed.
-- **Focus cues** come from **JankyBorders** (`config/borders/bordersrc`) —
-  Rift has no built-in window-border setting, so a small always-on service
-  draws one. Colored to match the border from the previous Paneru setup.
-- Tune the top gap if the menu bar extends over the notch area on a notched
-  display — `[settings.layout.gaps.outer]` in `~/.config/rift/config.toml`.
+- **Focus cues** come from **JankyBorders** (`config/borders/bordersrc`).
+  Nehir does have a native `[borders]` setting, but it's a single color for
+  the focused window only — no distinct inactive-window color — so it's
+  kept off (`enabled = false`) in favor of JankyBorders' two-tone borders.
+- Tune the gap around the menu bar/notch via `[gaps.outer]` in
+  `~/.config/nehir/settings.toml`.
 
 ## Multi-monitor
 
-- Rift gives each display its own independent tiling layout and workspace
-  set (with "Displays have separate Spaces" on).
-- The scrolling strip **requires** displays arranged **vertically** in
-  System Settings → Displays, even if they sit physically side-by-side —
-  Rift's own docs note that side-by-side arrangement lets off-screen columns
-  leak onto the other display (macOS puts all display coordinates in one
-  shared space).
-- Direction selectors (`left`/`right`/`up`/`down`) for every display command
-  (`focus_display`, `move_window_to_display`, `move_mouse_to_display`) are
-  resolved against **that macOS arrangement**, not physical desk placement —
-  no manual offset/inversion setting needed, but it does mean that if your
-  monitors are physically side-by-side and arranged vertically per the
-  requirement above, the *up/down* keys are what actually move left/right in
-  real life.
-- **Physically moving the mouse to a screen edge only auto-crosses to the
-  next monitor natively if that edge matches the System Settings
-  arrangement** — with the required vertical arrangement, that's only the
-  top/bottom edges. **`WarpMouse.spoon`** (installed and enabled by
-  default, `scripts/install-hammerspoon`) closes this gap for the
-  left/right edges: it watches the cursor and, when it hits a display's
-  left or right edge, warps it to the far edge of the next display in a
-  logical left-to-right cycle (wrapping past either end) — no hotkey
-  needed, it feels like one continuous horizontal desktop. The logical
-  order defaults to the displays' top-to-bottom System Settings order
-  (topmost = logical leftmost); set `spoon.WarpMouse.invertOrder = true`
-  in `~/.hammerspoon/init.lua` (before `:start()`) if that guess is
-  backwards for your desk layout, and `spoon.WarpMouse.quietMs` (default
-  `150`) tunes the cooldown between warps. It only ever moves the cursor —
-  a window being **dragged** across that same virtual boundary is not
-  carried along. The `Cmd+Ctrl+Option+Arrows` hotkey (warps just the
-  pointer, no cycling) and `Cmd+Ctrl+Arrows` (focuses the display) remain
-  available too.
+- Nehir gives each display its own tiling layout and workspace assignment
+  (`config/nehir/workspaces.toml`).
+- Arrange displays **vertically** in System Settings → Displays, even if
+  they sit physically side-by-side. Nehir's own docs give the same
+  rationale Rift's did: Nehir parks transient offscreen tiled windows near
+  the horizontal screen edge, and with side-by-side monitors those parked
+  windows can bleed onto the neighboring display (macOS doesn't allow fully
+  hiding an external app window by position alone). If you need a fixed
+  side Dock as well, Nehir's experimental **Dock Shield**
+  (Settings → Diagnostics, off by default) masks that leaked strip.
+- **Mouse edge-warp between displays is native to Nehir** — no separate
+  process needed. `[mouseWarp]` in `settings.toml` (`enabled`, `axis`,
+  `margin`, `monitorOrder`) makes the cursor cycle to the next monitor when
+  it hits a display's edge, in a continuous logical order (wrapping past
+  either end). This replaces this repo's earlier
+  [Hammerspoon](https://www.hammerspoon.org)-based `WarpMouse.spoon` Spoon
+  entirely — Hammerspoon is no longer a dependency of this installer at
+  all.
+- **Horizontal window stacking, if you want it.** Nehir's columns stack
+  multiple windows **vertically** by default (same as niri/Rift). Each
+  monitor can flip that with a per-monitor override —
+  `config/nehir/monitors.d/<name>.toml`:
+  ```toml
+  [match]
+  name = "Your Display Name"
 
-  This runs as a [Hammerspoon](https://www.hammerspoon.org) Spoon rather
-  than a standalone process: Hammerspoon is a well-established, signed
-  automation app that needs **one** Accessibility grant through its own
-  standard first-run prompt, and everything a Spoon does (including
-  watching/warping the mouse) then runs inside that single already-trusted
-  process — no separate code-signing or background-service machinery of
-  our own. If the prompt doesn't appear or the warp isn't happening, check
-  System Settings → Privacy & Security → Accessibility and enable
-  Hammerspoon there, then reload its config (menu bar icon → Reload
-  Config, or `killall Hammerspoon && open -a Hammerspoon`).
-- Per-display gap overrides are supported in the config (commented template
-  in `[settings.layout.gaps.per_display]`). Get display UUIDs with
-  `rift-cli query displays`.
+  [orientation]
+  orientation = "vertical"
+  ```
+  This rotates that monitor's *entire* scroll axis: the workspace then
+  scrolls top-to-bottom instead of left-to-right, and windows that would
+  have been a vertical column now stack **horizontally** (side by side)
+  instead. It's a per-monitor axis flip, not an independent per-column
+  toggle — there's no way to make one column stack horizontally while its
+  neighbors stay vertical on the same monitor. This repo ships
+  `monitors.d/` empty (default `"horizontal"` orientation everywhere); add
+  a file like the one above only if you want that specific monitor
+  flipped.
 
 ## No title bars (the macOS reality)
 
-macOS tiling window managers (Rift included — same as yabai/AeroSpace/Paneru)
-cannot hide a window's title bar or toolbar: each app draws its own chrome,
-so removal has to happen per app. This installer does what's safely possible:
+macOS tiling window managers (Nehir included — same as yabai/AeroSpace/the
+Rift-era setup) cannot hide a window's title bar or toolbar: each app draws
+its own chrome, so removal has to happen per app. This installer does what's
+safely possible:
 
 - **Ghostty is frameless by default** — `~/.config/ghostty/config` sets
   `macos-titlebar-style = hidden` and `macos-window-buttons = hidden` (keeps
@@ -236,59 +254,34 @@ so removal has to happen per app. This installer does what's safely possible:
 
 ## Troubleshooting
 
-**Rift won't start / instantly exits.** Rift requires Accessibility and
-"Displays have separate Spaces" **ON**. The installer's `configure-system` /
-`ensure-separate-spaces` handles the latter. If grants failed, give the
-terminal **Full Disk Access** first, then:
+**Nehir won't start / no menu bar indicators.** Nehir requires
+Accessibility. If the grant failed, give the terminal **Full Disk Access**
+first, then:
 
 ```sh
 bash scripts/grant-permissions
-rift service restart
+killall Nehir; open -a Nehir
 ```
 
-A quick health check of the whole stack:
+A quick health check of the whole stack (requires `ipcEnabled = true` in
+`~/.config/nehir/settings.toml`, which this repo's config ships with):
 
 ```sh
-bash scripts/ensure-separate-spaces check   # must print "enabled (mode 1)"
-RIFT_CLI_PRETTY=1 rift-cli query workspaces # must print a JSON snapshot (service up)
-RIFT_CLI_PRETTY=1 rift-cli query displays   # lists connected monitors
+/Applications/Nehir.app/Contents/MacOS/nehirctl query workspaces
+/Applications/Nehir.app/Contents/MacOS/nehirctl query displays
 ```
 
-**Config changes aren't applying.** Rift's config hot-reloads on save
-(`hot_reload = true`); force it with `Cmd+Option+Shift+R`
-(`reload_config`) or `rift-cli execute config reload`.
+**Config changes aren't applying.** Every file under `~/.config/nehir/`
+(`settings.toml`, `hotkeys.toml`, `workspaces.toml`, `apprules.d/*.toml`,
+`monitors.d/*.toml`) is watched via `DispatchSource` and applied
+immediately — no reload key, no restart. If an edit doesn't take, check
+Settings → Diagnostics for a parse warning (Nehir never silently rewrites
+your file; a bad key is reported there, not applied).
 
-**WarpMouse.spoon is installed but the cursor never crosses at a screen
-edge.** First confirm Hammerspoon itself is running (menu bar icon) and
-has Accessibility: System Settings → Privacy & Security → Accessibility →
-Hammerspoon enabled. If you just granted it, reload Hammerspoon's config
-(menu bar icon → Reload Config, or `killall Hammerspoon && open -a
-Hammerspoon`) — a grant made while it was already running doesn't always
-take effect until it restarts. If it's still not working, open
-Hammerspoon's Console (menu bar icon → Console) and check for Lua errors
-from `WarpMouse`, or add temporary logging inside
-`~/.hammerspoon/Spoons/WarpMouse.spoon/init.lua` (e.g. a `print()` at the
-top of the `hs.eventtap.new` callback) and watch the Console live while
-moving the mouse to an edge — empty output means the event tap isn't
-receiving events (an Accessibility problem), while output that never
-reaches the warp call means the edge-detection math isn't triggering for
-your actual display arrangement (`hs.screen.allScreens()` in the Console
-shows each screen's frame to compare against).
-
-An earlier version of this feature was a standalone Swift
-`CGEventTap`/LaunchAgent daemon (`mouse-edge-warp`) that could never get
-its own Accessibility/Input Monitoring grants recognized when launched via
-`launchd` on this project's development machine (macOS 26 beta) — tried:
-stable code signing, `.app` bundling, `LimitLoadToSessionType=Aqua`,
-`tccd` restarts, and a full logout/login, none of which changed the
-outcome. Running as a Hammerspoon Spoon instead sidesteps that class of
-problem entirely, since Hammerspoon's own grant (made through its
-standard, widely-used first-run flow) covers everything a Spoon does. If
-Hammerspoon's own Accessibility grant doesn't take effect either, that
-likely points to something specific to your macOS version rather than
-this repo — the `Cmd+Ctrl+Option+Arrows` hotkey (`move_mouse_to_display`)
-works independently of Hammerspoon and needs no extra permissions beyond
-what Rift itself already requires, and is a reasonable fallback.
+**Mouse doesn't warp at a display edge.** Confirm `[mouseWarp] enabled =
+true` in `settings.toml`, and that `monitorOrder` is empty or lists all of
+your displays. This is a Nehir built-in, not a separate process — there's
+no Hammerspoon/Spoon involved to debug anymore.
 
 ## Uninstall
 
@@ -296,18 +289,21 @@ what Rift itself already requires, and is a reasonable fallback.
 ./uninstall
 ```
 
-Stops and removes Rift (launchd service) and JankyBorders, removes
-`WarpMouse.spoon` and its entry from `~/.hammerspoon/init.lua` (leaving
-Hammerspoon itself installed — it's offered separately in the brew
-keep/remove menu below, same as any other package), cleans up any
-**legacy** Paneru / `rift-swipe` / AeroSpace / AeroSpaceBar / Aegis residue
-(services, LaunchAgents, apps), moves configs (from `~/.config/rift`,
-`~/.config/borders`, `~/.config/ghostty`, plus any legacy `~/.config/paneru`,
-`~/.config/mac-scrolling-wm`, `~/.config/aerospace`, `~/.config/aegis`) to
-`~/.config/backups/uninstall-<timestamp>/`, then asks you which formulae to
-**keep** (interactive numbered menu). Untaps `acsandmann/tap`,
-`FelixKratz/formulae`, `uinaf/tap` (and legacy `nikitabobko/tap`, `rdrkr/tap`
-only when nothing kept depends on them), and restores the native menu bar.
+Quits Nehir and stops JankyBorders, cleans up any **legacy** residue from
+this repo's earlier setups (Rift launchd service, `WarpMouse.spoon` +
+its `~/.hammerspoon/init.lua` entry, Paneru, `rift-swipe`, AeroSpace,
+AeroSpaceBar, Aegis — services, LaunchAgents, apps), moves configs (from
+`~/.config/nehir`, `~/.config/borders`, `~/.config/ghostty`, plus any
+legacy `~/.config/rift`, `~/.config/paneru`, `~/.config/mac-scrolling-wm`,
+`~/.config/aerospace`, `~/.config/aegis`) to
+`~/.config/backups/uninstall-<timestamp>/`, then asks you which
+formulae/casks to **keep** (interactive numbered menu). Untaps `guria/tap`,
+`FelixKratz/formulae`, `uinaf/tap` (and legacy `acsandmann/tap`,
+`nikitabobko/tap`, `rdrkr/tap` only when nothing kept depends on them), and
+restores the native menu bar. Hammerspoon itself (if a legacy install left
+it) is offered separately in the keep/remove menu, same as any other
+package — this installer never force-removes a general-purpose tool it
+doesn't own.
 
 ## Testing in a macOS VM
 
@@ -325,7 +321,7 @@ macOS host:
 ./tests/preview setup        # installs tart/sshpass (auto), clones host-matched base image
 ./tests/preview up           # boot guest, live-mount the repo, wait for SSH
 ./tests/preview install      # run ./install in the guest (asks to clean up afterwards)
-./tests/preview check        # query Rift state + installed formulae
+./tests/preview check        # query Nehir state + installed formulae
 ./tests/preview shot         # screenshot the tiling into tests/screenshots/
 ./tests/preview clean        # interactively remove VM, tart, sshpass, base image
 ```
@@ -355,40 +351,41 @@ demand and can be removed with `clean`; on Linux, failing-check hints print
 the distro package install commands. See `./tests/preview help` for the full
 command list. Limitations: single virtual display (multi-monitor can't be
 tested), Accessibility may need one manual grant inside the guest. The test
-VM is named `rift-test`.
+VM is named `nehir-test`.
 
 ## Project layout
 
 ```
 install                   Main installer (runs scripts/*)
 uninstall                 Full uninstaller with interactive keep menu
-scripts/                  Per-component install/system/accessibility steps,
-                          plus cycle-column-width (deployed to
-                          ~/.config/rift/, bound from config.toml's
-                          Cmd+Option+W/Shift+W/M)
-config/rift/              Rift config (scrolling strip, bindings, gaps, menu bar) — config.toml
+scripts/                  Per-component install/system/accessibility steps
+config/nehir/             Nehir config: settings.toml, hotkeys.toml,
+                          workspaces.toml, apprules.d/, monitors.d/
 config/borders/           JankyBorders focus-border config — bordersrc
 config/ghostty/           Ghostty config (frameless title bar)
-config/hammerspoon/       WarpMouse.spoon (continuous horizontal cursor
-                          wrap), deployed to ~/.hammerspoon/Spoons/ by
-                          install-hammerspoon
 helpers/                  shortcut cheat-sheet: generate-shortcuts-json,
                           display-shortcuts (mac-cheatsheet-viewer app lives
                           in its own repo at iv-lite/mac-cheatsheet-viewer)
 tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
-Configs are installed to `~/.config/{rift,borders,ghostty}` (plus shortcut
-helpers under `~/.config/mac-scrolling-wm/` and `WarpMouse.spoon` under
-`~/.hammerspoon/Spoons/`); existing files are backed up (`.bak`) before
-overwriting, and Rift has `hot_reload`, so editing
-`~/.config/rift/config.toml` applies live.
+Configs are installed to `~/.config/{nehir,borders,ghostty}` (plus shortcut
+helpers under `~/.config/mac-scrolling-wm/`); existing files are backed up
+(`.bak`) before overwriting. Every file under `~/.config/nehir/` live-reloads
+on save — there's no restart or reload hotkey to remember.
 
 > **Note on the history:** an early version of this installer targeted
 > AeroSpace (i3-style tree tiler) with AeroSpaceBar in the menu bar; a
-> subsequent version used Rift (this same tool) with the plain-Option
-> keybinding scheme from its upstream defaults; that was then replaced by
-> **Paneru** (a different niri-style sliding-strip tiler with a Lua config)
-> for its native infinite-strip paging. This version returns to **Rift**,
-> now with a Cmd+Option keybinding scheme carried over from the Paneru era
-> and JankyBorders back for the focus border Rift doesn't draw natively.
+> subsequent version used Rift (niri-style scrolling tiler) with the
+> plain-Option keybinding scheme from its upstream defaults; that was then
+> replaced by **Paneru** (a different niri-style sliding-strip tiler with a
+> Lua config) for its native infinite-strip paging; a later version
+> returned to **Rift**, with a Cmd+Option keybinding scheme carried over
+> from the Paneru era, JankyBorders for the focus border Rift didn't draw
+> natively, and a Hammerspoon Spoon (`WarpMouse.spoon`) for the mouse
+> edge-warp Rift didn't have. This version switches to **Nehir** — the same
+> niri-style scrolling-strip model, but with a native mouse edge-warp and
+> native column-width presets built in, so the Hammerspoon Spoon and the
+> hand-rolled `cycle-column-width` script are both gone; JankyBorders stays,
+> since Nehir's own border can't do the two-tone active/inactive colors
+> JankyBorders can.
