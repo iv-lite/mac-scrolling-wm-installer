@@ -353,15 +353,14 @@ paneru query state --json                   # must print a JSON snapshot (servic
 ./uninstall
 ```
 
-Stops and removes Paneru (launchd service) and its app launcher, cleans up any
-**legacy** Rift / `rift-swipe` / JankyBorders / AeroSpace / AeroSpaceBar / Aegis
-residue (services, LaunchAgents, apps), moves configs (from `~/.config/paneru`,
-`~/.config/ghostty`, plus any legacy `~/.config/rift`, `~/.config/borders`,
-`~/.config/aerospace`, `~/.config/aegis`, `~/.paneru*`, and Paneru's state dir)
-to `~/.config/backups/uninstall-<timestamp>/`, then asks you which formulae to
-**keep** (interactive numbered menu). Untaps `acsandmann/tap`,
-`FelixKratz/formulae` (and legacy `nikitabobko/tap`, `rdrkr/tap` only when
-nothing kept depends on them), and restores the native menu bar.
+Stops and removes Paneru (launchd service) and its app launcher, revokes its
+Accessibility grant, moves configs (from `~/.config/paneru`,
+`~/.config/ghostty`, `~/.config/mac-scrolling-wm`, plus `~/.paneru*` and
+Paneru's state dir) to `~/.config/backups/uninstall-<timestamp>/`, then asks
+you which formulae to **keep** (interactive numbered menu). Untaps
+`uinaf/tap` when nothing kept needs it, and restores the native menu bar.
+Only items that are actually present are touched — absent items are silently
+skipped, never warned about.
 
 ## Testing in a macOS VM
 

@@ -20,16 +20,12 @@ echo "  ║          niri-like macOS setup — uninstall        ║"
 echo "  ╚══════════════════════════════════════════════════╝"
 echo ""
 echo "  This will:"
-echo "   • Stop/remove Paneru (plus legacy Rift, JankyBorders,"
-echo "     rift-swipe, AeroSpace/AeroSpaceBar/Aegis if present)"
-echo "   • Revoke Accessibility permissions"
+echo "   • Stop/remove Paneru (service + app launcher)"
+echo "   • Revoke its Accessibility permission"
 echo "   • Move configs to ~/.config/backups (not deleted, incl. shortcut helpers)"
 echo "   • Uninstall brew packages (you'll choose which to keep)"
 echo "     paneru, tccutil-rs, ghostty"
-echo "     (+ legacy rift, borders, aerospace, aerospacebar if still present)"
-echo "   • Clean up legacy Aegis.app + its LaunchAgent/preferences (if present)"
-echo "   • Untap repos no longer needed (acsandmann/tap, nikitabobko/tap,"
-echo "     rdrkr/tap, FelixKratz/formulae, uinaf/tap)"
+echo "   • Untaps uinaf/tap when nothing kept needs it"
 echo "   • Revert system defaults (show the native menu bar again)"
 echo ""
 read -r -p "  Continue? [y/N] " answer
@@ -68,71 +64,19 @@ if [ -d "$HOME/Applications/Paneru.app" ]; then
 	ok "Removed ~/Applications/Paneru.app (fallback)"
 fi
 
-# Legacy: Rift
-if command -v rift >/dev/null 2>&1; then
-	if rift service stop >/dev/null 2>&1; then
-		ok "Legacy Rift stopped"
-	fi
-	if rift service uninstall >/dev/null 2>&1; then
-		ok "Legacy Rift service removed"
-	fi
-fi
-
-# Legacy: rift-swipe LaunchAgent (binary lives in ~/.config/rift, removed below)
-if [ -f ~/Library/LaunchAgents/io.rift-swipe.plist ]; then
-	launchctl bootout "gui/$(id -u)/io.rift-swipe" >/dev/null 2>&1 || true
-	rm -f ~/Library/LaunchAgents/io.rift-swipe.plist
-	ok "rift-swipe LaunchAgent stopped + removed (legacy)"
-fi
-
-# Legacy: JankyBorders
-if command -v borders >/dev/null 2>&1; then
-	brew services stop borders >/dev/null 2>&1 || true
-	ok "JankyBorders service stopped (legacy)"
-fi
-
-if [ -d /Applications/AeroSpace.app ] && pgrep -q -f "AeroSpace.app" 2>/dev/null; then
-	if osascript -e 'tell application "AeroSpace" to quit' >/dev/null 2>&1; then
-		ok "AeroSpace quit (legacy)"
-	fi
-fi
-
-if [ -d /Applications/AeroSpaceBar.app ] && pgrep -q -f "AeroSpaceBar.app" 2>/dev/null; then
-	if osascript -e 'tell application "AeroSpaceBar" to quit' >/dev/null 2>&1; then
-		ok "AeroSpaceBar quit (legacy)"
-	fi
-fi
-
-# Aegis: stop + remove LaunchAgent
-if [ -f ~/Library/LaunchAgents/com.aegis.Aegis.plist ]; then
-	launchctl unload ~/Library/LaunchAgents/com.aegis.Aegis.plist >/dev/null 2>&1 || true
-	rm -f ~/Library/LaunchAgents/com.aegis.Aegis.plist
-	ok "Aegis LaunchAgent stopped + removed"
-fi
-if pgrep -q -x Aegis 2>/dev/null; then
-	osascript -e 'tell application "Aegis" to quit' >/dev/null 2>&1 || pkill -x Aegis 2>/dev/null || true
-	ok "Aegis quit"
-fi
-
 # ─────────────────────────────────────────────────────────────
 # 2. Revoke Accessibility permissions
 # ─────────────────────────────────────────────────────────────
 echo ""
 note "Revoking Accessibility permissions..."
 if command -v tccutil-rs >/dev/null 2>&1; then
-	for bin in "$(command -v paneru 2>/dev/null || true)" \
-	           "$(command -v rift 2>/dev/null || true)" \
-	           "/Applications/AeroSpace.app/Contents/MacOS/AeroSpace" \
-	           "$(command -v borders 2>/dev/null || true)" \
-	           "$HOME/.config/rift/bin/rift-swipe" \
-	           "/Applications/Aegis.app/Contents/MacOS/Aegis"; do
-		if [ -n "$bin" ]; then
-			tccutil-rs revoke --user Accessibility "$bin" >/dev/null 2>&1 || true
-		fi
-	done
-	ok "Accessibility grants revoked (best-effort)"
+	paneru_bin="$(command -v paneru 2>/dev/null || true)"
+	if [ -n "$paneru_bin" ] && [ -e "$paneru_bin" ]; then
+		tccutil-rs revoke --user Accessibility "$paneru_bin" >/dev/null 2>&1 || true
+		ok "Accessibility grant revoked (best-effort)"
+	fi
 else
-	warn "tccutil-rs not installed — skip revoking (also fine)"
+	note "tccutil-rs not installed — grants (if any) are left in place"
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -144,23 +88,17 @@ note "Removing configs..."
 BACKUP_DIR="$HOME/.config/backups/uninstall-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
-if [ -f ~/.aerospace.toml ] || [ -f ~/.aerospace.toml.bak ]; then
-	warn "~/.aerospace.toml* exists outside ~/.config — leaving untouched (not ours to remove)"
-fi
-
-for dir in ~/.config/paneru ~/.config/mac-scrolling-wm ~/.config/rift ~/.config/aerospace ~/.config/borders ~/.config/aegis ~/.config/ghostty; do
+for dir in ~/.config/paneru ~/.config/mac-scrolling-wm ~/.config/ghostty; do
 	if [ -d "$dir" ]; then
 		mv "$dir" "$BACKUP_DIR/"
 		ok "Moved $dir → $BACKUP_DIR/$(basename "$dir")"
-	else
-		warn "$dir not found — skipping"
 	fi
 done
 
-# Legacy single-file/state locations for Paneru
+# Paneru single-file/state locations outside ~/.config
 for f in ~/.paneru ~/.paneru.toml "$HOME/.local/state/paneru"; do
 	if [ -e "$f" ]; then
-		mv "$f" "$BACKUP_DIR/" 2>/dev/null && ok "Moved $f → $BACKUP_DIR/" || warn "$f not found — skipping"
+		mv "$f" "$BACKUP_DIR/" 2>/dev/null && ok "Moved $f → $BACKUP_DIR/"
 	fi
 done
 
@@ -170,21 +108,7 @@ if [ -z "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 4. Remove Aegis.app + preferences
-# ─────────────────────────────────────────────────────────────
-if [ -d /Applications/Aegis.app ]; then
-	rm -rf /Applications/Aegis.app
-	ok "Removed /Applications/Aegis.app"
-else
-	warn "/Applications/Aegis.app not found — skipping"
-fi
-if defaults read com.aegis.Aegis >/dev/null 2>&1; then
-	defaults delete com.aegis.Aegis 2>/dev/null || true
-	ok "Deleted Aegis preferences"
-fi
-
-# ─────────────────────────────────────────────────────────────
-# 5. Uninstall brew packages + untaps (interactive keep menu)
+# 4. Uninstall brew packages + untaps (interactive keep menu)
 # ─────────────────────────────────────────────────────────────
 if command -v brew >/dev/null 2>&1; then
 	echo ""
@@ -204,15 +128,11 @@ if command -v brew >/dev/null 2>&1; then
 	}
 
 	add_pkg paneru      formula
-	add_pkg rift        formula acsandmann/tap   # legacy
-	add_pkg borders     formula FelixKratz/formulae   # legacy
-	add_pkg aerospace    cask    nikitabobko/tap      # legacy
-	add_pkg aerospacebar cask    rdrkr/tap            # legacy
 	add_pkg tccutil-rs   formula uinaf/tap
 	add_pkg ghostty      cask
 
 	if [ "$n" -eq 0 ]; then
-		warn "No packages from this setup are installed — nothing to uninstall."
+		note "No packages from this setup are installed — nothing to uninstall."
 	else
 		echo ""
 		echo "  Installed packages from this setup:"
@@ -277,12 +197,12 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 6. Revert system defaults
+# 5. Revert system defaults
 # ─────────────────────────────────────────────────────────────
 echo ""
 note "Reverting system defaults..."
 
-# Show the native menu bar again (Aegis is gone)
+# Show the native menu bar again
 defaults write NSGlobalDomain _HIHideMenuBar -bool false 2>/dev/null || true
 
 # Leave "Displays have separate Spaces" enabled (macOS default).
