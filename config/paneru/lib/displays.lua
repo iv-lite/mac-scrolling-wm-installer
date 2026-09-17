@@ -62,10 +62,15 @@ local function exec_failed(ok, res)
   return res.code ~= 0
 end
 
--- Safe ": stderr" suffix for failure logs; "" when unavailable.
-local function exec_detail(res)
-  if type(res) == "table" and type(res.stderr) == "string" and res.stderr ~= "" then
+-- Safe ": detail" suffix for failure logs: the command's stderr when it ran
+-- and failed, or the raised error when the spawn itself failed (e.g. the
+-- binary isn't on the daemon's minimal launchd PATH); "" when unavailable.
+local function exec_detail(ok, res)
+  if ok and type(res) == "table" and type(res.stderr) == "string" and res.stderr ~= "" then
     return ": " .. res.stderr
+  end
+  if not ok and res ~= nil then
+    return ": " .. tostring(res)
   end
   return ""
 end
@@ -89,6 +94,22 @@ local WAIT_HELPER = HELPERS_DIR .. "wait-rect"
 local MOVE_HELPER = HELPERS_DIR .. "move-display"
 local GEOM_HELPER = HELPERS_DIR .. "display-geometry"
 local MOUSE_HELPER = HELPERS_DIR .. "mouse-display"
+
+-- Absolute paneru CLI path: the daemon runs under launchd with a minimal
+-- PATH (no /opt/homebrew/bin), so spawning a bare "paneru" from Lua fails
+-- (seen live: every 2-display move failed at `window nextdisplay` with no
+-- stderr detail). Same probe order as the move-display helper's PANERU_BIN.
+local PANERU_BIN = (function()
+  local function exists(path)
+    local ok, f = pcall(io.open, path, "rb")
+    if ok and f then f:close(); return true end
+    return false
+  end
+  for _, candidate in ipairs({ "/opt/homebrew/bin/paneru", "/usr/local/bin/paneru" }) do
+    if exists(candidate) then return candidate end
+  end
+  return "paneru"
+end)()
 
 -- Which display id currently has the mouse pointer, or nil if the helper
 -- failed. A plain synchronous `paneru.exec` call — no in-process query API.
@@ -309,7 +330,7 @@ local function focus_display(ws, target)
     tostring(math.floor(point.x)), tostring(math.floor(point.y)),
   })
   if exec_failed(ok, res) then
-    log("focus " .. target .. ": warp-pointer helper failed" .. exec_detail(res))
+    log("focus " .. target .. ": warp-pointer helper failed" .. exec_detail(ok, res))
   end
 end
 
@@ -429,7 +450,7 @@ local function repair_source_viewport(ws, focused, target, cur_id, target_id, wa
   if not exec_failed(wok, wres) then
     log("move " .. target .. ": source viewport repaired (" .. line .. ")")
   else
-    log("move " .. target .. ": source viewport repair failed" .. exec_detail(wres) .. " (" .. line .. ")")
+    log("move " .. target .. ": source viewport repair failed" .. exec_detail(wok, wres) .. " (" .. line .. ")")
   end
 end
 
@@ -513,9 +534,9 @@ local function move_to_display(ws, target)
       -- immediately (an in-dispatch command could not be observed by the
       -- poll below). Poll for display_id to confirm the window arrived on
       -- the target.
-      local exec_ok, res = pcall(paneru.exec, "paneru", { "send-cmd", "window", "nextdisplay" })
+      local exec_ok, res = pcall(paneru.exec, PANERU_BIN, { "send-cmd", "window", "nextdisplay" })
       if exec_failed(exec_ok, res) then
-        log("move " .. target .. ": nextdisplay CLI failed" .. exec_detail(res))
+        log("move " .. target .. ": nextdisplay CLI failed" .. exec_detail(exec_ok, res))
         paneru.flash("move display: nextdisplay failed", 3.0)
         return
       end
@@ -566,7 +587,7 @@ local function move_to_display(ws, target)
     })
     if exec_failed(exec_ok, res) then
       log("move " .. target .. ": move-display failed for window " .. focused ..
-        " to display " .. target_id .. exec_detail(res))
+        " to display " .. target_id .. exec_detail(exec_ok, res))
       paneru.flash("move display: move failed", 3.0)
       return
     end
