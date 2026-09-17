@@ -119,7 +119,7 @@ local function refresh_geometry()
   if exec_failed(ok, res) then return false end
   local t, ids = {}, {}
   for line in (exec_stdout(res)):gmatch("[^\r\n]+") do
-    local id, x, y, w, h = line:match("(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)")
+    local id, x, y, w, h = line:match("(%d+)%s+(%-?%d+)%s+(%-?%d+)%s+(%d+)%s+(%d+)")
     if id then
       id, x, y, w, h = tonumber(id), tonumber(x), tonumber(y), tonumber(w), tonumber(h)
       t[id] = { id = id, x = x, y = y, width = w, height = h }
