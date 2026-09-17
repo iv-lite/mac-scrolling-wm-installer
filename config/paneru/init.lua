@@ -34,10 +34,15 @@ local BINDINGS = {
   -- Workspace rows are created on demand (south past the last row spawns one)
   -- and reaped when empty; the 3-finger vertical swipe also cycles them.
 
-  -- ─── Displays: navigation is handled by function binds below (the move
-  -- keeps the window's exact size/disposition — no resize, no float/tile
-  -- change). Mouse warp stays here: ↑ = next. ───
-  ["mouse nextdisplay"] = "cmd + ctrl - uparrow",
+  -- ─── Displays (Cmd+Ctrl lane, native fork commands) ───
+  -- Focus prev/next IS the mouse warp (focus_follows_mouse picks it up).
+  -- Move prev/next follows; ...send stays on the source display.
+  ["mouse previousdisplay"] = "cmd + ctrl - leftarrow",
+  ["mouse nextdisplay"] = "cmd + ctrl - rightarrow",
+  ["window previousdisplay"] = "cmd + ctrl + shift - leftarrow",
+  ["window nextdisplay"] = "cmd + ctrl + shift - rightarrow",
+  ["window previousdisplaysend"] = "cmd + ctrl + alt - leftarrow",
+  ["window nextdisplaysend"] = "cmd + ctrl + alt - rightarrow",
 
   -- ─── Window state ───
   ["window manage"] = "cmd + alt - v",           -- toggle tiled/floating
@@ -151,22 +156,9 @@ paneru.setup {
 }
 
 -- ─── Module search path ───
--- Paneru's Lua runtime enables `require` (StdLib::ALL) but does not add the
--- config directory to `package.path` itself, so this config does it: modules
--- in lib/ (log.lua, query.lua, displays.lua) become requireable as
--- "lib.<name>" from this file. Only this file is filesystem-watched for hot
--- reload — editing a lib/*.lua file alone will not trigger it; touch this
--- file too (or run `paneru restart`) to pick up a library-only edit.
-local CONFIG_DIR = (os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")) .. "/paneru/"
-package.path = CONFIG_DIR .. "?.lua;" .. CONFIG_DIR .. "?/init.lua;" .. package.path
-
--- ─── Display navigation (config/paneru/lib/displays.lua) ───
--- Cmd+Ctrl+←/→ shift focus to another display without moving the window.
--- Cmd+Ctrl+Shift+←/→ moves the focused window to the previous/next display
--- and follows it. See lib/displays.lua for the full design notes (Paneru's
--- native single-hop "next display" limitation, empty-display reachability,
--- 3+ display teleport via helpers/move-display, and the settle/retry logic).
-local displays = require("lib.displays")
+-- Kept for future lib/ modules. Display navigation is native in the
+-- iv-lite/paneru fork (window/mouse previousdisplay), so lib/displays.lua,
+-- lib/query.lua and lib/log.lua are gone — no require here.
 
 -- ─── Firefox external-link fix ───
 -- A link clicked in another app spawns a Firefox window carrying Firefox's
@@ -190,15 +182,12 @@ paneru.on("window_spawned", paneru.match({ bundle = "org.mozilla.firefox" }), fu
 end)
 
 -- ─── Keybindings ───
--- Focus only: window stays put, nothing resized. No return value — the
--- handler transforms nothing, so pure runtimes must receive nil (a stray
--- table return could fail the dispatch).
-paneru.bind("cmd + ctrl - leftarrow", function(ws) displays.focus(ws, "previous") end)
-paneru.bind("cmd + ctrl - rightarrow", function(ws) displays.focus(ws, "next") end)
--- Move window + follow; size and tiled/floating disposition are preserved exactly.
--- Returns the focused set so pure runtimes commit the focus (see lib/displays.lua header).
-paneru.bind("cmd + ctrl + shift - leftarrow", function(ws) return displays.move(ws, "previous") end)
-paneru.bind("cmd + ctrl + shift - rightarrow", function(ws) return displays.move(ws, "next") end)
+-- Display focus/move are plain BINDINGS-table entries above (native
+-- previousdisplay/nextdisplay in the iv-lite fork — true inverses on any
+-- number of displays, empty displays included). The ↑/↓ warps below are
+-- extra chords onto the same mouse commands, kept from the previous setup.
+paneru.bind("cmd + ctrl - uparrow", function() paneru.mouse.next_display() end)
+paneru.bind("cmd + ctrl - downarrow", function() paneru.mouse.previous_display() end)
 
 -- Cmd+Ctrl+T opens a new Ghostty window on every press: AppleScript
 -- `new terminal` (Ghostty 1.3.0+) creates a window in the running instance
