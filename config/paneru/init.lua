@@ -119,6 +119,12 @@ paneru.setup {
   windows = {
     calculator = { title = ".*", bundle_id = "com.apple.calculator", floating = true },
     preferences = { title = "Preferences", floating = true },
+    -- Firefox: external links spawn a new window carrying Firefox's own
+    -- restored size hint, which lands slightly off the column grid and
+    -- overlaps the neighbour. Force the initial column ratio so every
+    -- main window tiles at grid width; small popups/dialogs are left to
+    -- the spawn handler below (size-gated) so they can still float.
+    firefox = { title = ".*", bundle_id = "org.mozilla.firefox", width = 0.5, horizontal_padding = 8, vertical_padding = 8 },
     -- Inner gaps: Paneru has no global inner-gap option, so this applies
     -- per-window padding to every tiled window.
     default = { title = ".*", horizontal_padding = 8, vertical_padding = 8 },
@@ -149,6 +155,27 @@ package.path = CONFIG_DIR .. "?.lua;" .. CONFIG_DIR .. "?/init.lua;" .. package.
 -- native single-hop "next display" limitation, empty-display reachability,
 -- 3+ display teleport via helpers/move-display, and the settle/retry logic).
 local displays = require("lib.displays")
+
+-- ─── Firefox external-link fix ───
+-- A link clicked in another app spawns a Firefox window carrying Firefox's
+-- own restored size hint, which lands slightly off the column grid and
+-- overlaps the neighbour (seen live: x=-3 w=1664 next to x=1661 w=1684 on
+-- a 3360px display — abutting instead of gapped). The static `firefox`
+-- rule above pins the initial ratio; this handler re-pins it at spawn
+-- time so the size hint can't win. Small popups/dialogs (< 800x600) are
+-- left alone so they can still float.
+paneru.on("window_spawned", paneru.match({ bundle = "org.mozilla.firefox" }), function(event, ws)
+  local frame = event.frame or {}
+  if (frame.width or 0) < 800 or (frame.height or 0) < 600 then return end
+  local id = event.window_id
+  local ok, res = pcall(function()
+    local next_ws = ws:manage(id)
+    next_ws = next_ws:sink(id)
+    return next_ws:width(id, 0.5)
+  end)
+  if ok then return res end
+  pcall(paneru.log, "firefox spawn fix failed: " .. tostring(res))
+end)
 
 -- ─── Keybindings ───
 -- Focus only: window stays put, nothing resized. No return value — the
