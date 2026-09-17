@@ -151,12 +151,15 @@ package.path = CONFIG_DIR .. "?.lua;" .. CONFIG_DIR .. "?/init.lua;" .. package.
 local displays = require("lib.displays")
 
 -- ─── Keybindings ───
--- Focus only: window stays put, nothing resized.
-paneru.bind("cmd + ctrl - leftarrow", function(ws) return displays.focus(ws, "previous") end)
-paneru.bind("cmd + ctrl - rightarrow", function(ws) return displays.focus(ws, "next") end)
+-- Focus only: window stays put, nothing resized. No return value — the
+-- handler transforms nothing, so pure runtimes must receive nil (a stray
+-- table return could fail the dispatch).
+paneru.bind("cmd + ctrl - leftarrow", function(ws) displays.focus(ws, "previous") end)
+paneru.bind("cmd + ctrl - rightarrow", function(ws) displays.focus(ws, "next") end)
 -- Move window + follow; size and tiled/floating disposition are preserved exactly.
-paneru.bind("cmd + ctrl + shift - leftarrow", function(ws) displays.move(ws, "previous") end)
-paneru.bind("cmd + ctrl + shift - rightarrow", function(ws) displays.move(ws, "next") end)
+-- Returns the focused set so pure runtimes commit the focus (see lib/displays.lua header).
+paneru.bind("cmd + ctrl + shift - leftarrow", function(ws) return displays.move(ws, "previous") end)
+paneru.bind("cmd + ctrl + shift - rightarrow", function(ws) return displays.move(ws, "next") end)
 
 -- Cmd+Ctrl+T opens a new Ghostty window on every press: AppleScript
 -- `new terminal` (Ghostty 1.3.0+) creates a window in the running instance
@@ -165,7 +168,7 @@ paneru.bind("cmd + ctrl + shift - rightarrow", function(ws) displays.move(ws, "n
 paneru.bind("cmd + ctrl - t", function()
   local ok, res = pcall(paneru.exec, "/usr/bin/osascript",
     { "-e", 'tell application "Ghostty" to new terminal' })
-  if not ok or not res or res.code ~= 0 then
+  if not ok or type(res) ~= "table" or res.code ~= 0 then
     pcall(paneru.exec, "/usr/bin/open", { "-a", "Ghostty" })
   end
 end)

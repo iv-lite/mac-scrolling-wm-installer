@@ -18,16 +18,22 @@
 -- Move is also fully delegated to compiled helpers — both the 2-display
 -- path (paneru's own `window nextdisplay` via CLI) and the 3+ display
 -- path (move-display: AX teleport, warp + mouseMoved, blocking settle with
--- adoption confirm). This is because paneru batches all
--- `paneru.run`/`ws:focus` commands in a Lua-side outbox that is only
--- flushed to the ECS *after the keybind dispatch returns* (worker.rs
--- Task::finish), so any in-dispatch poll of `paneru.query_json("state")`
--- can never observe the effect of a `paneru.run` within the same
--- dispatch — the poll always reads pre-command state and times out. CLI
--- commands, by contrast, are separate Mach port messages that the daemon
--- processes independently; by the time the next CLI invocation (query)
--- arrives, the previous command has been applied. A short poll with
--- retries covers the edge case where the daemon's frame hasn't run yet.
+-- adoption confirm). CLI commands are separate Mach port messages that the
+-- daemon processes independently; by the time the next CLI invocation
+-- (exec or query) arrives, the previous command has been applied. A short
+-- poll with retries covers the edge case where the daemon's frame hasn't
+-- run yet — but no in-dispatch `query_json` poll can observe another
+-- in-dispatch command, so sequencing across commands needs real ordering.
+--
+-- Focus assignment follows the runtime both models agree on: the installed
+-- paneru 0.5.1 documents pure StackSet handlers (`return
+-- ws:focus(ws:east(ws:focused()))` appears verbatim in the binary), where
+-- only the returned set commits — bare `ws:focus()` calls without a return
+-- are silently discarded. So this file both queues the focus (harmless
+-- anywhere) and RETURNS the focused set from successful moves. The
+-- source-side centering likewise goes through an immediately-applied CLI
+-- (`send-cmd window focus east|west`, which also scrolls via auto_center)
+-- rather than a transient in-dispatch focus that a pure runtime would drop.
 --
 -- The move never resizes or maximizes the window — it keeps whatever size
 -- it had before, on either display — and never changes its tiled/floating
@@ -46,6 +52,32 @@ local query_active_safe = query.active
 local query_state_safe = query.state
 local find_window = query.find_window
 
+-- paneru.exec either returns a result table ({code, stdout, stderr}) or
+-- raises with any error value — including userdata. Never index a result
+-- blindly: that turns a failed exec into a fatal dispatch error (seen live
+-- when a raised focus CLI crashed the whole move on `cres.stderr`).
+local function exec_failed(ok, res)
+  if not ok then return true end
+  if type(res) ~= "table" then return true end
+  return res.code ~= 0
+end
+
+-- Safe ": stderr" suffix for failure logs; "" when unavailable.
+local function exec_detail(res)
+  if type(res) == "table" and type(res.stderr) == "string" and res.stderr ~= "" then
+    return ": " .. res.stderr
+  end
+  return ""
+end
+
+-- Safe stdout string from an exec result; "" when unavailable.
+local function exec_stdout(res)
+  if type(res) == "table" and type(res.stdout) == "string" then
+    return res.stdout
+  end
+  return ""
+end
+
 -- Helpers (see helpers/, all compiled by scripts/install-helpers):
 --   warp-pointer     — warp-only: pointer to x y + mouseMoved; the target is resolved in-process
 --   move-display     — teleport via AX at near-final geometry, warp + mouseMoved, settle via CLI
@@ -61,8 +93,8 @@ local MOUSE_HELPER = HELPERS_DIR .. "mouse-display"
 -- failed. A plain synchronous `paneru.exec` call — no in-process query API.
 local function current_display_id()
   local ok, res = pcall(paneru.exec, MOUSE_HELPER, {})
-  if not ok or not res or res.code ~= 0 then return nil end
-  return tonumber((res.stdout or ""):match("%d+"))
+  if exec_failed(ok, res) then return nil end
+  return tonumber((exec_stdout(res)):match("%d+"))
 end
 
 -- ─── Display geometry cache ───────────────────────────────────────────────
@@ -83,9 +115,9 @@ end
 
 local function refresh_geometry()
   local ok, res = pcall(paneru.exec, GEOM_HELPER, {})
-  if not ok or not res or res.code ~= 0 then return false end
+  if exec_failed(ok, res) then return false end
   local t, ids = {}, {}
-  for line in (res.stdout or ""):gmatch("[^\r\n]+") do
+  for line in (exec_stdout(res)):gmatch("[^\r\n]+") do
     local id, x, y, w, h = line:match("(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)")
     if id then
       id, x, y, w, h = tonumber(id), tonumber(x), tonumber(y), tonumber(w), tonumber(h)
@@ -268,72 +300,30 @@ local function focus_display(ws, target)
   local ok, res = pcall(paneru.exec, WARP_HELPER, {
     tostring(math.floor(point.x)), tostring(math.floor(point.y)),
   })
-  if not ok or not res or res.code ~= 0 then
-    log("focus " .. target .. ": warp-pointer helper failed" ..
-      ((res and res.stderr and res.stderr ~= "") and (": " .. res.stderr) or ""))
+  if exec_failed(ok, res) then
+    log("focus " .. target .. ": warp-pointer helper failed" .. exec_detail(res))
   end
 end
 
--- Finish a move once the window settled on the target display.
--- `source` is { display_id = <source id>, neighbor = <window id or nil> }:
--- the neighbor left behind (next in strip order, else previous, captured
--- before the move; nil when the source is left empty or the moved window
--- was floating).
---
--- Three steps, in order:
---   1. Warp exactly onto the moved window's live center on both paths (the
---      3+ helper warped pre-settle and fullwidth shifts geometry after, so
---      re-warp explicitly — warping to x/y can't overshoot a display).
---   2. Center the neighbor left behind: focus it so paneru scrolls it into
---      view, then snap it into the viewport. Viewport-only — focus returns
---      below, never stays behind. Skipped when the neighbor already sits
---      inside the source viewport (common case, and avoids racing paneru's
---      own visibility correction).
---   3. Focus the moved window. All three flush through the Lua-side outbox
---      in order at dispatch end, i.e. after all CLI-applied moves.
+-- Warp exactly onto the moved window's live center. Used by the 2-display
+-- path only — on 3+ the move-display helper re-warps post-settle itself, so
+-- a second helper spawn here would just be latency.
+-- Final focus is handled by the caller returning ws:focus (see below).
 -- This runs inside a move dispatch (MOVE_BUSY is set), never via
--- focus_display(), which refuses to run while a move is in flight. Every
--- step is guarded: a miss degrades to today's behavior, never a broken move.
-local function finish_move(ws, focused, target, source)
-  do
-    local w = find_window(query_state_safe(), focused)
-    local p = w and frame_center(w.frame) or nil
-    if p then
-      pcall(paneru.exec, WARP_HELPER, {
-        tostring(math.floor(p.x)), tostring(math.floor(p.y)),
-      })
-    else
-      log("move " .. target .. ": no live frame for window " .. tostring(focused) .. ", skipping warp")
-    end
+-- focus_display(), which refuses to run while a move is in flight.
+local function warp_to_moved(ws, focused, target)
+  local w = find_window(query_state_safe(), focused)
+  local p = w and frame_center(w.frame) or nil
+  if p then
+    pcall(paneru.exec, WARP_HELPER, {
+      tostring(math.floor(p.x)), tostring(math.floor(p.y)),
+    })
+  else
+    log("move " .. target .. ": no live frame for window " .. tostring(focused) .. ", skipping warp")
   end
-  if source and source.neighbor then
-    local t = DISPLAYS[source.display_id]
-    local nw = find_window(query_state_safe(), source.neighbor)
-    local np = nw and frame_center(nw.frame) or nil
-    local inside = np ~= nil and t ~= nil
-      and type(t.x) == "number" and type(t.y) == "number"
-      and type(t.width) == "number" and type(t.height) == "number"
-      and np.x >= t.x and np.x < t.x + t.width
-      and np.y >= t.y and np.y < t.y + t.height
-    if nw and nw.display_id == source.display_id and not inside then
-      local nok, nerr = pcall(function() ws:focus(source.neighbor) end)
-      if nok then
-        local sok, serr = pcall(paneru.run, "window snap")
-        if sok then
-          log("move " .. target .. ": centered window " .. tostring(source.neighbor) ..
-            " left on display " .. tostring(source.display_id))
-        else
-          log("move " .. target .. ": paneru.run(window snap) failed: " .. tostring(serr))
-        end
-      else
-        log("move " .. target .. ": ws:focus(" .. tostring(source.neighbor) .. ") failed: " .. tostring(nerr))
-      end
-    end
-  end
-  local fok, ferr = pcall(function() ws:focus(focused) end)
-  if not fok then
-    log("move " .. target .. ": ws:focus(" .. tostring(focused) .. ") failed: " .. tostring(ferr))
-  end
+  -- Belt and suspenders for outbox-model runtimes: queue the focus as well
+  -- (a no-op on pure runtimes, where only the returned set commits).
+  pcall(function() ws:focus(focused) end)
 end
 
 -- Poll `find_window(query_state_safe(), wid)` until `predicate(w)` holds
@@ -355,12 +345,17 @@ local function move_to_display(ws, target)
     return
   end
   MOVE_BUSY = true
+  -- Set on the success paths below; when true the handler returns a focused
+  -- set so pure runtimes commit the focus (see header).
+  local moved_ok = false
+  local focused_id = nil
   local ok, err = pcall(function()
     local focused = ws:focused()
     if not focused then
       log("move " .. target .. ": no focused window")
       return
     end
+    focused_id = focused
     -- The window's disposition right now, before anything below touches
     -- it — this move must restore exactly this afterward, never force it
     -- tiled just because it changed displays.
@@ -384,37 +379,14 @@ local function move_to_display(ws, target)
       log("move " .. target .. ": target == current, nothing to do")
       return
     end
-    -- Neighbor to re-center on the source display once we're gone: next in
-    -- strip order, else previous, else nil (source left empty). Captured
-    -- pre-move — post-move the moved window is gone from this list.
-    -- Floating windows leave no strip gap behind, so skip them.
-    local neighbor = nil
-    if not was_floating then
-      local pre = query_state_safe()
-      if pre then
-        local order = {}
-        for _, row in ipairs(pre.virtual_workspaces or {}) do
-          for _, w in ipairs(row.windows or {}) do
-            if w.display_id == cur_id then order[#order + 1] = w.window_id end
-          end
-        end
-        for i, id in ipairs(order) do
-          if id == focused then
-            neighbor = order[i + 1] or order[i - 1]
-            break
-          end
-        end
-      end
-    end
-    local source = { display_id = cur_id, neighbor = neighbor }
     if n == 2 then
-      -- 2-display path: `paneru window nextdisplay` via CLI (not
-      -- paneru.run, which would batch until dispatch-end and make
-      -- the poll below see stale state). Poll for display_id to
-      -- confirm the window arrived on the target.
+      -- 2-display path: `paneru window nextdisplay` via CLI, which applies
+      -- immediately (an in-dispatch command could not be observed by the
+      -- poll below). Poll for display_id to confirm the window arrived on
+      -- the target.
       local exec_ok, res = pcall(paneru.exec, "paneru", { "send-cmd", "window", "nextdisplay" })
-      if not exec_ok or not res or res.code ~= 0 then
-        log("move " .. target .. ": nextdisplay CLI failed")
+      if exec_failed(exec_ok, res) then
+        log("move " .. target .. ": nextdisplay CLI failed" .. exec_detail(res))
         paneru.flash("move display: nextdisplay failed", 3.0)
         return
       end
@@ -424,14 +396,16 @@ local function move_to_display(ws, target)
         log("move " .. target .. ": window " .. focused .. " never reported display " .. target_id)
         paneru.flash("move display: failed to settle on target display", 3.0)
       else
-        finish_move(ws, focused, target, source)
+        warp_to_moved(ws, focused, target)
+        moved_ok = true
       end
       return
     end
-    -- 3+ display path: the move-display helper owns the teleport (AX
-    -- teleport, warp + mouseMoved, blocking settle with adoption confirm).
-    -- Lua checks the exit code — the helper only reports success once the
-    -- window is adopted — then restores focus to the moved window.
+    -- 3+ display path: the move-display helper owns the whole move (AX
+    -- teleport, warp + mouseMoved, blocking settle with adoption confirm,
+    -- live re-warp). Lua checks the exit code — the helper only reports
+    -- success once the window is adopted — then restores focus to the
+    -- moved window.
     local t = display_frame(ws, target_id)
     if not t then
       log("move " .. target .. ": no geometry for target display " .. target_id)
@@ -444,20 +418,34 @@ local function move_to_display(ws, target)
       was_floating and "1" or "0",
       tostring(target_id),
     })
-    if not exec_ok or not res or res.code ~= 0 then
+    if exec_failed(exec_ok, res) then
       log("move " .. target .. ": move-display failed for window " .. focused ..
-        " to display " .. target_id ..
-        ((res and res.stderr and res.stderr ~= "") and (": " .. res.stderr) or ""))
+        " to display " .. target_id .. exec_detail(res))
       paneru.flash("move display: move failed", 3.0)
       return
     end
-    finish_move(ws, focused, target, source)
-    log("move " .. target .. ": window " .. focused .. " moved to display " .. target_id)
+    moved_ok = true
+    local timing = ""
+    if type(res) == "table" and type(res.stderr) == "string" then
+      timing = res.stderr:match("elapsed=%d+ms") or ""
+    end
+    if timing ~= "" then timing = " (" .. timing .. ")" end
+    log("move " .. target .. ": window " .. focused .. " moved to display " .. target_id .. timing)
   end)
   MOVE_BUSY = false
   if not ok then
     log("move " .. target .. ": internal error: " .. tostring(err))
+    return nil
   end
+  -- Commit the focus for pure runtimes (their docs: handlers return the
+  -- transformed set; bare calls commit nothing). A no-op queue entry on
+  -- outbox runtimes, where the warp_to_moved call above already queued it.
+  if moved_ok and focused_id then
+    local fok, res = pcall(function() return ws:focus(focused_id) end)
+    if fok then return res end
+    log("move " .. target .. ": return-focus failed: " .. tostring(res))
+  end
+  return nil
 end
 
 -- Any display event invalidates the geometry cache (re-read on next use).

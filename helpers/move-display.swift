@@ -24,6 +24,9 @@
 //      returns before the daemon applies it, so any caller-side adoption
 //      check races and fails. Lua trusts this helper's exit code and pins
 //      focus explicitly afterward.
+//   4. Re-warp to the window's live center (fullwidth resizes it after the
+//      step-2 warp) and report total elapsed ms on stderr — the only timing
+//      signal for the move path, so sluggishness is measurable.
 //
 // Performance notes (v10):
 //   - No AppKit import: resolving/activating via NSRunningApplication pulled
@@ -43,7 +46,10 @@
 //     10 attempts with 20ms sleeps plus 2 AX calls per pass).
 //   - The trailing `paneru window fullwidth` blocks until applied and the
 //     adoption poll confirms it (a detached launch let the caller's check
-//     race and fail); the teleport path above keeps the keypress fast.
+//     race and fail); the poll is short (10 x 50ms + one retry) because
+//     fullwidth already applied — a sleep-less or minute-long poll would
+//     either race or freeze the keypress. The teleport path above keeps
+//     the keypress fast.
 //
 // Usage: move-display <window_id> <x> <y> <width> <height> <was_floating> <target_display_id>
 // <window_id> is the exact CGWindowID Lua wants moved.
@@ -84,6 +90,15 @@ guard args.count == 8, let windowIDArg = Int(args[1]),
 // Accepted for CLI compatibility; teleport behavior is identical either way.
 // (Tiled vs floating settle is owned by paneru / the Lua side.)
 _ = args[6]
+
+let startTime = Date()
+
+/// Total elapsed ms since launch, reported on stderr before successful exit
+/// so moves stay measurable from the Lua log alone.
+func reportElapsed() {
+  let ms = Int(Date().timeIntervalSince(startTime) * 1000)
+  FileHandle.standardError.write("elapsed=\(ms)ms\n".data(using: .utf8)!)
+}
 
 // ─── paneru CLI (blocking settle + adoption poll) ─────────────────────────
 
@@ -138,8 +153,10 @@ func findWindowState(_ wid: Int) -> [String: Any]? {
 
 /// Poll state until the window reports the target display, or time out.
 /// Sleeps between ticks so the daemon has wall-clock time to apply the
-/// settle — a sleep-less busy poll would exhaust before it lands.
-func pollAdoption(retries: Int = 40, delay: TimeInterval = 0.05) -> Bool {
+/// settle — a sleep-less busy poll would exhaust before it lands. Kept
+/// short on purpose: fullwidth above already applied, so adoption should
+/// be near-immediate; lingering here is what freezes the keypress.
+func pollAdoption(retries: Int = 10, delay: TimeInterval = 0.05) -> Bool {
   for i in 0..<retries {
     if i > 0 { Thread.sleep(forTimeInterval: delay) }
     if let w = findWindowState(windowIDArg),
@@ -298,10 +315,14 @@ guard landed else {
 
 // ─── Warp + mouseMoved to rotate active display (no click) ────────────────
 
-CGWarpMouseCursorPosition(landedCenter)
-CGAssociateMouseAndMouseCursorPosition(1)
-CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
-        mouseCursorPosition: landedCenter, mouseButton: .left)?.post(tap: .cghidEventTap)
+func warpTo(_ point: CGPoint) {
+  CGWarpMouseCursorPosition(point)
+  CGAssociateMouseAndMouseCursorPosition(1)
+  CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
+          mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
+}
+
+warpTo(landedCenter)
 
 // ─── Raise, settle, and confirm adoption ──────────────────────────────────
 
@@ -310,7 +331,25 @@ CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
 // pointer may have hovered on the way over.
 AXUIElementPerformAction(window, kAXRaiseAction as CFString)
 
-if settle() { exit(0) }
+/// Warp to the window's live center: fullwidth resizes it after the
+/// pre-settle warp, so re-resolve geometry instead of reusing the landing
+/// point. Same-process re-warp — no extra helper spawn like the Lua side
+/// used to pay for this.
+func rewarpLive() {
+  let size = readSize(window)
+  let pos = readPosition(window)
+  if size.width > 0 && size.height > 0 {
+    warpTo(CGPoint(x: pos.x + size.width / 2, y: pos.y + size.height / 2))
+  } else {
+    warpTo(pos)
+  }
+}
+
+if settle() {
+  rewarpLive()
+  reportElapsed()
+  exit(0)
+}
 // First settle missed — a focus race likely sent fullwidth at the wrong
 // window. Raise again to restore macOS focus, wait briefly for paneru to
 // track it, and settle once more before giving up.
@@ -325,3 +364,5 @@ guard settle() else {
       .data(using: .utf8)!)
   exit(1)
 }
+rewarpLive()
+reportElapsed()
