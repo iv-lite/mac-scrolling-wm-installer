@@ -24,8 +24,9 @@ echo "   • Stop/remove Paneru (service + app launcher)"
 echo "   • Revoke its Accessibility permission"
 echo "   • Move configs to ~/.config/backups (not deleted, incl. shortcut helpers)"
 echo "   • Remove Antigen shell setup (~/antigen.zsh, bundling, ~/.zshrc block)"
+echo "   • Remove the Paneru release binary"
 echo "   • Uninstall brew packages (you'll choose which to keep)"
-echo "     paneru, tccutil-rs, ghostty"
+echo "     tccutil-rs, ghostty"
 echo "   • Untaps uinaf/tap when nothing kept needs it"
 echo "   • Revert system defaults (show the native menu bar again)"
 echo ""
@@ -128,6 +129,15 @@ fi
 # ─────────────────────────────────────────────────────────────
 # 4. Uninstall brew packages + untaps (interactive keep menu)
 # ─────────────────────────────────────────────────────────────
+# Paneru itself is a direct binary from the iv-lite/paneru GitHub releases
+# (not a Homebrew formula), so remove the binary file itself.
+for paneru_bin_rm in "$(command -v paneru 2>/dev/null || true)" /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
+	if [ -n "$paneru_bin_rm" ] && [ -f "$paneru_bin_rm" ]; then
+		rm -f "$paneru_bin_rm"
+		ok "Removed Paneru binary $paneru_bin_rm"
+	fi
+done
+
 if command -v brew >/dev/null 2>&1; then
 	echo ""
 	note "Reviewing installed brew packages..."
@@ -145,7 +155,6 @@ if command -v brew >/dev/null 2>&1; then
 		fi
 	}
 
-	add_pkg paneru      formula
 	add_pkg tccutil-rs   formula uinaf/tap
 	add_pkg ghostty      cask
 

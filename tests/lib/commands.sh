@@ -81,8 +81,12 @@ cmd_check() {
   echo "── Paneru service + state ──"
   guest "paneru query state --json" 2>&1 || true
   echo ""
+  echo "── Paneru binary + native display commands ──"
+  guest "command -v paneru && paneru --version" 2>&1 || true
+  guest "paneru send-cmd mouse previousdisplay" 2>&1 || true
+  echo ""
   echo "── Installed formulae ──"
-  guest "brew list | grep -Ei 'paneru|rift|aerospace|aerospacebar|borders|tccutil|ghostty' || echo '(none found)'"
+  guest "brew list | grep -Ei 'rift|aerospace|aerospacebar|borders|tccutil|ghostty' || echo '(none found)'"
   echo ""
   echo "── Aegis.app (should NOT be present) ──"
   guest "ls -d /Applications/Aegis.app 2>&1 || echo '(not installed — correct)'"
