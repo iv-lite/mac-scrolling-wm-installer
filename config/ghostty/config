@@ -3,5 +3,8 @@
 #
 # Hidden titlebar keeps rounded corners/borders without the title chrome.
 # Window dragging falls back to Option+Click on the frame (standard macOS).
-macos-titlebar-style = hidden
 macos-window-buttons = hidden
+
+shell-integration = detect
+shell-integration-features = cursor,sudo,title
+quit-after-last-window-closed=true
