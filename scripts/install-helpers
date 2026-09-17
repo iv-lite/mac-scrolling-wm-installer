@@ -27,58 +27,17 @@ cp "$REPO_ROOT/helpers/display-shortcuts" "$HELPERS_DIR/display-shortcuts"
 chmod +x "$HELPERS_DIR/generate-shortcuts-json" "$HELPERS_DIR/display-shortcuts"
 ok "Helpers installed to $HELPERS_DIR (generate-shortcuts-json, display-shortcuts)"
 
+# Display navigation is native in the iv-lite/paneru fork
+# (window/mouse previousdisplay), so the pre-fork Swift helpers are gone:
 # move-display, warp-pointer, mouse-display, display-geometry, wait-rect,
-# wait-display and wait-settled are all
-# compiled once here into stable binaries. move-display and warp-pointer
-# need the Accessibility API (AXUIElement / synthetic CGEvent posting),
-# which requires a one-time permission grant tied to a specific binary's
-# path/identity — an ephemeral `swift -e` process gets a fresh identity on
-# every run and could never hold that grant. mouse-display and
-# display-geometry need no permission at all, but they run on every
-# move/focus dispatch, and as `swift -e` scripts they each paid a 150-400ms
-# JIT-compile tax per keypress (the same tax the old focus-display header
-# documented) — compiling them removes that dominant cost, same as focus.
-if command -v swiftc >/dev/null 2>&1; then
-  note "Compiling move-display (Accessibility helper)..."
-  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/move-display.swift" -o "$HELPERS_DIR/move-display"
-  chmod +x "$HELPERS_DIR/move-display"
-  ok "move-display compiled to $HELPERS_DIR/move-display"
-
-  note "Compiling warp-pointer (pointer warp + mouseMoved helper)..."
-  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/warp-pointer.swift" -o "$HELPERS_DIR/warp-pointer"
-  chmod +x "$HELPERS_DIR/warp-pointer"
-  ok "warp-pointer compiled to $HELPERS_DIR/warp-pointer"
-  # focus-display was renamed to warp-pointer (same role, slimmer): drop the
-  # stale binary so its orphaned Accessibility grant doesn't linger.
-  rm -f "$HELPERS_DIR/focus-display"
-  ok "stale focus-display binary removed (superseded by warp-pointer)"
-
-  note "Compiling mouse-display (current-display lookup)..."
-  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/mouse-display.swift" -o "$HELPERS_DIR/mouse-display"
-  chmod +x "$HELPERS_DIR/mouse-display"
-  ok "mouse-display compiled to $HELPERS_DIR/mouse-display"
-
-  note "Compiling display-geometry (display enumeration)..."
-  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/display-geometry.swift" -o "$HELPERS_DIR/display-geometry"
-  chmod +x "$HELPERS_DIR/display-geometry"
-  ok "display-geometry compiled to $HELPERS_DIR/display-geometry"
-  note "Compiling wait-rect (viewport-settle wait, no permissions needed)..."
-  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/wait-rect.swift" -o "$HELPERS_DIR/wait-rect"
-  chmod +x "$HELPERS_DIR/wait-rect"
-  ok "wait-rect compiled to $HELPERS_DIR/wait-rect"
-  note "Compiling wait-display (adoption wait, no permissions needed)..."
-  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/wait-display.swift" -o "$HELPERS_DIR/wait-display"
-  chmod +x "$HELPERS_DIR/wait-display"
-  ok "wait-display compiled to $HELPERS_DIR/wait-display"
-  note "Compiling wait-settled (adopt + stillness wait, no permissions needed)..."
-  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/wait-settled.swift" -o "$HELPERS_DIR/wait-settled"
-  chmod +x "$HELPERS_DIR/wait-settled"
-  ok "wait-settled compiled to $HELPERS_DIR/wait-settled"
-else
-  warn "swiftc not found — skipping move-display, warp-pointer, mouse-display, display-geometry, wait-rect, wait-display and wait-settled"
-  warn "(moving windows across displays, and focusing displays at all, will not work)"
-  warn "Install the Xcode Command Line Tools (xcode-select --install) and re-run to enable them."
-fi
+# wait-display, wait-settled. Remove stale installed copies (and the
+# orphaned Accessibility grants die with the binaries) so old workarounds
+# can't linger next to the native config.
+for stale in move-display warp-pointer mouse-display display-geometry wait-rect wait-display wait-settled focus-display; do
+	rm -f "$HELPERS_DIR/$stale"
+done
+ok "stale display-navigation helpers removed (native in the Paneru fork)"
+note "Only the paneru binary itself needs an Accessibility grant now."
 
 # ─────────────────────────────────────────────────────────────
 # mac-cheatsheet-viewer app (fetched on every run, overwrites the bundle)
