@@ -32,7 +32,7 @@ The installer runs these steps from `scripts/`:
 | `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Paneru draws its indicator in it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
 | `install-antigen` | Install Antigen (`~/antigen.zsh`) + write `~/.config/zsh/antigen.zsh` (git, command-not-found, completions, autosuggestions, syntax-highlighting last, typewritten theme) + wire it into `~/.zshrc` |
-| `install-paneru` | Install Paneru (Homebrew core) + write `~/.config/paneru/init.lua` + install its launchd service |
+| `install-paneru` | Install Paneru from the `iv-lite/paneru` GitHub releases (newest in list; `PANERU_TAG` pins) + write `~/.config/paneru/init.lua` + install its launchd service |
 | `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build) |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
 | `enable-services` | Start Paneru |
@@ -96,102 +96,47 @@ window in the same lane), **Ctrl**.
 |---|---|
 | `Cmd` + `Ctrl` + `←` | Focus the previous display (window stays put) |
 | `Cmd` + `Ctrl` + `→` | Focus the next display (window stays put) |
-| `Cmd` + `Ctrl` + `Shift` + `←` | Move the focused window to the previous display (follow, size/disposition unchanged) |
-| `Cmd` + `Ctrl` + `Shift` + `→` | Move the focused window to the next display (follow, size/disposition unchanged) |
+| `Cmd` + `Ctrl` + `Shift` + `←` | Move the focused window to the previous display and follow |
+| `Cmd` + `Ctrl` + `Shift` + `→` | Move the focused window to the next display and follow |
+| `Cmd` + `Ctrl` + `Alt` + `←` | Send the focused window to the previous display (stay) |
+| `Cmd` + `Ctrl` + `Alt` + `→` | Send the focused window to the next display (stay) |
 | `Cmd` + `Ctrl` + `↑` | Warp the mouse to the next display |
+| `Cmd` + `Ctrl` + `↓` | Warp the mouse to the previous display |
 | `Cmd` + `Option` + `↑`/`↓` | Focus a column above/below — crosses displays when no window is there |
 | `Cmd` + `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
 
-Display navigation lives in `config/paneru/lib/` (`displays.lua`, backed by
-`query.lua` and `log.lua`), `require`d from `init.lua` — not inline there —
-so the config stays a short list of bindings while the logic reads as one
-module. See the comment block at the top of `lib/displays.lua` for the full
-design; summary below.
+Display navigation is native in the installed Paneru fork
+(`iv-lite/paneru`, fetched from its GitHub releases by
+`scripts/install-paneru`): `window previousdisplay` /
+`previousdisplaysend`, `window nextdisplay` / `nextdisplaysend`, and `mouse
+previousdisplay` / `nextdisplay` are first-class commands (Lua:
+`paneru.window.previous_display()` / `paneru.mouse.previous_display()`),
+all wired as plain `BINDINGS`-table entries in `config/paneru/init.lua` —
+no Lua modules, no compiled helpers.
 
-> **Previous display is synthesized.** Paneru has no previous-direction
-> display command (verified directly in its source: `to_next_display`/
-> `mouse_to_next_display` in `src/commands.rs`, and the Lua bindings in
-> `crates/lua/src/lib.rs`, expose `next_display` only — confirmed against
-> the complete `Command`/`Operation`/`MouseMove` vocabulary and CLI argv
-> grammar too: there is no indexed or directional variant anywhere in the
-> protocol), so displays are ordered — including ones with no windows on
-> them — by their macOS arrangement position (`y` then `x`) and stepped ±1
-> through to get previous/next.
+> **Previous/next are true inverses on any number of displays.** The fork
+> orders displays into a spatial ring (`min.x, min.y, id` in
+> `src/ecs/params.rs`), so next undoes previous from every position —
+> the old upstream `other().next()` single-hop limit (which strand‑hopped
+> between two of three+ monitors) is gone.
 >
-> **Focus resolves in-process, warps via a compiled helper.** `Cmd+Ctrl+←/→`
-> is handled in `config/paneru/lib/displays.lua`: the target display comes
-> from the geometric ordering + the mouse's display, and the target point
-> from the live state snapshot (the focused window's center when it is on
-> the target display, else the first window there, else the display center)
-> — no subprocess. Only the warp itself goes through
-> `~/.config/mac-scrolling-wm/helpers/warp-pointer`, a compiled Swift
-> binary that warps the pointer plus a synthetic `.mouseMoved` event, since
-> `CGWarpMouseCursorPosition` alone doesn't post a real mouse-moved event
-> to any `CGEventTap`, including paneru's own `focus_follows_mouse` tap —
-> so that option (on by default in this config) picks it up. No window is
-> moved. If the target display has no on-screen window, it just warps to
-> the display's own center instead (the same idea as Paneru's native
-> `mouse nextdisplay`), no event needed.
-> "Current display" for focus is always the mouse pointer's display, not the
-> focused window's: a window is only tracked by Paneru's Lua `display_of`
-> via strip membership, which doesn't exist when the display you're on has
-> no windows at all — that would otherwise make focus-switching impossible
-> to trigger *from* an empty display. Moves instead anchor on the focused
-> window's display (no lookup spawn); the pointer display is only a last
-> resort, and empty displays stay reachable as targets through the geometric
-> ordering either way.
+> **Focus is the mouse warp.** `Cmd+Ctrl+←/→` send `mouse
+> previousdisplay` / `nextdisplay`: the daemon warps to the target
+> display's most visible window (focusing it via `focus_follows_mouse`)
+> or to the display center when it holds no windows — empty displays stay
+> reachable with no helper. `↑`/`↓` are extra chords onto the same two
+> commands. Moves (`window previousdisplay` / `nextdisplay`) reposition to
+> the target display's center and warp along on follow; `...send` variants
+> stay on the source display.
 >
-> **Moving to any display needs a helper on 3+ monitors.** Paneru's engine
-> can only move a window to a single fixed display (`other().next()`, the
-> first spawned display that isn't the active one), which cannot reach
-> every monitor on a three-or-more display setup — pressing the move
-> shortcut just hops between two of them. With exactly two displays that
-> one hop is correct (previous and next are the same display), so the move
-> shortcuts keep using `window nextdisplay` there. With three or more they
-> delegate to `~/.config/mac-scrolling-wm/helpers/move-display`: a compiled
-> Swift binary that uses the Accessibility API (`AXUIElement`) directly —
-> not AppleScript/System Events — to reposition the exact window Lua asked
-> for (matched by its precise window id via the same private
-> `_AXUIElementGetWindow` call paneru's own source uses, not by app name or
-> "whichever window is currently focused" — the latter could grab the wrong
-> window of a multi-window app if `focus_follows_mouse` shifted focus mid-move)
-> onto the target display's frame, keeping its current size the whole time — the move
-> never resizes or maximizes the window, on either display. It then warps
-> the pointer and synthesizes a click at the window's new center so macOS
-> switches its active display (Paneru's active-display marker rotates
-> along). If the window was tiled, it's then re-managed so it is adopted by
-> the target display's strip, at whatever width the layout gives it there —
-> no forced full-width. If the window was already floating before the
-> move (e.g. a deliberately-floated scratchpad), it's left floating on
-> arrival instead of being tiled: the move never changes a window's
-> tiled/floating disposition, only which display it's on. It then
-> **verifies the adoption** (`paneru query state`), polling in-process
-> instead of sleeping so the OS's lagging display-change notification can't
-> bounce the window back onto the source monitor. While a move is
-> mid-flight a tiled window is briefly floating (purely as transit
-> plumbing — restored to tiled once it lands), and both the move and the
-> focus shortcuts skip re-presses so targets are never computed off a stale
-> "current" display.
+> **Vertical crossings are direction-aware.** `Cmd+Option+↑/↓` focus (and
+> `Shift`+`↑/↓` swap) fall through to the nearest display above/below —
+> not just "the other one" — so multi-monitor stacks behave.
 >
-> **Empty displays are reachable.** Paneru's Lua `display_of` resolves a
-> window's display by *membership* in a strip, so a monitor with no windows
-> used to be invisible and could not be focused or moved onto. For move, the
-> display geometry comes from a helper (`helpers/display-geometry`) that
-> lists every online display via CoreGraphics — empty ones included — and is
-> cached in Lua, re-read on display events and whenever a window appears on
-> an unknown display; move targets an occupied *or* empty display (the
-> `move-display` helper teleports the window onto the blank monitor's frame
-> and it is adopted by that strip). For focus, the target point is resolved
-> in-process from the state snapshot and geometry cache, warping to the
-> empty display's center directly when it has no windows.
->
-> One-time cost: grant Accessibility access to the compiled
-> `~/.config/mac-scrolling-wm/helpers/move-display` **and**
-> `~/.config/mac-scrolling-wm/helpers/warp-pointer` binaries (macOS prompts
-> the first time each one posts a synthetic event). Since both are compiled
-> once by `scripts/install-helpers` (not run as ephemeral scripts), those
-> grants stick across reinstalls. (`scripts/install-helpers` removes the
-> stale `focus-display` binary it supersedes.)
+> One-time cost: grant Accessibility access to the `paneru` binary itself
+> (macOS prompts on first run). No helper binaries need grants anymore —
+> `scripts/install-helpers` removes the stale `move-display`,
+> `warp-pointer`, `display-geometry`, `mouse-display`, `wait-*` copies.
 
 ### Window state
 
@@ -345,8 +290,9 @@ paneru query state --json                   # must print a JSON snapshot (servic
 - If one display physically sits higher or lower than the other (e.g. a
   portrait monitor on a stand), adjust `horizontal_mouse_warp_offset` (px) to
   line the warp landing up with the desk positions.
-- A window can be sent to another display with `Cmd+Ctrl+→` (follow) or
-  `Cmd+Ctrl+Shift+→` (stay), and `Cmd+Ctrl+↑` warps the mouse there.
+- A window can be sent to another display with `Cmd+Ctrl+Shift+→` (follow) or
+  `Cmd+Ctrl+Alt+→` (stay), `Cmd+Ctrl+←/→` focuses the other display, and
+  `Cmd+Ctrl+↑/↓` warps the mouse there.
 
 ## Uninstall
 
@@ -354,8 +300,8 @@ paneru query state --json                   # must print a JSON snapshot (servic
 ./uninstall
 ```
 
-Stops and removes Paneru (launchd service) and its app launcher, revokes its
-Accessibility grant, moves configs (from `~/.config/paneru`,
+Stops and removes Paneru (release binary, launchd service, app launcher),
+revokes its Accessibility grant, moves configs (from `~/.config/paneru`,
 `~/.config/ghostty`, `~/.config/mac-scrolling-wm`, `~/.config/zsh/antigen.zsh`,
 plus `~/.paneru*` and
 Paneru's state dir) to `~/.config/backups/uninstall-<timestamp>/`, removes
@@ -381,7 +327,7 @@ macOS host:
 ./tests/preview setup        # installs tart/sshpass (auto), clones host-matched base image
 ./tests/preview up           # boot guest, live-mount the repo, wait for SSH
 ./tests/preview install      # run ./install in the guest (asks to clean up afterwards)
-./tests/preview check        # query Paneru state + installed formulae
+./tests/preview check        # query Paneru state + binary + native display cmds
 ./tests/preview shot         # screenshot the tiling into tests/screenshots/
 ./tests/preview clean        # interactively remove VM, tart, sshpass, base image
 ```
@@ -419,16 +365,10 @@ install                   Main installer (runs scripts/*)
 uninstall                 Full uninstaller with interactive keep menu
 scripts/                  Per-component install/system/accessibility steps
 config/paneru/            Paneru config (sliding strip, bindings, rules) — init.lua
-config/paneru/lib/        Display-navigation Lua modules, required by init.lua
-                          (displays.lua, query.lua, log.lua)
 config/ghostty/           Ghostty config (frameless title bar)
-helpers/                  display navigation: display-geometry, mouse-display
-                           (CoreGraphics, used by move); warp-pointer,
-                           move-display.swift (Accessibility + IPC, compiled
-                          at install time); shortcut cheat-sheet:
-                          generate-shortcuts-json, display-shortcuts
-                          (mac-cheatsheet-viewer app lives in its own repo at
-                          iv-lite/mac-cheatsheet-viewer)
+helpers/                  shortcut cheat-sheet: generate-shortcuts-json,
+                           display-shortcuts (mac-cheatsheet-viewer app lives
+                           in its own repo at iv-lite/mac-cheatsheet-viewer)
 tests/                    VM test workflow (tests/preview + lib/ backends)
 ```
 
@@ -444,4 +384,7 @@ hot-reloads `~/.config/paneru/init.lua`, so edits apply live.
 > (niri-style sliding strip), which pages windows + snaps + focuses on gesture
 > release natively — so the Rift-era helper, its LaunchAgent, JankyBorders, and
 > the `cycle-column-width` Python helper are all gone, and BSP/border chromes
-> come from Paneru itself.
+> come from Paneru itself. The pre-fork display-navigation workarounds are
+> gone too (`lib/displays.lua`, `move-display`, `warp-pointer`,
+> `display-geometry`, `mouse-display`, `wait-*`): the `iv-lite/paneru` fork
+> implements previous/next display natively.
