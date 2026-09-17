@@ -27,7 +27,8 @@ cp "$REPO_ROOT/helpers/display-shortcuts" "$HELPERS_DIR/display-shortcuts"
 chmod +x "$HELPERS_DIR/generate-shortcuts-json" "$HELPERS_DIR/display-shortcuts"
 ok "Helpers installed to $HELPERS_DIR (generate-shortcuts-json, display-shortcuts)"
 
-# move-display, warp-pointer, mouse-display and display-geometry are all
+# move-display, warp-pointer, mouse-display, display-geometry, wait-rect and
+# wait-display are all
 # compiled once here into stable binaries. move-display and warp-pointer
 # need the Accessibility API (AXUIElement / synthetic CGEvent posting),
 # which requires a one-time permission grant tied to a specific binary's
@@ -65,8 +66,12 @@ if command -v swiftc >/dev/null 2>&1; then
   swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/wait-rect.swift" -o "$HELPERS_DIR/wait-rect"
   chmod +x "$HELPERS_DIR/wait-rect"
   ok "wait-rect compiled to $HELPERS_DIR/wait-rect"
+  note "Compiling wait-display (adoption wait, no permissions needed)..."
+  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/wait-display.swift" -o "$HELPERS_DIR/wait-display"
+  chmod +x "$HELPERS_DIR/wait-display"
+  ok "wait-display compiled to $HELPERS_DIR/wait-display"
 else
-  warn "swiftc not found — skipping move-display, warp-pointer, mouse-display, display-geometry and wait-rect"
+  warn "swiftc not found — skipping move-display, warp-pointer, mouse-display, display-geometry, wait-rect and wait-display"
   warn "(moving windows across displays, and focusing displays at all, will not work)"
   warn "Install the Xcode Command Line Tools (xcode-select --install) and re-run to enable them."
 fi

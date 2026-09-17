@@ -1,4 +1,4 @@
-// move-display — teleport a window onto another display (v10, fast path).
+// move-display — teleport a window onto another display (v11: ratio + floating).
 //
 // Paneru can only move a window to a single fixed display ("other().next()"
 // in its ECS), which cannot reach every monitor on a 3+ display setup, and
@@ -17,13 +17,15 @@
 //      paneru's ActiveDisplayMarker rotate to the target display (no click —
 //      a real press/release causes press animations and can hit window
 //      contents; warp-pointer uses the same mouseMoved mechanism)
-//   3. Raise the moved window, settle it via a blocking `paneru window
-//      fullwidth`, then poll `paneru query state` until the window reports
-//      the target display (one raise + fullwidth retry on timeout). The
-//      settle must be observed, not fire-and-forget: a detached launch
+//   3. Raise the moved window and confirm adoption. Tiled windows settle via
+//      a blocking `paneru window fullwidth`, then poll `paneru query state`
+//      until the window reports the target display (one raise + fullwidth
+//      retry on timeout). Floating windows skip fullwidth entirely (it would
+//      tile them) and just poll for the display flip after the raise.
+//      The settle must be observed, not fire-and-forget: a detached launch
 //      returns before the daemon applies it, so any caller-side adoption
-//      check races and fails. Lua trusts this helper's exit code and pins
-//      focus explicitly afterward.
+//      check races and fails. Lua trusts this helper's exit code, restores
+//      the source column ratio via ws:width, and pins focus afterward.
 //   4. Center the source neighbor on a background thread (.userInitiated)
 //      while the main thread polls adoption: the poll reads display_id
 //      (focus-independent) while centering changes focus (doesn't affect
@@ -33,7 +35,7 @@
 //      the focus id, then waits for the GEOMETRIC effect — the neighbor
 //      observed inside the source rect, stable across two reads — because
 //      focus alone never proved the viewport scroll completed (an immediate
-//      refocus supersedes the animation). Bounded (~8x75ms) with early
+//      refocus supersedes the animation). Bounded (~8x40ms) with early
 //      abort on a static frame; skipped up front when already consistent,
 //      and never fails the move — centering is polish.
 //   5. Re-warp to the window's live center (fullwidth resizes it after the
@@ -61,21 +63,24 @@
 //     sets the final size, so the shrink is invisible in the end state.
 //   - Retry loop is 4 attempts with ~5ms backoff only on a miss (was up to
 //     10 attempts with 20ms sleeps plus 2 AX calls per pass).
-//   - The trailing `paneru window fullwidth` blocks until applied and the
-//     adoption poll confirms it (a detached launch let the caller's check
-//     race and fail); the poll is short (10 x 50ms + one retry) because
-//     fullwidth already applied — a sleep-less or minute-long poll would
-//     either race or freeze the keypress. Source centering overlaps the
+//   - The trailing settle for tiled windows blocks via `paneru window
+//     fullwidth` and the adoption poll confirms it (a detached launch let
+//     the caller's check race and fail); the poll is tight (12 x 25ms + one
+//     retry) because fullwidth already applied — a sleep-less or minute-long
+//     poll would either race or freeze the keypress. Floating windows skip
+//     fullwidth and poll only. Source centering overlaps the
 //     poll on a background thread (disjoint state, see step 4) instead of
 //     extending the tail. The paneru binary path resolves once, not twice
-//     per CLI spawn (~15 spawns per move).
+//     per CLI spawn (~15 spawns per move). rewarpLive skips its warp when the
+//     live center hasn't moved (<2px).
 //
 // Usage: move-display <window_id> <x> <y> <width> <height> <was_floating> <target_display_id> <center_side> <center_window_id>
 // <window_id> is the exact CGWindowID Lua wants moved.
 // <x> <y> <width> <height> is the target display's frame in CG coordinates.
-// <was_floating> is accepted for CLI compatibility with displays.lua ("0"/"1")
-// but currently ignored: both tiled and floating windows are teleported as-is
-// and left for paneru to settle, per the Lua-side disposition handling.
+// <was_floating> ("0"/"1") selects the settle path: "1" skips fullwidth and
+// just polls for the display flip, preserving the window's teleported pixel
+// size (scaled down only on overflow); "0" settles via fullwidth for
+// reliable adoption, and Lua restores the source column ratio afterward.
 // <target_display_id> is paneru's display id for the target display, used to
 // confirm adoption via `paneru query state` before exiting 0.
 // <center_side> ("east"/"west"/"none") and <center_window_id> select the
@@ -190,10 +195,10 @@ func findWindowState(_ wid: Int) -> [String: Any]? {
 
 /// Poll state until the window reports the target display, or time out.
 /// Sleeps between ticks so the daemon has wall-clock time to apply the
-/// settle — a sleep-less busy poll would exhaust before it lands. Kept
-/// short on purpose: fullwidth above already applied, so adoption should
-/// be near-immediate; lingering here is what freezes the keypress.
-func pollAdoption(retries: Int = 10, delay: TimeInterval = 0.05) -> Bool {
+/// settle — a sleep-less busy poll would exhaust before it lands. Tight
+/// 25ms quantum (was 50ms): adoption usually lands in 100-250ms with
+/// animation_speed=12, so the poll quantum was the visible floor.
+func pollAdoption(retries: Int = 12, delay: TimeInterval = 0.025) -> Bool {
   for i in 0..<retries {
     if i > 0 { Thread.sleep(forTimeInterval: delay) }
     if let w = findWindowState(windowIDArg),
@@ -466,7 +471,7 @@ func describe(_ p: CGPoint?) -> String {
 /// close the race anyway. The viewport wait is the point: focusing alone
 /// never proved the scroll completed, and an immediate refocus supersedes
 /// the animation — so the neighbor must be observed inside the source rect,
-/// stable across two reads, before this returns. Bounded (~8x75ms) with
+/// stable across two reads, before this returns. Bounded (~8x40ms) with
 /// early abort on a static frame. Any failure AX-raises the moved window
 /// back (or skips silently when there was never anything to center) and
 /// returns: the move itself already succeeded.
@@ -501,7 +506,7 @@ func centerSource(emit: (String) -> Void) {
   var still = 0
   var lastSeen: CGPoint? = nil
   for i in 0..<8 {
-    if i > 0 { Thread.sleep(forTimeInterval: 0.075) }
+    if i > 0 { Thread.sleep(forTimeInterval: 0.04) }
     guard let c = neighborCenter() else { break }
     lastSeen = c
     if inside(c, rect) {
@@ -523,15 +528,39 @@ func centerSource(emit: (String) -> Void) {
 /// Warp to the window's live center: fullwidth resizes it after the
 /// pre-settle warp, so re-resolve geometry instead of reusing the landing
 /// point. Same-process re-warp — no extra helper spawn like the Lua side
-/// used to pay for this.
+/// used to pay for this. Skipped when the live center hasn't moved (<2px):
+/// nothing resized, so a second warp is pure latency + focus churn.
 func rewarpLive() {
   let size = readSize(window)
   let pos = readPosition(window)
   if size.width > 0 && size.height > 0 {
-    warpTo(CGPoint(x: pos.x + size.width / 2, y: pos.y + size.height / 2))
+    let live = CGPoint(x: pos.x + size.width / 2, y: pos.y + size.height / 2)
+    if abs(live.x - landedCenter.x) < 2 && abs(live.y - landedCenter.y) < 2 { return }
+    warpTo(live)
   } else {
     warpTo(pos)
   }
+}
+
+// Floating windows keep their teleported pixels: no fullwidth settle (that
+// would tile them), just raise + poll for the display flip, with one
+// raise-and-repoll on timeout. Tiled windows take the fullwidth path below.
+if wasFloating {
+  var adoptedFloat = pollAdoption()
+  if !adoptedFloat {
+    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+    Thread.sleep(forTimeInterval: 0.1)
+    adoptedFloat = pollAdoption()
+  }
+  guard adoptedFloat else {
+    FileHandle.standardError.write(
+      "floating window \(windowID) did not report display \(targetDisplayID) after move\n"
+        .data(using: .utf8)!)
+    exit(1)
+  }
+  rewarpLive()
+  reportElapsed()
+  exit(0)
 }
 
 if settle() {
@@ -595,7 +624,7 @@ if !adopted {
   // Retry stays single-threaded by design: the background work already
   // joined above, so nothing runs concurrently here.
   FileHandle.standardError.write(
-    "window \(windowID) not adopted by display \(targetDisplayID) after first settle; retrying\n"
+    "window \(windowID) not adopted by display \(targetDisplayID) after overlap poll; final retry\n"
       .data(using: .utf8)!)
   AXUIElementPerformAction(window, kAXRaiseAction as CFString)
   Thread.sleep(forTimeInterval: 0.1)

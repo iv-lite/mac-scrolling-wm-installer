@@ -16,14 +16,14 @@
 -- guarded by MOVE_BUSY.
 --
 -- Move is also fully delegated to compiled helpers — both the 2-display
--- path (paneru's own `window nextdisplay` via CLI) and the 3+ display
--- path (move-display: AX teleport, warp + mouseMoved, blocking settle with
--- adoption confirm). CLI commands are separate Mach port messages that the
--- daemon processes independently; by the time the next CLI invocation
--- (exec or query) arrives, the previous command has been applied. A short
--- poll with retries covers the edge case where the daemon's frame hasn't
--- run yet — but no in-dispatch `query_json` poll can observe another
--- in-dispatch command, so sequencing across commands needs real ordering.
+-- path (paneru's own `window nextdisplay` via CLI, confirmed by the
+-- wait-display helper) and the 3+ display path (move-display: AX teleport,
+-- warp + mouseMoved, blocking settle with adoption confirm). CLI commands
+-- are separate Mach port messages that the daemon processes independently;
+-- the confirms must span real wall-clock time, so they live in helpers with
+-- real sleeps: an in-dispatch `query_json` busy poll exhausts in ~0ms before
+-- the daemon's frame runs and can never observe another in-dispatch command,
+-- so sequencing across commands needs real ordering.
 --
 -- Focus assignment follows the runtime both models agree on: the installed
 -- paneru 0.5.1 documents pure StackSet handlers (`return
@@ -35,11 +35,11 @@
 -- (`send-cmd window focus east|west`, which also scrolls via auto_center)
 -- rather than a transient in-dispatch focus that a pure runtime would drop.
 --
--- The move never resizes or maximizes the window — it keeps whatever size
--- it had before, on either display — and never changes its tiled/floating
--- disposition either: a window that was tiled comes back tiled; a window
--- the user had deliberately left floating (a scratchpad, a picture-in-
--- picture-style utility window) comes back floating.
+-- The move preserves the window's column-width ratio (tiled) or pixel size
+-- (floating, scaled down only on overflow) — never a forced full-width end
+-- state: the 3+ helper settles via fullwidth for reliable adoption, then Lua
+-- re-pins the source ratio with ws:width on commit. Disposition is preserved
+-- too: tiled comes back tiled, deliberately-floating stays floating.
 --
 -- While a move is mid-flight (3+ displays only — the 2-display path never
 -- floats) the focused window is *floating*. MOVE_BUSY blocks a second
@@ -88,9 +88,12 @@ end
 --   move-display     — teleport via AX at near-final geometry, warp + mouseMoved, settle via CLI
 --   display-geometry — real CG frames of every online display, empties included
 --   mouse-display    — which display id currently has the pointer
+--   wait-rect        — block until a window center is inside a rect (source repair)
+--   wait-display     — block until a window reports the target display (2-display confirm)
 local HELPERS_DIR = os.getenv("HOME") .. "/.config/mac-scrolling-wm/helpers/"
 local WARP_HELPER = HELPERS_DIR .. "warp-pointer"
 local WAIT_HELPER = HELPERS_DIR .. "wait-rect"
+local WAIT_DISPLAY_HELPER = HELPERS_DIR .. "wait-display"
 local MOVE_HELPER = HELPERS_DIR .. "move-display"
 local GEOM_HELPER = HELPERS_DIR .. "display-geometry"
 local MOUSE_HELPER = HELPERS_DIR .. "mouse-display"
@@ -415,26 +418,29 @@ end
 -- prove it with wait-rect, and let the caller warp back. wait-rect needs no
 -- Accessibility grant. Skipped for floating moves, single-column sources,
 -- and already-consistent viewports — and never fails the move.
+-- Returns true when the caller should warp back to the moved window (repair
+-- unneeded or verified), false when the repair wait failed — warping back
+-- then would interrupt the still-running scroll mid-flight (jiggle).
 local function repair_source_viewport(ws, focused, target, cur_id, target_id, was_floating)
-  if was_floating then return end
+  if was_floating then return true end
   local t = DISPLAYS[cur_id]
   if t == nil or type(t.x) ~= "number" or type(t.y) ~= "number"
       or type(t.width) ~= "number" or type(t.height) ~= "number" then
-    return
+    return true
   end
   local side, nid = source_neighbor_side(ws, focused, cur_id, target_id)
-  if side == nil or type(nid) ~= "number" then return end
+  if side == nil or type(nid) ~= "number" then return true end
   local w = find_window(query_state_safe(), nid)
-  if w == nil or w.display_id ~= cur_id then return end
+  if w == nil or w.display_id ~= cur_id then return true end
   local p = frame_center(w.frame)
-  if p == nil then return end
+  if p == nil then return true end
   local function inside(pt)
     return pt.x >= t.x and pt.x < t.x + t.width
       and pt.y >= t.y and pt.y < t.y + t.height
   end
   if inside(p) then
     log("move " .. target .. ": source neighbor already in viewport, skipping repair")
-    return
+    return true
   end
   pcall(paneru.exec, WARP_HELPER, {
     tostring(math.floor(p.x)), tostring(math.floor(p.y)),
@@ -449,11 +455,23 @@ local function repair_source_viewport(ws, focused, target, cur_id, target_id, wa
   end
   if not exec_failed(wok, wres) then
     log("move " .. target .. ": source viewport repaired (" .. line .. ")")
+    return true
   else
     log("move " .. target .. ": source viewport repair failed" .. exec_detail(wok, wres) .. " (" .. line .. ")")
+    return false
   end
 end
 
+-- Warp-only: pointer onto the moved window's live center so
+-- focus_follows_mouse lands on it (no ws: use — the single return-commit
+-- below owns focus; a second queued focus here would double-trigger the
+-- auto_center scroll). Used by the 2-display path only — on 3+ the
+-- move-display helper re-warps post-settle itself, so a second helper spawn
+-- here would just be latency. This runs inside a move dispatch (MOVE_BUSY is
+-- set), never via focus_display(), which refuses to run while a move is in
+-- flight. The caller gates this on the repair outcome: on a failed repair
+-- the source scroll is still running, and warping back now would cut it off
+-- mid-flight (visible jiggle) — the pointer stays where the scroll settles.
 local function warp_to_moved(ws, focused, target)
   local w = find_window(query_state_safe(), focused)
   local p = w and frame_center(w.frame) or nil
@@ -464,22 +482,6 @@ local function warp_to_moved(ws, focused, target)
   else
     log("move " .. target .. ": no live frame for window " .. tostring(focused) .. ", skipping warp")
   end
-  -- Belt and suspenders for outbox-model runtimes: queue the focus as well
-  -- (a no-op on pure runtimes, where only the returned set commits).
-  pcall(function() ws:focus(focused) end)
-end
-
--- Poll `find_window(query_state_safe(), wid)` until `predicate(w)` holds
--- or the budget runs out. Returns true if the predicate was satisfied.
--- Used by the 2-display `nextdisplay` confirm (that CLI is blocking, so the
--- window is already moved when the poll starts). The 3+ adoption confirm
--- lives in the move-display helper instead, where real sleeps are possible.
-local function poll_window(wid, ticks, predicate)
-  for _ = 1, ticks do
-    local w = find_window(query_state_safe(), wid)
-    if w and predicate(w) then return true end
-  end
-  return false
 end
 
 local function move_to_display(ws, target)
@@ -490,8 +492,12 @@ local function move_to_display(ws, target)
   MOVE_BUSY = true
   -- Set on the success paths below; when true the handler returns a focused
   -- set so pure runtimes commit the focus (see header).
+  -- restore_ratio carries the source column ratio (tiled 3+ path only) to the
+  -- return-commit below, where ws:width re-pins it after the helper's
+  -- fullwidth-for-adoption settle.
   local moved_ok = false
   local focused_id = nil
+  local restore_ratio = nil
   local ok, err = pcall(function()
     local focused = ws:focused()
     if not focused then
@@ -529,25 +535,58 @@ local function move_to_display(ws, target)
       log("move " .. target .. ": target == current, nothing to do")
       return
     end
+    -- Source column ratio for the tiled 3+ restore below (the 2-display path
+    -- is native and preserves it already). Paneru width ratios are fractions
+    -- of screen width (preset_column_widths), so the full display width is
+    -- the right denominator — no padding/border math needed.
+    local src_ratio = nil
+    if not was_floating and w0 ~= nil and type(w0.frame) == "table"
+        and type(w0.frame.width) == "number" then
+      local src = DISPLAYS[cur_id]
+      if src ~= nil and type(src.width) == "number" and src.width > 0 then
+        local r = w0.frame.width / src.width
+        if r >= 0.2 and r <= 1.0 then
+          src_ratio = r
+        elseif r > 1.0 then
+          src_ratio = 1.0
+        end
+      end
+    end
+    if src_ratio ~= nil then
+      log(string.format("move %s: source ratio %.3f", target, src_ratio))
+    end
     if n == 2 then
       -- 2-display path: `paneru window nextdisplay` via CLI, which applies
-      -- immediately (an in-dispatch command could not be observed by the
-      -- poll below). Poll for display_id to confirm the window arrived on
-      -- the target.
+      -- as its own Mach message; the confirm below must span real wall-clock
+      -- time. An in-dispatch query_json busy poll cannot do that — it
+      -- exhausts in ~0ms before the daemon's frame runs (seen live: 100%
+      -- "timed out in 50 ticks" with moves landing right after). One
+      -- blocking wait-display spawn both yields the dispatch and waits.
       local exec_ok, res = pcall(paneru.exec, PANERU_BIN, { "send-cmd", "window", "nextdisplay" })
       if exec_failed(exec_ok, res) then
         log("move " .. target .. ": nextdisplay CLI failed" .. exec_detail(exec_ok, res))
         paneru.flash("move display: nextdisplay failed", 3.0)
         return
       end
-      local settled = poll_window(focused, 200,
-        function(w) return w.display_id == target_id end)
+      local wok, wres = pcall(paneru.exec, WAIT_DISPLAY_HELPER, {
+        tostring(focused), tostring(target_id),
+      })
+      local wline = ""
+      if type(wres) == "table" and type(wres.stdout) == "string" then
+        wline = wres.stdout:gsub("^%s+", ""):gsub("%s+$", "")
+      end
+      local settled = not exec_failed(wok, wres)
+      log(string.format("move %s: adoption %s (%s)",
+        target, settled and "settled" or "timed out", wline))
       if not settled then
         log("move " .. target .. ": window " .. focused .. " never reported display " .. target_id)
         paneru.flash("move display: failed to settle on target display", 3.0)
       else
-        repair_source_viewport(ws, focused, target, cur_id, target_id, was_floating)
-        warp_to_moved(ws, focused, target)
+        if repair_source_viewport(ws, focused, target, cur_id, target_id, was_floating) then
+          warp_to_moved(ws, focused, target)
+        else
+          log("move " .. target .. ": skipping warp-back after failed repair")
+        end
         moved_ok = true
       end
       return
@@ -592,6 +631,10 @@ local function move_to_display(ws, target)
       return
     end
     moved_ok = true
+    -- Pin for the return-commit below: the helper settles via fullwidth for
+    -- reliable adoption, then this restores the source column ratio (tiled
+    -- only; floating keeps its teleported pixels, so src_ratio is nil there).
+    restore_ratio = src_ratio
     -- Surface the helper's outcome lines (timing + centering audit) in one
     -- log line — without this only failures were ever visible.
     local notes = {}
@@ -619,10 +662,20 @@ local function move_to_display(ws, target)
     return nil
   end
   -- Commit the focus for pure runtimes (their docs: handlers return the
-  -- transformed set; bare calls commit nothing). A no-op queue entry on
-  -- outbox runtimes, where the warp_to_moved call above already queued it.
+  -- transformed set; bare calls commit nothing). Tiled 3+ moves also re-pin
+  -- the source column ratio here: the helper settles via fullwidth for
+  -- reliable adoption, and ws:width restores ratio afterward (any ratio ≤1.0
+  -- fits by definition, so the restore can't re-break adoption). A no-op
+  -- queue entry on outbox runtimes, where the warp_to_moved call above
+  -- already queued focus.
   if moved_ok and focused_id then
-    local fok, res = pcall(function() return ws:focus(focused_id) end)
+    local fok, res = pcall(function()
+      local nws = ws
+      if restore_ratio ~= nil then
+        nws = nws:width(focused_id, restore_ratio)
+      end
+      return nws:focus(focused_id)
+    end)
     if fok then return res end
     log("move " .. target .. ": return-focus failed: " .. tostring(res))
   end
