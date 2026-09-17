@@ -85,6 +85,7 @@ end
 --   mouse-display    — which display id currently has the pointer
 local HELPERS_DIR = os.getenv("HOME") .. "/.config/mac-scrolling-wm/helpers/"
 local WARP_HELPER = HELPERS_DIR .. "warp-pointer"
+local WAIT_HELPER = HELPERS_DIR .. "wait-rect"
 local MOVE_HELPER = HELPERS_DIR .. "move-display"
 local GEOM_HELPER = HELPERS_DIR .. "display-geometry"
 local MOUSE_HELPER = HELPERS_DIR .. "mouse-display"
@@ -314,10 +315,11 @@ end
 
 -- Neighbor to center on the source display, as side + window id: toward
 -- the target display (east target → east neighbor), falling back to the
--- other side. Existence is probed with ws:east/west, which return the
--- neighboring window's id (nil at strip edges, or when those methods are
--- absent on older runtimes). Returns nil when there is nothing to center
--- (e.g. a single column — removing from it leaves nothing to scroll to).
+-- other side. Resolved in layers: true column structure first
+-- (ws:columns + ws:column_of — handles stacks correctly, and the focused
+-- window must be a member of its own column entry or the indexing is
+-- distrusted), then flat state-row order (next else previous per side),
+-- then nil + reason (skips are always logged by the caller — never silent).
 local function source_neighbor_side(ws, focused, cur_id, target_id)
   local cur = DISPLAYS[cur_id]
   local tgt = DISPLAYS[target_id]
@@ -327,18 +329,55 @@ local function source_neighbor_side(ws, focused, cur_id, target_id)
     local ccx = cur.x + (type(cur.width) == "number" and cur.width / 2 or 0)
     if tcx < ccx then toward, away = "west", "east" end
   end
-  local function probe(side)
-    local ok, res = pcall(function()
-      return (side == "east") and ws:east(focused) or ws:west(focused)
-    end)
-    if ok and res ~= nil then return res end
-    return nil
+  local saw_structure = false
+  local function via_columns(side)
+    local ok, col_idx = pcall(function() return ws:column_of(focused) end)
+    if not ok then return nil end
+    saw_structure = true
+    local ok2, cols = pcall(function() return ws:columns(ws:workspace_of(focused)) end)
+    if not ok2 or type(col_idx) ~= "number" or type(cols) ~= "table" then return nil end
+    local here = cols[col_idx]
+    if type(here) ~= "table" then return nil end
+    local found = false
+    for _, id in ipairs(here) do
+      if id == focused then found = true break end
+    end
+    if not found then return nil end
+    local neighbor = cols[col_idx + ((side == "east") and 1 or -1)]
+    if type(neighbor) ~= "table" then return nil end
+    local id = neighbor[1]
+    if id == nil or id == focused then return nil end
+    return side, id
   end
-  local id = probe(toward)
-  if id ~= nil then return toward, id end
-  id = probe(away)
-  if id ~= nil then return away, id end
-  return nil
+  local function via_order(side)
+    local state = query_state_safe()
+    if not state then return nil end
+    local order = {}
+    for _, row in ipairs(state.virtual_workspaces or {}) do
+      for _, w in ipairs(row.windows or {}) do
+        if w.display_id == cur_id then order[#order + 1] = w.window_id end
+      end
+    end
+    local pos
+    for i, id in ipairs(order) do
+      if id == focused then pos = i break end
+    end
+    if not pos then return nil end
+    saw_structure = true
+    local id = (side == "east") and order[pos + 1] or order[pos - 1]
+    if id == nil then return nil end
+    return side, id
+  end
+  for _, side in ipairs({ toward, away }) do
+    local s, id = via_columns(side)
+    if s ~= nil then return s, id, nil end
+  end
+  for _, side in ipairs({ toward, away }) do
+    local s, id = via_order(side)
+    if s ~= nil then return s, id, nil end
+  end
+  if saw_structure then return nil, nil, "single column" end
+  return nil, nil, "no column data"
 end
 
 -- Warp exactly onto the moved window's live center. Used by the 2-display
@@ -347,6 +386,53 @@ end
 -- Final focus is handled by the caller returning ws:focus (see below).
 -- This runs inside a move dispatch (MOVE_BUSY is set), never via
 -- focus_display(), which refuses to run while a move is in flight.
+-- Repair the source viewport after a native 2-display move: the daemon owns
+-- both strips but leaves the source scrolled stale. Warp onto the neighbor
+-- so focus_follows_mouse + auto_center scroll it into view (no ws: use —
+-- a CLI focus would resolve on the wrong display now that focus already
+-- left, and a transient id-focus can't commit under either runtime model),
+-- prove it with wait-rect, and let the caller warp back. wait-rect needs no
+-- Accessibility grant. Skipped for floating moves, single-column sources,
+-- and already-consistent viewports — and never fails the move.
+local function repair_source_viewport(ws, focused, target, cur_id, target_id, was_floating)
+  if was_floating then return end
+  local t = DISPLAYS[cur_id]
+  if t == nil or type(t.x) ~= "number" or type(t.y) ~= "number"
+      or type(t.width) ~= "number" or type(t.height) ~= "number" then
+    return
+  end
+  local side, nid = source_neighbor_side(ws, focused, cur_id, target_id)
+  if side == nil or type(nid) ~= "number" then return end
+  local w = find_window(query_state_safe(), nid)
+  if w == nil or w.display_id ~= cur_id then return end
+  local p = frame_center(w.frame)
+  if p == nil then return end
+  local function inside(pt)
+    return pt.x >= t.x and pt.x < t.x + t.width
+      and pt.y >= t.y and pt.y < t.y + t.height
+  end
+  if inside(p) then
+    log("move " .. target .. ": source neighbor already in viewport, skipping repair")
+    return
+  end
+  pcall(paneru.exec, WARP_HELPER, {
+    tostring(math.floor(p.x)), tostring(math.floor(p.y)),
+  })
+  local wok, wres = pcall(paneru.exec, WAIT_HELPER, {
+    tostring(nid), tostring(math.floor(t.x)), tostring(math.floor(t.y)),
+    tostring(math.floor(t.width)), tostring(math.floor(t.height)),
+  })
+  local line = ""
+  if type(wres) == "table" and type(wres.stdout) == "string" then
+    line = wres.stdout:gsub("^%s+", ""):gsub("%s+$", "")
+  end
+  if not exec_failed(wok, wres) then
+    log("move " .. target .. ": source viewport repaired (" .. line .. ")")
+  else
+    log("move " .. target .. ": source viewport repair failed" .. exec_detail(wres) .. " (" .. line .. ")")
+  end
+end
+
 local function warp_to_moved(ws, focused, target)
   local w = find_window(query_state_safe(), focused)
   local p = w and frame_center(w.frame) or nil
@@ -439,6 +525,7 @@ local function move_to_display(ws, target)
         log("move " .. target .. ": window " .. focused .. " never reported display " .. target_id)
         paneru.flash("move display: failed to settle on target display", 3.0)
       else
+        repair_source_viewport(ws, focused, target, cur_id, target_id, was_floating)
         warp_to_moved(ws, focused, target)
         moved_ok = true
       end
@@ -461,11 +548,13 @@ local function move_to_display(ws, target)
     -- there is nothing to center.
     local side, neighbor_id = "none", "0"
     if not was_floating then
-      local s, id = source_neighbor_side(ws, focused, cur_id, target_id)
+      local s, id, reason = source_neighbor_side(ws, focused, cur_id, target_id)
       -- Number check: a non-numeric id would fail the helper's strict
       -- parse and fail the whole move — centering must never do that.
       if s ~= nil and type(id) == "number" then
         side, neighbor_id = s, tostring(id)
+      else
+        log("move " .. target .. ": no source neighbor to center (" .. tostring(reason) .. ")")
       end
     end
     local exec_ok, res = pcall(paneru.exec, MOVE_HELPER, {
@@ -482,12 +571,26 @@ local function move_to_display(ws, target)
       return
     end
     moved_ok = true
-    local timing = ""
+    -- Surface the helper's outcome lines (timing + centering audit) in one
+    -- log line — without this only failures were ever visible.
+    local notes = {}
     if type(res) == "table" and type(res.stderr) == "string" then
-      timing = res.stderr:match("elapsed=%d+ms") or ""
+      for _, pat in ipairs({
+        "elapsed=%d+ms",
+        "centered source [^%s]+ neighbor %d+ at [^%s]+",
+        "source neighbor %d+ already in viewport, skipping centering",
+        "centering skipped: [^\n]*",
+        "source viewport never centered neighbor %d+[^\n]*",
+        "centering verify [^\n]*",
+        "source focus [^%s]+ failed",
+      }) do
+        local m = res.stderr:match(pat)
+        if m then notes[#notes + 1] = m end
+      end
     end
-    if timing ~= "" then timing = " (" .. timing .. ")" end
-    log("move " .. target .. ": window " .. focused .. " moved to display " .. target_id .. timing)
+    local suffix = ""
+    if #notes > 0 then suffix = " (" .. table.concat(notes, "; ") .. ")" end
+    log("move " .. target .. ": window " .. focused .. " moved to display " .. target_id .. suffix)
   end)
   MOVE_BUSY = false
   if not ok then

@@ -29,12 +29,13 @@
 //      (focus-independent) while centering changes focus (doesn't affect
 //      display_id) — no shared state, so total time is max(poll, bg), never
 //      more than sequential. Joined before the retry decision, so the retry
-//      path stays single-threaded. Then VERIFY via `query active` that focus
-//      landed on the expected neighbor id. No check-then-act race is
-//      possible this way — the check runs after the act: on mismatch the
-//      moved window is AX-raised back and the move still succeeds (Lua
-//      return-focus finalizes). Skipped for floating moves and single-column
-//      sources, and never fails the move — centering is polish.
+//      path stays single-threaded. Centering focuses the neighbor, verifies
+//      the focus id, then waits for the GEOMETRIC effect — the neighbor
+//      observed inside the source rect, stable across two reads — because
+//      focus alone never proved the viewport scroll completed (an immediate
+//      refocus supersedes the animation). Bounded (~8x75ms) with early
+//      abort on a static frame; skipped up front when already consistent,
+//      and never fails the move — centering is polish.
 //   5. Re-warp to the window's live center (fullwidth resizes it after the
 //      step-2 warp) and report total elapsed ms on stderr — the only timing
 //      signal for the move path, so sluggishness is measurable.
@@ -53,6 +54,11 @@
 //     animate a large correction. The window keeps its size and is placed so
 //     its center lands at the target display's center (clamped on-screen),
 //     minimizing the trailing settle animation.
+//   - Oversized windows are shrunk to fit the target display before
+//     teleporting (best-effort AX size-set, verified by re-read): paneru
+//     won't adopt a window spilling far past the display edges, and the
+//     smaller frame also shortens the animated correction. fullwidth still
+//     sets the final size, so the shrink is invisible in the end state.
 //   - Retry loop is 4 attempts with ~5ms backoff only on a miss (was up to
 //     10 attempts with 20ms sleeps plus 2 AX calls per pass).
 //   - The trailing `paneru window fullwidth` blocks until applied and the
@@ -162,6 +168,7 @@ func runPaneruCLI(_ argv: [String]) -> (code: Int32, stdout: String, stderr: Str
 }
 
 /// The window record for `wid` in `paneru query state`, or nil.
+@Sendable
 func findWindowState(_ wid: Int) -> [String: Any]? {
   let (_, stdout, _) = runPaneruCLI(["query", "state"])
   guard let data = stdout.data(using: .utf8),
@@ -274,17 +281,38 @@ func setPosition(_ window: AXUIElement, _ point: CGPoint) -> AXError {
   return AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, value)
 }
 
+func setSize(_ window: AXUIElement, _ size: CGSize) -> AXError {
+  var s = size
+  guard let value = AXValueCreate(.cgSize, &s) else { return .failure }
+  return AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, value)
+}
+
 func isOnTarget(center: CGPoint) -> Bool {
   center.x >= tx && center.x < tx + tw && center.y >= ty && center.y < ty + th
 }
 
-// Keep the window's size; land its center at the display's center, clamped
-// so the frame stays on-screen when it fits. Top edge gets a small inset so
-// we don't park under the menu bar (the old corner teleport hit exactly
-// that clamping path on every run). If the window is bigger than the
-// display, fall back to the display origin + inset.
 let menuBarInset = 28.0
-let winSize = readSize(window)
+var winSize = readSize(window)
+// Shrink oversized windows to fit the target display before teleporting:
+// paneru won't adopt a window spilling far past the display edges (seen
+// live: sub-display windows adopt on the builtin, oversized ones never
+// do). Best-effort — apps that resist keep their size and take the old
+// path below. fullwidth still sets the final size, so a successful shrink
+// is invisible in the end state (and shortens the animated correction).
+if winSize.width > tw || winSize.height > th - menuBarInset {
+  let fit = CGSize(width: min(max(winSize.width, 0), tw),
+                   height: min(max(winSize.height, 0), th - menuBarInset))
+  if fit.width > 0 && fit.height > 0,
+     setSize(window, fit) == .success {
+    winSize = readSize(window)
+  }
+}
+
+// Land at the display's center, clamped so the frame stays on-screen when
+// it fits. Top edge gets a small inset so we don't park under the menu bar
+// (the old corner teleport hit exactly that clamping path on every run).
+// If the window is bigger than the display, fall back to the display
+// origin + inset.
 var landingOrigin: CGPoint
 if winSize.width > 0 && winSize.height > 0 && winSize.width <= tw && winSize.height <= th {
   let cx = tx + (tw - winSize.width) / 2
@@ -381,16 +409,75 @@ func queryFocusedWindowID() -> Int? {
   return fid
 }
 
+/// Online displays, resolved once per process. Same CG space the geometry
+/// helper reports to Lua, so rects line up with state frames.
+let ALL_DISPLAYS: [(id: Int, rect: CGRect)] = {
+  var count: UInt32 = 0
+  CGGetOnlineDisplayList(0, nil, &count)
+  var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+  CGGetOnlineDisplayList(count, &ids, &count)
+  return ids.map { (id: Int($0), rect: CGDisplayBounds($0)) }
+}()
+
+/// The display rect containing the point (geometric match — no id-space
+/// assumption), or nil when off every display.
+@Sendable
+func displayContaining(_ p: CGPoint) -> CGRect? {
+  ALL_DISPLAYS.first(where: { $0.rect.contains(p) })?.rect
+}
+
+/// Frame center from a state window record, or nil when missing/malformed.
+@Sendable
+func recordCenter(_ w: [String: Any]) -> CGPoint? {
+  guard let frame = w["frame"] as? [String: Any],
+        let x = frame["x"] as? Double, let y = frame["y"] as? Double,
+        let fw = frame["width"] as? Double, let fh = frame["height"] as? Double else {
+    return nil
+  }
+  return CGPoint(x: x + fw / 2, y: y + fh / 2)
+}
+
+/// Live center of the centering-target neighbor, or nil.
+@Sendable
+func neighborCenter() -> CGPoint? {
+  guard let w = findWindowState(centerWindowID) else { return nil }
+  return recordCenter(w)
+}
+
+@Sendable
+func inside(_ p: CGPoint, _ r: CGRect) -> Bool {
+  p.x >= r.origin.x && p.x < r.origin.x + r.width &&
+  p.y >= r.origin.y && p.y < r.origin.y + r.height
+}
+
+@Sendable
+func describe(_ p: CGPoint?) -> String {
+  guard let p else { return "missing" }
+  return "(\(Int(p.x)), \(Int(p.y)))"
+}
+
 /// Center the source neighbor after adoption is confirmed. Runs the focus
-/// CLI, then verifies focus actually landed on the expected neighbor id —
-/// deliberately act-then-verify: paneru's protocol has no compare-and-swap,
-/// so a check before the act could not close the race anyway. Any failure
-/// (bad CLI result, unreadable verify, id mismatch) AX-raises the moved
-/// window back and returns: the move itself already succeeded. Lines go to
-/// `emit` instead of stderr directly so a background thread can collect
-/// them for ordered printing at join time.
+/// CLI, verifies focus landed on the expected neighbor id, then waits for
+/// the geometric effect — deliberately act-then-verify throughout: paneru's
+/// protocol has no compare-and-swap, so a check before the act could not
+/// close the race anyway. The viewport wait is the point: focusing alone
+/// never proved the scroll completed, and an immediate refocus supersedes
+/// the animation — so the neighbor must be observed inside the source rect,
+/// stable across two reads, before this returns. Bounded (~8x75ms) with
+/// early abort on a static frame. Any failure AX-raises the moved window
+/// back (or skips silently when there was never anything to center) and
+/// returns: the move itself already succeeded.
 func centerSource(emit: (String) -> Void) {
   guard !wasFloating, (centerSide == "east" || centerSide == "west"), centerWindowID > 0 else { return }
+  guard let start = neighborCenter(),
+        let rect = displayContaining(start) else {
+    emit("centering skipped: no source rect for neighbor \(centerWindowID)\n")
+    return
+  }
+  if inside(start, rect) {
+    emit("source neighbor \(centerWindowID) already in viewport, skipping centering\n")
+    return
+  }
   let (code, _, err) = runPaneruCLI(["send-cmd", "window", "focus", centerSide])
   guard code == 0 else {
     emit("source focus \(centerSide) failed: \(err)\n")
@@ -406,7 +493,28 @@ func centerSource(emit: (String) -> Void) {
     AXUIElementPerformAction(window, kAXRaiseAction as CFString)
     return
   }
-  emit("centered source \(centerSide) neighbor \(centerWindowID)\n")
+  var prevInside = false
+  var last: CGPoint? = nil
+  var still = 0
+  var lastSeen: CGPoint? = nil
+  for i in 0..<8 {
+    if i > 0 { Thread.sleep(forTimeInterval: 0.075) }
+    guard let c = neighborCenter() else { break }
+    lastSeen = c
+    if inside(c, rect) {
+      if prevInside {
+        emit("centered source \(centerSide) neighbor \(centerWindowID) at \(describe(c))\n")
+        return
+      }
+      prevInside = true
+    } else {
+      prevInside = false
+      if let l = last, abs(l.x - c.x) < 0.5 && abs(l.y - c.y) < 0.5 { still += 1 }
+      else { still = 0; last = c }
+      if still >= 3 { break }
+    }
+  }
+  emit("source viewport never centered neighbor \(centerWindowID) (last \(describe(lastSeen)))\n")
 }
 
 /// Warp to the window's live center: fullwidth resizes it after the

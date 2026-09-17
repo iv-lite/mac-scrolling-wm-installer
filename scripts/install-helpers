@@ -61,8 +61,12 @@ if command -v swiftc >/dev/null 2>&1; then
   swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/display-geometry.swift" -o "$HELPERS_DIR/display-geometry"
   chmod +x "$HELPERS_DIR/display-geometry"
   ok "display-geometry compiled to $HELPERS_DIR/display-geometry"
+  note "Compiling wait-rect (viewport-settle wait, no permissions needed)..."
+  swiftc -O -whole-module-optimization "$REPO_ROOT/helpers/wait-rect.swift" -o "$HELPERS_DIR/wait-rect"
+  chmod +x "$HELPERS_DIR/wait-rect"
+  ok "wait-rect compiled to $HELPERS_DIR/wait-rect"
 else
-  warn "swiftc not found — skipping move-display, warp-pointer, mouse-display and display-geometry"
+  warn "swiftc not found — skipping move-display, warp-pointer, mouse-display, display-geometry and wait-rect"
   warn "(moving windows across displays, and focusing displays at all, will not work)"
   warn "Install the Xcode Command Line Tools (xcode-select --install) and re-run to enable them."
 fi
