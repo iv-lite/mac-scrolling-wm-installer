@@ -131,11 +131,14 @@ design; summary below.
 > moved. If the target display has no on-screen window, it just warps to
 > the display's own center instead (the same idea as Paneru's native
 > `mouse nextdisplay`), no event needed.
-> "Current display" this way is always the mouse pointer's display, not the
+> "Current display" for focus is always the mouse pointer's display, not the
 > focused window's: a window is only tracked by Paneru's Lua `display_of`
 > via strip membership, which doesn't exist when the display you're on has
 > no windows at all — that would otherwise make focus-switching impossible
-> to trigger *from* an empty display.
+> to trigger *from* an empty display. Moves instead anchor on the focused
+> window's display (no lookup spawn); the pointer display is only a last
+> resort, and empty displays stay reachable as targets through the geometric
+> ordering either way.
 >
 > **Moving to any display needs a helper on 3+ monitors.** Paneru's engine
 > can only move a window to a single fixed display (`other().next()`, the

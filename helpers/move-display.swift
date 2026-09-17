@@ -24,7 +24,18 @@
 //      returns before the daemon applies it, so any caller-side adoption
 //      check races and fails. Lua trusts this helper's exit code and pins
 //      focus explicitly afterward.
-//   4. Re-warp to the window's live center (fullwidth resizes it after the
+//   4. Center the source neighbor on a background thread (.userInitiated)
+//      while the main thread polls adoption: the poll reads display_id
+//      (focus-independent) while centering changes focus (doesn't affect
+//      display_id) — no shared state, so total time is max(poll, bg), never
+//      more than sequential. Joined before the retry decision, so the retry
+//      path stays single-threaded. Then VERIFY via `query active` that focus
+//      landed on the expected neighbor id. No check-then-act race is
+//      possible this way — the check runs after the act: on mismatch the
+//      moved window is AX-raised back and the move still succeeds (Lua
+//      return-focus finalizes). Skipped for floating moves and single-column
+//      sources, and never fails the move — centering is polish.
+//   5. Re-warp to the window's live center (fullwidth resizes it after the
 //      step-2 warp) and report total elapsed ms on stderr — the only timing
 //      signal for the move path, so sluggishness is measurable.
 //
@@ -48,10 +59,12 @@
 //     adoption poll confirms it (a detached launch let the caller's check
 //     race and fail); the poll is short (10 x 50ms + one retry) because
 //     fullwidth already applied — a sleep-less or minute-long poll would
-//     either race or freeze the keypress. The teleport path above keeps
-//     the keypress fast.
+//     either race or freeze the keypress. Source centering overlaps the
+//     poll on a background thread (disjoint state, see step 4) instead of
+//     extending the tail. The paneru binary path resolves once, not twice
+//     per CLI spawn (~15 spawns per move).
 //
-// Usage: move-display <window_id> <x> <y> <width> <height> <was_floating> <target_display_id>
+// Usage: move-display <window_id> <x> <y> <width> <height> <was_floating> <target_display_id> <center_side> <center_window_id>
 // <window_id> is the exact CGWindowID Lua wants moved.
 // <x> <y> <width> <height> is the target display's frame in CG coordinates.
 // <was_floating> is accepted for CLI compatibility with displays.lua ("0"/"1")
@@ -59,6 +72,9 @@
 // and left for paneru to settle, per the Lua-side disposition handling.
 // <target_display_id> is paneru's display id for the target display, used to
 // confirm adoption via `paneru query state` before exiting 0.
+// <center_side> ("east"/"west"/"none") and <center_window_id> select the
+// neighboring column to center on the source display after adoption (see
+// step 4); anything else skips centering.
 //
 // Exit 0 = success. Nonzero = failure (stderr has diagnostics).
 //
@@ -70,26 +86,29 @@
 // invocations.
 import ApplicationServices
 import CoreGraphics
+import Dispatch
 import Foundation
 
 @_silgen_name("_AXUIElementGetWindow")
 func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
 
 let args = CommandLine.arguments
-guard args.count == 8, let windowIDArg = Int(args[1]),
+guard args.count == 10, let windowIDArg = Int(args[1]),
       let windowID = UInt32(args[1]),
       let tx = Double(args[2]), let ty = Double(args[3]),
       let tw = Double(args[4]), let th = Double(args[5]),
       (args[6] == "0" || args[6] == "1"),
-      let targetDisplayID = Int(args[7]) else {
+      let targetDisplayID = Int(args[7]),
+      let centerWindowID = Int(args[9]) else {
   FileHandle.standardError.write(
-    "usage: move-display <window_id> <x> <y> <width> <height> <was_floating(0|1)> <target_display_id>\n"
+    "usage: move-display <window_id> <x> <y> <width> <height> <was_floating(0|1)> <target_display_id> <center_side> <center_window_id>\n"
       .data(using: .utf8)!)
   exit(1)
 }
-// Accepted for CLI compatibility; teleport behavior is identical either way.
-// (Tiled vs floating settle is owned by paneru / the Lua side.)
-_ = args[6]
+let wasFloating = args[6] == "1"
+// Which neighboring column to center on the source display ("east"/"west"),
+// resolved by Lua; anything else (e.g. "none") skips centering.
+let centerSide = args[8]
 
 let startTime = Date()
 
@@ -102,16 +121,24 @@ func reportElapsed() {
 
 // ─── paneru CLI (blocking settle + adoption poll) ─────────────────────────
 
-func resolvePaneruBinary() -> String {
+/// Resolved once: the per-spawn filesystem probe it replaces ran twice per
+/// CLI invocation (~15 spawns per move).
+let PANERU_BIN: String = {
   for candidate in ["/opt/homebrew/bin/paneru", "/usr/local/bin/paneru"] {
     if FileManager.default.isExecutableFile(atPath: candidate) {
       return candidate
     }
   }
   return "paneru"
+}()
+
+@Sendable
+func resolvePaneruBinary() -> String {
+  PANERU_BIN
 }
 
 /// Run `paneru <argv>` and wait for it, capturing output.
+@Sendable
 func runPaneruCLI(_ argv: [String]) -> (code: Int32, stdout: String, stderr: String) {
   let process = Process()
   if #available(macOS 10.13, *) {
@@ -167,14 +194,22 @@ func pollAdoption(retries: Int = 10, delay: TimeInterval = 0.05) -> Bool {
   return false
 }
 
-/// Settle via `window fullwidth` (blocking) and confirm adoption.
-func settle() -> Bool {
+/// Run `window fullwidth` (blocking) without polling. Split out of settle
+/// so the first attempt's fullwidth can overlap the centering thread below.
+func runFullwidth() -> Bool {
   let (code, _, err) = runPaneruCLI(["send-cmd", "window", "fullwidth"])
   if code != 0 {
     FileHandle.standardError.write(
       "paneru window fullwidth failed: \(err)\n".data(using: .utf8)!)
     return false
   }
+  return true
+}
+
+/// Settle via `window fullwidth` (blocking) and confirm adoption. Used by
+/// the retry path, which stays single-threaded.
+func settle() -> Bool {
+  guard runFullwidth() else { return false }
   return pollAdoption()
 }
 
@@ -331,6 +366,49 @@ warpTo(landedCenter)
 // pointer may have hovered on the way over.
 AXUIElementPerformAction(window, kAXRaiseAction as CFString)
 
+/// Focused window id from `paneru query active`, or nil. Small payload by
+/// design — cheaper than a full state dump for a single id check.
+@Sendable
+func queryFocusedWindowID() -> Int? {
+  let (code, stdout, _) = runPaneruCLI(["query", "active"])
+  guard code == 0,
+        let data = stdout.data(using: .utf8),
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let active = json["active"] as? [String: Any],
+        let fid = active["focused_window_id"] as? Int else {
+    return nil
+  }
+  return fid
+}
+
+/// Center the source neighbor after adoption is confirmed. Runs the focus
+/// CLI, then verifies focus actually landed on the expected neighbor id —
+/// deliberately act-then-verify: paneru's protocol has no compare-and-swap,
+/// so a check before the act could not close the race anyway. Any failure
+/// (bad CLI result, unreadable verify, id mismatch) AX-raises the moved
+/// window back and returns: the move itself already succeeded. Lines go to
+/// `emit` instead of stderr directly so a background thread can collect
+/// them for ordered printing at join time.
+func centerSource(emit: (String) -> Void) {
+  guard !wasFloating, (centerSide == "east" || centerSide == "west"), centerWindowID > 0 else { return }
+  let (code, _, err) = runPaneruCLI(["send-cmd", "window", "focus", centerSide])
+  guard code == 0 else {
+    emit("source focus \(centerSide) failed: \(err)\n")
+    return
+  }
+  guard let fid = queryFocusedWindowID() else {
+    emit("centering verify unreadable; raising moved window \(windowID) back\n")
+    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+    return
+  }
+  guard fid == centerWindowID else {
+    emit("centering verify failed: focused=\(fid), expected neighbor \(centerWindowID); raising moved window \(windowID) back\n")
+    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+    return
+  }
+  emit("centered source \(centerSide) neighbor \(centerWindowID)\n")
+}
+
 /// Warp to the window's live center: fullwidth resizes it after the
 /// pre-settle warp, so re-resolve geometry instead of reusing the landing
 /// point. Same-process re-warp — no extra helper spawn like the Lua side
@@ -358,7 +436,61 @@ FileHandle.standardError.write(
     .data(using: .utf8)!)
 AXUIElementPerformAction(window, kAXRaiseAction as CFString)
 Thread.sleep(forTimeInterval: 0.1)
-guard settle() else {
+
+// First attempt: fullwidth, then overlap the adoption poll (main thread)
+// with source centering (background thread). Safe: the poll reads
+// display_id (focus-independent) while centering changes focus (doesn't
+// affect display_id) — no shared state, so total time is max(poll, bg),
+// never more than sequential. The AX element is touched only before launch
+// (teleport/raise above) and after join (rewarp below), never concurrently.
+//
+// To disable the overlap: delete the group lines and call
+// centerSource { FileHandle.standardError.write($0.data(using: .utf8)!) }
+// inline here instead.
+final class CenterLog: @unchecked Sendable {
+  private var lines: [String] = []
+  private let lock = NSLock()
+  func append(_ line: String) {
+    lock.lock()
+    lines.append(line)
+    lock.unlock()
+  }
+  func take() -> [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    return lines
+  }
+}
+
+var adopted = false
+if runFullwidth() {
+  let group = DispatchGroup()
+  let centerLog = CenterLog()
+  group.enter()
+  DispatchQueue.global(qos: .userInitiated).async {
+    centerSource { centerLog.append($0) }
+    group.leave()
+  }
+  adopted = pollAdoption()
+  // Unbounded wait is no worse than status quo: every CLI call in this
+  // helper already blocks unboundedly on the same daemon, so a wedged
+  // daemon hangs the main thread identically with or without threads.
+  group.wait()
+  for line in centerLog.take() {
+    FileHandle.standardError.write(line.data(using: .utf8)!)
+  }
+}
+if !adopted {
+  // Retry stays single-threaded by design: the background work already
+  // joined above, so nothing runs concurrently here.
+  FileHandle.standardError.write(
+    "window \(windowID) not adopted by display \(targetDisplayID) after first settle; retrying\n"
+      .data(using: .utf8)!)
+  AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+  Thread.sleep(forTimeInterval: 0.1)
+  adopted = settle()
+}
+guard adopted else {
   FileHandle.standardError.write(
     "window \(windowID) did not settle on display \(targetDisplayID) after retry\n"
       .data(using: .utf8)!)

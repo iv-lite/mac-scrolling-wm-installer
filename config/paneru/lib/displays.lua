@@ -208,28 +208,35 @@ local function frame_center(frame)
   return { x = x + w / 2, y = y + h / 2 }
 end
 
--- Locate the mouse pointer's display in the geometric ordering, refreshing
--- the geometry cache once when it isn't there. Returns ids, idx (both nil
--- when the current display can't be determined). Shared by the focus and
--- move paths: both step previous/next off the pointer's display, never the
--- focused window — Lua can't see empty displays, the pointer is always
--- somewhere.
-local function current_index(kind, ws, ids)
-  local cur_id = current_display_id()
+-- Locate the current display in the geometric ordering, refreshing the
+-- geometry cache once when it isn't there. `cur_id` is the caller's best
+-- guess (focused window for moves, pointer for focus); when even a refresh
+-- can't place it, one pointer lookup is tried as a last resort before
+-- giving up — so the mouse spawn pays only on this rare miss path, while
+-- empty targets stay reachable through the full ordering. Returns
+-- ids, idx, resolved id (all nil on failure).
+local function current_index(kind, ws, ids, cur_id)
   if not cur_id then
-    log(kind .. ": mouse-display helper failed")
-    return nil, nil
+    log(kind .. ": current display unknown")
+    return nil, nil, nil
   end
   if not DISPLAYS[cur_id] then
     log(kind .. ": cur_id " .. cur_id .. " not in geometry cache, refreshing")
     GEOM_STALE = true
     if refresh_geometry() then ids = ORDERED_IDS end
   end
+  if not DISPLAYS[cur_id] then
+    local mouse_id = current_display_id()
+    if mouse_id ~= nil and mouse_id ~= cur_id and DISPLAYS[mouse_id] then
+      log(kind .. ": falling back to mouse display " .. mouse_id)
+      cur_id = mouse_id
+    end
+  end
   for i, id in ipairs(ids) do
-    if id == cur_id then return ids, i end
+    if id == cur_id then return ids, i, cur_id end
   end
   log(kind .. ": cur_id " .. cur_id .. " not in ids [" .. table.concat(ids, ",") .. "] even after refresh")
-  return nil, nil
+  return nil, nil, nil
 end
 
 -- Where to warp for `target_id`: the focused window's center when it is on
@@ -288,7 +295,7 @@ local function focus_display(ws, target)
     log("focus " .. target .. ": fewer than 2 displays (" .. #ids .. ")")
     return
   end
-  local _, idx = current_index("focus " .. target, ws, ids)
+  local _, idx = current_index("focus " .. target, ws, ids, current_display_id())
   if not idx then return end
   local n = #ids
   local step = (target == "previous") and (n - 1) or 1
@@ -303,6 +310,35 @@ local function focus_display(ws, target)
   if exec_failed(ok, res) then
     log("focus " .. target .. ": warp-pointer helper failed" .. exec_detail(res))
   end
+end
+
+-- Neighbor to center on the source display, as side + window id: toward
+-- the target display (east target → east neighbor), falling back to the
+-- other side. Existence is probed with ws:east/west, which return the
+-- neighboring window's id (nil at strip edges, or when those methods are
+-- absent on older runtimes). Returns nil when there is nothing to center
+-- (e.g. a single column — removing from it leaves nothing to scroll to).
+local function source_neighbor_side(ws, focused, cur_id, target_id)
+  local cur = DISPLAYS[cur_id]
+  local tgt = DISPLAYS[target_id]
+  local toward, away = "east", "west"
+  if tgt and cur and type(tgt.x) == "number" and type(cur.x) == "number" then
+    local tcx = tgt.x + (type(tgt.width) == "number" and tgt.width / 2 or 0)
+    local ccx = cur.x + (type(cur.width) == "number" and cur.width / 2 or 0)
+    if tcx < ccx then toward, away = "west", "east" end
+  end
+  local function probe(side)
+    local ok, res = pcall(function()
+      return (side == "east") and ws:east(focused) or ws:west(focused)
+    end)
+    if ok and res ~= nil then return res end
+    return nil
+  end
+  local id = probe(toward)
+  if id ~= nil then return toward, id end
+  id = probe(away)
+  if id ~= nil then return away, id end
+  return nil
 end
 
 -- Warp exactly onto the moved window's live center. Used by the 2-display
@@ -366,15 +402,22 @@ local function move_to_display(ws, target)
       log("move " .. target .. ": fewer than 2 displays (" .. #ids .. ")")
       return
     end
-    local ids2, idx = current_index("move " .. target, ws, ids)
+    -- Anchor moves on the focused window's display (in-process, no spawn):
+    -- the acted-on window is what "current" should mean. The pointer lookup
+    -- stays as the last resort inside current_index (miss path only).
+    local cur_guess = nil
+    if w0 ~= nil and type(w0.display_id) == "number" then
+      cur_guess = w0.display_id
+    end
+    local ids2, idx, cur_id = current_index("move " .. target, ws, ids, cur_guess)
     if not idx then return end
     ids = ids2
-    local cur_id = ids[idx]
+    local anchor = (cur_guess ~= nil and cur_id == cur_guess) and "window" or "mouse"
     local n = #ids
     local step = (target == "previous") and (n - 1) or 1
     local target_id = ids[((idx - 1 + step) % n) + 1]
-    log(string.format("move %s: cur=%d idx=%d/%d ids=[%s] -> target=%d",
-      target, cur_id, idx, n, table.concat(ids, ","), target_id))
+    log(string.format("move %s: cur=%d(%s) idx=%d/%d ids=[%s] -> target=%d",
+      target, cur_id, anchor, idx, n, table.concat(ids, ","), target_id))
     if target_id == cur_id then
       log("move " .. target .. ": target == current, nothing to do")
       return
@@ -403,20 +446,34 @@ local function move_to_display(ws, target)
     end
     -- 3+ display path: the move-display helper owns the whole move (AX
     -- teleport, warp + mouseMoved, blocking settle with adoption confirm,
-    -- live re-warp). Lua checks the exit code — the helper only reports
-    -- success once the window is adopted — then restores focus to the
-    -- moved window.
+    -- source-neighbor centering with verify, live re-warp). Lua checks the
+    -- exit code — the helper only reports success once the window is
+    -- adopted — then restores focus to the moved window.
     local t = display_frame(ws, target_id)
     if not t then
       log("move " .. target .. ": no geometry for target display " .. target_id)
       paneru.flash("move display: no geometry for target display", 3.0)
       return
     end
+    -- Side + id of the neighbor to center on the source display (toward
+    -- the target, else the other side). Skipped for floating moves (no
+    -- strip gap) and single-column sources: "none"/"0" tells the helper
+    -- there is nothing to center.
+    local side, neighbor_id = "none", "0"
+    if not was_floating then
+      local s, id = source_neighbor_side(ws, focused, cur_id, target_id)
+      -- Number check: a non-numeric id would fail the helper's strict
+      -- parse and fail the whole move — centering must never do that.
+      if s ~= nil and type(id) == "number" then
+        side, neighbor_id = s, tostring(id)
+      end
+    end
     local exec_ok, res = pcall(paneru.exec, MOVE_HELPER, {
       tostring(focused), tostring(math.floor(t.x)), tostring(math.floor(t.y)),
       tostring(math.floor(t.width)), tostring(math.floor(t.height)),
       was_floating and "1" or "0",
       tostring(target_id),
+      side, neighbor_id,
     })
     if exec_failed(exec_ok, res) then
       log("move " .. target .. ": move-display failed for window " .. focused ..
