@@ -58,14 +58,14 @@ paneru.setup {
   -- ─── Global options ───
   options = {
     focus_follows_mouse = true,
-    -- mouse_follows_focus = true,
+    mouse_follows_focus = true,
     -- Horizontally stacked (side-by-side) monitors: arrange displays
     -- vertically in macOS, set this to -1 so edge crossings feel left/right.
     horizontal_mouse_warp = -1,
     horizontal_mouse_warp_offset = 0,
     preset_column_widths = { 0.3, 0.5, 1.0 },
     animation_speed = 12.0,
-    auto_center = true,
+    auto_center = false,
     create_virtual_workspace_automatically = true,
     reap_empty_workspaces = true,
     window_resize_cycle = true,
@@ -155,6 +155,11 @@ package.path = CONFIG_DIR .. "?.lua;" .. CONFIG_DIR .. "?/init.lua;" .. package.
 -- native single-hop "next display" limitation, empty-display reachability,
 -- 3+ display teleport via helpers/move-display, and the settle/retry logic).
 local displays = require("lib.displays")
+
+-- ─── A/B test gate (temporary scaffolding, remove after isolation) ───
+-- Set true to skip the source-viewport repair on 2-display moves and
+-- isolate its motion contribution. Hot-reloads with this file.
+_G.mac_wm_no_repair = true
 
 -- ─── Firefox external-link fix ───
 -- A link clicked in another app spawns a Firefox window carrying Firefox's
