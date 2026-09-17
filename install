@@ -65,6 +65,7 @@ echo "  ╚═══════════════════════
 run_step install-deps
 run_step configure-system
 run_step install-ghostty
+run_step install-antigen
 run_step install-paneru
 run_step install-helpers
 run_step grant-permissions

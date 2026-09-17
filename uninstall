@@ -23,6 +23,7 @@ echo "  This will:"
 echo "   • Stop/remove Paneru (service + app launcher)"
 echo "   • Revoke its Accessibility permission"
 echo "   • Move configs to ~/.config/backups (not deleted, incl. shortcut helpers)"
+echo "   • Remove Antigen shell setup (~/antigen.zsh, bundling, ~/.zshrc block)"
 echo "   • Uninstall brew packages (you'll choose which to keep)"
 echo "     paneru, tccutil-rs, ghostty"
 echo "   • Untaps uinaf/tap when nothing kept needs it"
@@ -92,6 +93,23 @@ for dir in ~/.config/paneru ~/.config/mac-scrolling-wm ~/.config/ghostty; do
 	if [ -d "$dir" ]; then
 		mv "$dir" "$BACKUP_DIR/"
 		ok "Moved $dir → $BACKUP_DIR/$(basename "$dir")"
+	fi
+done
+
+# Antigen shell setup (installed by scripts/install-antigen): only our own
+# bundling file, caches, and the marked ~/.zshrc block — anything else in
+# ~/.config/zsh or ~/.zshrc is left alone.
+if [ -f ~/.config/zsh/antigen.zsh ]; then
+	mv ~/.config/zsh/antigen.zsh "$BACKUP_DIR/" 2>/dev/null && ok "Moved ~/.config/zsh/antigen.zsh → $BACKUP_DIR/"
+fi
+if [ -f ~/.zshrc ] && grep -qF "# >>> mac-scrolling-wm antigen >>>" ~/.zshrc 2>/dev/null; then
+	cp ~/.zshrc ~/.zshrc.bak
+	sed -i '' '/# >>> mac-scrolling-wm antigen >>>/,/# <<< mac-scrolling-wm antigen <<</d' ~/.zshrc
+	ok "Removed Antigen block from ~/.zshrc (backed up to ~/.zshrc.bak)"
+fi
+for f in ~/antigen.zsh ~/.antigen; do
+	if [ -e "$f" ]; then
+		mv "$f" "$BACKUP_DIR/" 2>/dev/null && ok "Moved $f → $BACKUP_DIR/"
 	fi
 done
 

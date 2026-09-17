@@ -31,6 +31,7 @@ The installer runs these steps from `scripts/`:
 | `install-deps` | Install Homebrew if missing, tccutil-rs |
 | `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Paneru draws its indicator in it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
+| `install-antigen` | Install Antigen (`~/antigen.zsh`) + write `~/.config/zsh/antigen.zsh` (git, command-not-found, completions, autosuggestions, syntax-highlighting last, typewritten theme) + wire it into `~/.zshrc` |
 | `install-paneru` | Install Paneru (Homebrew core) + write `~/.config/paneru/init.lua` + install its launchd service |
 | `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build) |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
@@ -355,8 +356,10 @@ paneru query state --json                   # must print a JSON snapshot (servic
 
 Stops and removes Paneru (launchd service) and its app launcher, revokes its
 Accessibility grant, moves configs (from `~/.config/paneru`,
-`~/.config/ghostty`, `~/.config/mac-scrolling-wm`, plus `~/.paneru*` and
-Paneru's state dir) to `~/.config/backups/uninstall-<timestamp>/`, then asks
+`~/.config/ghostty`, `~/.config/mac-scrolling-wm`, `~/.config/zsh/antigen.zsh`,
+plus `~/.paneru*` and
+Paneru's state dir) to `~/.config/backups/uninstall-<timestamp>/`, removes
+`~/antigen.zsh`, the Antigen caches and the marked `~/.zshrc` block, then asks
 you which formulae to **keep** (interactive numbered menu). Untaps
 `uinaf/tap` when nothing kept needs it, and restores the native menu bar.
 Only items that are actually present are touched — absent items are silently

@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RED=$'\033[0;31m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+fail() { echo "  ${RED}✗ $*${RESET}"; }
+
+ANTIGEN_ZSH="$HOME/antigen.zsh"
+# Pinned stable build first, legacy redirect as fallback. (The repo-root
+# antigen.zsh on master is an 84-byte loader stub for git clones — the
+# standalone curl-able build lives under bin/ at a release tag.)
+ANTIGEN_URLS=(
+	"https://raw.githubusercontent.com/zsh-users/antigen/v2.2.3/bin/antigen.zsh"
+	"https://git.io/antigen"
+)
+ZSHRC="$HOME/.zshrc"
+ZSH_CONFIG_DIR="$HOME/.config/zsh"
+ZSH_CONFIG="$ZSH_CONFIG_DIR/antigen.zsh"
+MARK_BEGIN="# >>> mac-scrolling-wm antigen >>>"
+MARK_END="# <<< mac-scrolling-wm antigen <<<"
+
+# ─────────────────────────────────────────────────────────────
+# Prerequisites: zsh >= 4.3.11, curl, git
+# (macOS ships zsh 5.9 and curl; git arrives with the Xcode CLT)
+# ─────────────────────────────────────────────────────────────
+if ! command -v zsh >/dev/null 2>&1; then
+	fail "zsh not found — macOS ships it at /bin/zsh; install a zsh and re-run."
+	exit 1
+fi
+zsh_version="$(zsh --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true)"
+if [ -z "$zsh_version" ]; then
+	fail "Could not determine zsh version."
+	exit 1
+fi
+IFS=. read -r zmaj zmin zpatch <<< "$zsh_version"
+if [ "${zmaj:-0}" -gt 4 ] || { [ "${zmaj:-0}" -eq 4 ] && { [ "${zmin:-0}" -gt 3 ] || { [ "${zmin:-0}" -eq 3 ] && [ "${zpatch:-0}" -ge 11 ]; }; }; }; then
+	ok "zsh ${zsh_version} present (>= 4.3.11)"
+else
+	fail "zsh >= 4.3.11 required (found: ${zsh_version})."
+	exit 1
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+	fail "curl not found — install it and re-run."
+	exit 1
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+	note "git not found — requesting the Xcode Command Line Tools (GUI dialog)..."
+	xcode-select --install 2>/dev/null || true
+	if ! command -v git >/dev/null 2>&1; then
+		fail "git still missing after xcode-select --install."
+		echo "     Finish the Command Line Tools install, then re-run: bash scripts/install-antigen"
+		exit 1
+	fi
+fi
+ok "git present"
+
+# ─────────────────────────────────────────────────────────────
+# Antigen itself (refreshed on every run, like the rest of the stack)
+# ─────────────────────────────────────────────────────────────
+note "Fetching Antigen..."
+tmp_dl="$(mktemp)"
+fetched=""
+for url in "${ANTIGEN_URLS[@]}"; do
+	if curl -fsSL "$url" -o "$tmp_dl" && [ "$(wc -c < "$tmp_dl" | tr -d ' ')" -gt 10240 ]; then
+		fetched="$url"
+		break
+	fi
+done
+if [ -z "$fetched" ]; then
+	rm -f "$tmp_dl"
+	fail "Could not download a complete Antigen build (network?)."
+	exit 1
+fi
+mv "$tmp_dl" "$ANTIGEN_ZSH"
+ok "Antigen installed to $ANTIGEN_ZSH"
+
+# ─────────────────────────────────────────────────────────────
+# Bundling config (frameless-style: this file is the whole shell theme)
+# ─────────────────────────────────────────────────────────────
+mkdir -p "$ZSH_CONFIG_DIR"
+
+if [ -f "$ZSH_CONFIG" ]; then
+	note "Existing bundling found at $ZSH_CONFIG — backing up"
+	cp "$ZSH_CONFIG" "$ZSH_CONFIG.bak"
+fi
+
+cp "$REPO_ROOT/config/zsh/antigen.zsh" "$ZSH_CONFIG"
+ok "Antigen bundling installed to $ZSH_CONFIG"
+
+if ! zsh -n "$ANTIGEN_ZSH" 2>/dev/null; then
+	warn "$ANTIGEN_ZSH failed zsh syntax check — download may be corrupt; re-run to refetch"
+fi
+if ! zsh -n "$ZSH_CONFIG"; then
+	fail "$ZSH_CONFIG failed zsh syntax check — refusing to wire it into ~/.zshrc."
+	exit 1
+fi
+ok "zsh syntax checks passed"
+
+# ─────────────────────────────────────────────────────────────
+# Wire into ~/.zshrc (idempotent marked block; existing lines untouched)
+# ─────────────────────────────────────────────────────────────
+if [ -f "$ZSHRC" ]; then
+	note "Existing shell config found at $ZSHRC — backing up"
+	cp "$ZSHRC" "$ZSHRC.bak"
+else
+	note "No $ZSHRC — creating one"
+	: > "$ZSHRC"
+fi
+
+if grep -qF "$MARK_BEGIN" "$ZSHRC" 2>/dev/null; then
+	ok "~/.zshrc already sources the Antigen bundling"
+else
+	{
+		echo ""
+		echo "$MARK_BEGIN"
+		echo "# Managed by mac-scrolling-wm-installer (scripts/install-antigen)."
+		echo "# Antigen itself lives at ~/antigen.zsh; the bundling below owns"
+		echo "# compinit (runs at 'antigen apply'), so no manual compinit needed."
+		echo "source \"$HOME/antigen.zsh\""
+		echo "source \"$ZSH_CONFIG\""
+		echo "$MARK_END"
+	} >> "$ZSHRC"
+	ok "Wired Antigen bundling into ~/.zshrc"
+fi
+
+echo ""
+ok "Shell ready — open a new terminal (or run: source ~/.zshrc)"
+note "First launch clones the bundles (network); later shells are instant."
