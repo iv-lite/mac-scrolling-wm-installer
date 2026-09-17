@@ -58,6 +58,10 @@ paneru.setup {
   -- ─── Global options ───
   options = {
     focus_follows_mouse = true,
+    -- Daemon-native pointer follow: Paneru warps to the window itself on
+    -- keyboard-driven focus changes (including display moves), in sync with
+    -- its own animation. A helper warp on top lands late and re-triggers
+    -- focus as a visible second step — so display moves perform no warp.
     mouse_follows_focus = true,
     -- Horizontally stacked (side-by-side) monitors: arrange displays
     -- vertically in macOS, set this to -1 so edge crossings feel left/right.
@@ -65,6 +69,14 @@ paneru.setup {
     horizontal_mouse_warp_offset = 0,
     preset_column_widths = { 0.3, 0.5, 1.0 },
     animation_speed = 12.0,
+    -- Lazy expose: at 0.0 any hidden fraction forces the window into view on
+    -- focus change, which can re-fire mid-arrival as strips reflow (extra
+    -- corrective scrolls on top of the animated flight). 1.0 only exposes
+    -- fully-hidden windows; arrival rests looser but quieter.
+    window_hidden_ratio = 1.0,
+    -- Off: no auto-centering scroll on focus changes. Display moves then
+    -- play as the daemon's single native motion instead of arrival scroll
+    -- plus re-centering steps; center manually with Cmd+Option+Space.
     auto_center = false,
     create_virtual_workspace_automatically = true,
     reap_empty_workspaces = true,
@@ -155,11 +167,6 @@ package.path = CONFIG_DIR .. "?.lua;" .. CONFIG_DIR .. "?/init.lua;" .. package.
 -- native single-hop "next display" limitation, empty-display reachability,
 -- 3+ display teleport via helpers/move-display, and the settle/retry logic).
 local displays = require("lib.displays")
-
--- ─── A/B test gate (temporary scaffolding, remove after isolation) ───
--- Set true to skip the source-viewport repair on 2-display moves and
--- isolate its motion contribution. Hot-reloads with this file.
-_G.mac_wm_no_repair = true
 
 -- ─── Firefox external-link fix ───
 -- A link clicked in another app spawns a Firefox window carrying Firefox's

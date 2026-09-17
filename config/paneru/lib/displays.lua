@@ -15,29 +15,25 @@
 -- focus_display below is therefore target math plus one thin helper exec,
 -- guarded by MOVE_BUSY.
 --
--- Move is also fully delegated to compiled helpers — both the 2-display
--- path (paneru's own `window nextdisplay` via CLI, gated by wait-settled)
--- and the 3+ display path (move-display: AX teleport, warp + mouseMoved,
--- blocking settle with adoption confirm). CLI commands are separate Mach
--- port messages that the daemon processes independently; the confirms must
--- span real wall-clock time, so they live in helpers with real sleeps: an
--- in-dispatch `query_json` busy poll exhausts in ~0ms before the daemon's
--- frame runs and can never observe another in-dispatch command, so
--- sequencing across commands needs real ordering. Arrival means stillness,
--- not a glance: display_id flips before geometry finishes, and an in-rect
--- check fires mid-slide — every warp lands on a stillness-proven center,
--- and the source repair (warp away, no warp-back) runs before the single
--- final warp so pointer/focus events never triple.
+-- Move is two paths: the 2-display path is one native CLI
+-- (`window nextdisplay`) plus an adopt-only confirm — the daemon moves focus
+-- with the window and warps the pointer itself (mouse_follows_focus), in sync
+-- with its own animation, so Lua performs no warp and no repair here on
+-- purpose: every helper warp lands late and re-triggers focus as a visible
+-- second step. The 3+ display path delegates everything to the move-display
+-- helper (AX teleport, warp + mouseMoved, blocking settle with adoption
+-- confirm). CLI commands are separate Mach port messages that the daemon
+-- processes independently; the 2-display confirm must span real wall-clock
+-- time, so it lives in a helper with real sleeps (an in-dispatch query_json
+-- busy poll exhausts in ~0ms before the daemon's frame runs).
 --
 -- Focus assignment follows the runtime both models agree on: the installed
 -- paneru 0.5.1 documents pure StackSet handlers (`return
 -- ws:focus(ws:east(ws:focused()))` appears verbatim in the binary), where
 -- only the returned set commits — bare `ws:focus()` calls without a return
--- are silently discarded. So this file both queues the focus (harmless
--- anywhere) and RETURNS the focused set from successful moves. The
--- source-side centering likewise goes through an immediately-applied CLI
--- (`send-cmd window focus east|west`, which also scrolls via auto_center)
--- rather than a transient in-dispatch focus that a pure runtime would drop.
+-- are silently discarded. So this file RETURNS the focused set from
+-- successful moves (skipped when the daemon already focused the window —
+-- a second scroll trigger onto the same window only adds judder).
 --
 -- The move preserves the window's column-width ratio (tiled) or pixel size
 -- (floating, scaled down only on overflow) — never a forced full-width end
@@ -87,29 +83,18 @@ local function exec_stdout(res)
   return ""
 end
 
--- A "(X, Y)" point from a helper's stdout line (wait-settled prints its
--- proving center), or nil. Warping to the printed point avoids a re-read:
--- the window moved between any two snapshots.
-local function parse_point(s)
-  if type(s) ~= "string" then return nil end
-  local x, y = s:match("%((%-?%d+), (%-?%d+)%)")
-  if x == nil or y == nil then return nil end
-  return { x = tonumber(x), y = tonumber(y) }
-end
-
 -- Helpers (see helpers/, all compiled by scripts/install-helpers):
 --   warp-pointer     — warp-only: pointer to x y + mouseMoved; the target is resolved in-process
+--                       (focus path only; display moves let the daemon warp natively)
 --   move-display     — teleport via AX at near-final geometry, warp + mouseMoved, settle via CLI
+--                      (3+ display path only)
 --   display-geometry — real CG frames of every online display, empties included
 --   mouse-display    — which display id currently has the pointer
---   wait-rect        — block until a window center is inside a rect (legacy)
---   wait-display     — block until a window reports the target display (legacy)
---   wait-settled     — block until a window is adopted AND still (the move gate)
+--   wait-display     — block until a window reports the target display (2-display failure signal)
+--   (wait-rect / wait-settled stay installed but unused: arrival timing belongs to the daemon now)
 local HELPERS_DIR = os.getenv("HOME") .. "/.config/mac-scrolling-wm/helpers/"
 local WARP_HELPER = HELPERS_DIR .. "warp-pointer"
-local WAIT_HELPER = HELPERS_DIR .. "wait-rect"
 local WAIT_DISPLAY_HELPER = HELPERS_DIR .. "wait-display"
-local WAIT_SETTLED_HELPER = HELPERS_DIR .. "wait-settled"
 local MOVE_HELPER = HELPERS_DIR .. "move-display"
 local GEOM_HELPER = HELPERS_DIR .. "display-geometry"
 local MOUSE_HELPER = HELPERS_DIR .. "mouse-display"
@@ -420,84 +405,13 @@ local function source_neighbor_side(ws, focused, cur_id, target_id)
   return nil, nil, "no column data"
 end
 
--- Repair the source viewport after a native 2-display move: the daemon owns
--- both strips but leaves the source scrolled stale. Warp onto the neighbor
--- so focus_follows_mouse + auto_center scroll it into view (no ws: use —
--- a CLI focus would resolve on the wrong display now that focus already
--- left, and a transient id-focus can't commit under either runtime model),
--- prove stillness with wait-settled, and return: the caller performs the
--- single final warp afterward, so there is deliberately no warp-back here
--- (the old immediate warp-back tripled pointer/focus events). wait-settled
--- needs no Accessibility grant. Skipped for floating moves, single-column
--- sources, and already-consistent viewports — and never fails the move.
-local function repair_source_viewport(ws, focused, target, cur_id, target_id, was_floating)
-  if _G.mac_wm_no_repair then
-    log("move " .. target .. ": repair skipped (A/B gate mac_wm_no_repair)")
-    return
-  end
-  if was_floating then return end
-  local t = DISPLAYS[cur_id]
-  if t == nil or type(t.x) ~= "number" or type(t.y) ~= "number"
-      or type(t.width) ~= "number" or type(t.height) ~= "number" then
-    return
-  end
-  local side, nid = source_neighbor_side(ws, focused, cur_id, target_id)
-  if side == nil or type(nid) ~= "number" then return end
-  local w = find_window(query_state_safe(), nid)
-  if w == nil or w.display_id ~= cur_id then return end
-  local p = frame_center(w.frame)
-  if p == nil then return end
-  local function inside(pt)
-    return pt.x >= t.x and pt.x < t.x + t.width
-      and pt.y >= t.y and pt.y < t.y + t.height
-  end
-  if inside(p) then
-    log("move " .. target .. ": source neighbor already in viewport, skipping repair")
-    return
-  end
-  pcall(paneru.exec, WARP_HELPER, {
-    tostring(math.floor(p.x)), tostring(math.floor(p.y)),
-  })
-  local sok, sres = pcall(paneru.exec, WAIT_SETTLED_HELPER, {
-    tostring(nid), tostring(cur_id),
-    tostring(math.floor(t.x)), tostring(math.floor(t.y)),
-    tostring(math.floor(t.width)), tostring(math.floor(t.height)),
-  })
-  local line = ""
-  if type(sres) == "table" and type(sres.stdout) == "string" then
-    line = sres.stdout:gsub("^%s+", ""):gsub("%s+$", "")
-  end
-  if not exec_failed(sok, sres) then
-    log("move " .. target .. ": source viewport repaired (" .. line .. ")")
-  else
-    log("move " .. target .. ": source viewport repair unsettled" .. exec_detail(sok, sres) .. " (" .. line .. ")")
-  end
-end
-
--- Warp exactly once onto the moved window's settled center. Used by the
--- 2-display path only — on 3+ the move-display helper re-warps post-settle
--- itself, so a second helper spawn here would just be latency.
--- Final focus is handled by the caller returning ws:focus (see below): one
--- warp (pointer) + one commit (focus) onto the same settled window, so the
--- second is a no-op scroll. Two warps, or a warp onto a mid-animation frame,
--- makes focus chase a moving window (in-place shake) — the caller therefore
--- passes the wait-settled proving center, never a re-read.
--- This runs inside a move dispatch (MOVE_BUSY is set), never via
--- focus_display(), which refuses to run while a move is in flight.
-local function warp_to_moved(ws, focused, target, pt)
-  local p = pt
-  if p == nil then
-    local w = find_window(query_state_safe(), focused)
-    p = w and frame_center(w.frame) or nil
-  end
-  if p then
-    pcall(paneru.exec, WARP_HELPER, {
-      tostring(math.floor(p.x)), tostring(math.floor(p.y)),
-    })
-  else
-    log("move " .. target .. ": no live frame for window " .. tostring(focused) .. ", skipping warp")
-  end
-end
+-- NOTE: the 2-display path deliberately performs no source-viewport repair
+-- and no warp: with mouse_follows_focus on, the daemon moves the pointer to
+-- the arrived window itself, in sync with its own animation. Every helper
+-- warp lands late and re-triggers focus (a visible second step), and the
+-- repair round-trip doubles that. The freed display shows a gap until next
+-- focused there, which re-centers it via the focus path. (source_neighbor_side
+-- above stays: the 3+ move-display helper still takes a centering neighbor.)
 
 local function move_to_display(ws, target)
   if MOVE_BUSY then
@@ -571,52 +485,36 @@ local function move_to_display(ws, target)
       log(string.format("move %s: source ratio %.3f", target, src_ratio))
     end
     if n == 2 then
-      -- 2-display path: `paneru window nextdisplay` via CLI, which applies
-      -- as its own Mach message; the confirms below must span real wall-clock
-      -- time. An in-dispatch query_json busy poll cannot do that — it
-      -- exhausts in ~0ms before the daemon's frame runs (seen live: 100%
-      -- "timed out in 50 ticks" with moves landing right after). Blocking
-      -- helper spawns both yield the dispatch and wait.
+      -- 2-display path: `paneru window nextdisplay` via CLI, then done. The
+      -- daemon moves focus with the window and warps the pointer itself
+      -- (mouse_follows_focus), in sync with its own animation — any helper
+      -- warp lands late and re-triggers focus as a visible second step, so
+      -- this path performs no warp and no repair (the freed display shows a
+      -- gap until next focused there). wait-display is only the failure
+      -- signal: it spans real wall-clock time (an in-dispatch query_json
+      -- busy poll exhausts in ~0ms before the daemon's frame runs) and its
+      -- timeout is what the `failed to settle` flash means.
       local exec_ok, res = pcall(paneru.exec, PANERU_BIN, { "send-cmd", "window", "nextdisplay" })
       if exec_failed(exec_ok, res) then
         log("move " .. target .. ": nextdisplay CLI failed" .. exec_detail(exec_ok, res))
         paneru.flash("move display: nextdisplay failed", 3.0)
         return
       end
-      -- Source repair first (warp away, stillness-proven, no warp-back),
-      -- then the single target gate: adopt + stillness in one spawn, warp
-      -- to the printed proving center (never a re-read — the window moved
-      -- between any two snapshots). display_id flips before geometry
-      -- finishes, and an in-rect glance fires mid-slide; only stillness
-      -- (<2px across 3 reads) proves arrival.
-      repair_source_viewport(ws, focused, target, cur_id, target_id, was_floating)
-      local tgt = display_frame(ws, target_id)
-      local pt = nil
-      if tgt ~= nil then
-        local gok, gres = pcall(paneru.exec, WAIT_SETTLED_HELPER, {
-          tostring(focused), tostring(target_id),
-          tostring(math.floor(tgt.x)), tostring(math.floor(tgt.y)),
-          tostring(math.floor(tgt.width)), tostring(math.floor(tgt.height)),
-        })
-        local gline = ""
-        if type(gres) == "table" and type(gres.stdout) == "string" then
-          gline = gres.stdout:gsub("^%s+", ""):gsub("%s+$", "")
-        end
-        local gate_ok = not exec_failed(gok, gres)
-        log(string.format("move %s: target %s (%s)",
-          target, gate_ok and "settled" or "unsettled", gline))
-        if not gate_ok and gline:find("timeout waiting for display", 1, true) then
-          log("move " .. target .. ": window " .. focused .. " never reported display " .. target_id)
-          paneru.flash("move display: failed to settle on target display", 3.0)
-          return
-        end
-        if gate_ok then
-          pt = parse_point(gline)
-        end
-      else
-        log("move " .. target .. ": no geometry for target display " .. target_id .. ", warping live")
+      local wok, wres = pcall(paneru.exec, WAIT_DISPLAY_HELPER, {
+        tostring(focused), tostring(target_id),
+      })
+      local wline = ""
+      if type(wres) == "table" and type(wres.stdout) == "string" then
+        wline = wres.stdout:gsub("^%s+", ""):gsub("%s+$", "")
       end
-      warp_to_moved(ws, focused, target, pt)
+      if exec_failed(wok, wres) then
+        log("move " .. target .. ": window " .. focused .. " never reported display " .. target_id
+          .. exec_detail(wok, wres) .. " (" .. wline .. ")")
+        paneru.flash("move display: failed to settle on target display", 3.0)
+        return
+      end
+      log("move " .. target .. ": window " .. focused .. " moved to display " .. target_id
+        .. " (" .. wline .. ")")
       moved_ok = true
       return
     end
