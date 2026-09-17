@@ -101,8 +101,8 @@ func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePoin
 let args = CommandLine.arguments
 guard args.count == 10, let windowIDArg = Int(args[1]),
       let windowID = UInt32(args[1]),
-      let tx = Double(args[2]), let ty = Double(args[3]),
-      let tw = Double(args[4]), let th = Double(args[5]),
+      let txD = Double(args[2]), let tyD = Double(args[3]),
+      let twD = Double(args[4]), let thD = Double(args[5]),
       (args[6] == "0" || args[6] == "1"),
       let targetDisplayID = Int(args[7]),
       let centerWindowID = Int(args[9]) else {
@@ -115,6 +115,9 @@ let wasFloating = args[6] == "1"
 // Which neighboring column to center on the source display ("east"/"west"),
 // resolved by Lua; anything else (e.g. "none") skips centering.
 let centerSide = args[8]
+
+let tx = CGFloat(txD), ty = CGFloat(tyD)
+let tw = CGFloat(twD), th = CGFloat(thD)
 
 let startTime = Date()
 
@@ -291,7 +294,7 @@ func isOnTarget(center: CGPoint) -> Bool {
   center.x >= tx && center.x < tx + tw && center.y >= ty && center.y < ty + th
 }
 
-let menuBarInset = 28.0
+let menuBarInset: CGFloat = 28.0
 var winSize = readSize(window)
 // Shrink oversized windows to fit the target display before teleporting:
 // paneru won't adopt a window spilling far past the display edges (seen
@@ -316,7 +319,7 @@ if winSize.width > tw || winSize.height > th - menuBarInset {
 var landingOrigin: CGPoint
 if winSize.width > 0 && winSize.height > 0 && winSize.width <= tw && winSize.height <= th {
   let cx = tx + (tw - winSize.width) / 2
-  let cy = ty + menuBarInset + max(0, (th - menuBarInset - winSize.height) / 2)
+  let cy = ty + menuBarInset + max(CGFloat(0), (th - menuBarInset - winSize.height) / 2)
   landingOrigin = CGPoint(x: cx, y: cy)
 } else if winSize.width > 0 && winSize.height > 0 {
   landingOrigin = CGPoint(x: tx, y: ty + menuBarInset)
