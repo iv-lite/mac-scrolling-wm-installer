@@ -136,12 +136,18 @@ fi
 # ─────────────────────────────────────────────────────────────
 # Version floor: the fork's v0.1.0 is based on upstream 0.5.1, so the
 # event-tap watchdog (karinushka/paneru#350) is present, plus native
-# window/mouse previousdisplay commands.
+# window/mouse previousdisplay commands. The Cmd+Alt cross-display drag
+# (mouse_drag_display_modifier) needs fork ≥ v0.2.2.
 # ─────────────────────────────────────────────────────────────
 version="$(paneru --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 case "${version:-0.0.0}" in
 	0.1*|0.2*|0.3*|0.4*|0.5*|0.6*|0.7*|0.8*|0.9*|[1-9]*)
 		ok "Paneru ${version} (fork with previous-display support)"
+		case "${version:-0.0.0}" in
+			0.1*)
+				warn "Paneru ${version} predates v0.2.2 — the Cmd+Alt cross-display drag is inactive until you upgrade"
+				;;
+		esac
 		;;
 	*)
 		warn "Paneru ${version:-unknown} looks older than the fork's v0.1.0 —"

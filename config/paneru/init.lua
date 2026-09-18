@@ -68,10 +68,11 @@ paneru.setup {
     -- its own animation. A helper warp on top lands late and re-triggers
     -- focus as a visible second step — so display moves perform no warp.
     mouse_follows_focus = true,
-    -- Cmd+Alt-drag a tiled window across a display boundary to move it to
-    -- that display's strip live (focus follows). Plain drags snap back to
-    -- their own strip. New in the iv-lite fork (main, after v0.2.1):
-    -- older binaries ignore the unknown key.
+    -- Hold Cmd+Alt while left-clicking a tiled window to arm the drag;
+    -- crossing a display boundary moves it to that display's strip live
+    -- (focus follows), landing in the nearest column (see
+    -- insert_windows_mid_strip below). Without the shortcut, tiled windows
+    -- pin to their slot and cannot be mouse-moved. Shipped in fork ≥ v0.2.2.
     mouse_drag_display_modifier = "cmd + alt",
     -- Horizontally stacked (side-by-side) monitors: arrange displays
     -- vertically in macOS, set this to -1 so edge crossings feel left/right.
@@ -91,6 +92,10 @@ paneru.setup {
     create_virtual_workspace_automatically = true,
     reap_empty_workspaces = true,
     window_resize_cycle = true,
+    -- On: a window moved to another strip (Cmd+Alt cross-display drag, or a
+    -- virtual-workspace move) lands in the column matching its on-screen
+    -- position, shifting the rest — instead of appending at the end.
+    insert_windows_mid_strip = true,
   },
 
   -- ─── Screen padding (outer gaps; Paneru has no inner-gap option) ───
