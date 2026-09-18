@@ -32,30 +32,57 @@ fi
 fetch_paneru() {
 	local tar_url tmp staged bin
 	tmp="$(mktemp -d)"
-	note "Fetching Paneru release ($PANERU_LABEL)..."
-	tar_url="$(curl -fsSL "$PANERU_SOURCE" \
-		| grep -o '"browser_download_url": *"[^"]*paneru-[^"]*\.tar\.gz"' | head -1 | cut -d'"' -f4 || true)"
-	if [ -z "$tar_url" ]; then
-		note "No paneru-*.tar.gz asset on release ($PANERU_LABEL)"
-		rm -rf "$tmp"
-		return 1
-	fi
-	note "Downloading $(basename "$tar_url")..."
-	if ! curl -fsSL "$tar_url" -o "$tmp/paneru.tgz"; then
-		note "Download failed"
-		rm -rf "$tmp"
-		return 1
-	fi
-	if ! tar -xzf "$tmp/paneru.tgz" -C "$tmp"; then
-		note "Extraction failed"
-		rm -rf "$tmp"
-		return 1
-	fi
-	staged="$(find "$tmp" -maxdepth 2 -name paneru -type f | head -1 || true)"
-	if [ -z "$staged" ]; then
-		note "No paneru binary inside the release tarball"
-		rm -rf "$tmp"
-		return 1
+	# --prefer-local-builds: build the sibling checkout instead of
+	# downloading a release. Builds in place (keeps target/ cache, tests
+	# dirty WIP as-is). Failures abort — no release fallback.
+	if [ -n "${PREFER_LOCAL_BUILDS:-}" ] && [ -f "$REPO_ROOT/../paneru/Cargo.toml" ]; then
+		note "Building Paneru from sibling checkout ($REPO_ROOT/../paneru)..."
+		if ! command -v cargo >/dev/null 2>&1; then
+			note "Installing Rust toolchain via Homebrew..."
+			brew install rust
+			ok "Rust installed"
+		fi
+		if ! (cd "$REPO_ROOT/../paneru" && cargo build --release --bin paneru); then
+			rm -rf "$tmp"
+			echo "  Local Paneru build failed — aborting (no release fallback with --prefer-local-builds)." >&2
+			return 1
+		fi
+		staged="$REPO_ROOT/../paneru/target/release/paneru"
+		if [ ! -x "$staged" ]; then
+			note "Build finished but $staged is missing or not executable"
+			rm -rf "$tmp"
+			return 1
+		fi
+		ok "Paneru built from local source"
+	else
+		if [ -n "${PREFER_LOCAL_BUILDS:-}" ]; then
+			note "No sibling checkout at $REPO_ROOT/../paneru — falling back to release download"
+		fi
+		note "Fetching Paneru release ($PANERU_LABEL)..."
+		tar_url="$(curl -fsSL "$PANERU_SOURCE" \
+			| grep -o '"browser_download_url": *"[^"]*paneru-[^"]*\.tar\.gz"' | head -1 | cut -d'"' -f4 || true)"
+		if [ -z "$tar_url" ]; then
+			note "No paneru-*.tar.gz asset on release ($PANERU_LABEL)"
+			rm -rf "$tmp"
+			return 1
+		fi
+		note "Downloading $(basename "$tar_url")..."
+		if ! curl -fsSL "$tar_url" -o "$tmp/paneru.tgz"; then
+			note "Download failed"
+			rm -rf "$tmp"
+			return 1
+		fi
+		if ! tar -xzf "$tmp/paneru.tgz" -C "$tmp"; then
+			note "Extraction failed"
+			rm -rf "$tmp"
+			return 1
+		fi
+		staged="$(find "$tmp" -maxdepth 2 -name paneru -type f | head -1 || true)"
+		if [ -z "$staged" ]; then
+			note "No paneru binary inside the release tarball"
+			rm -rf "$tmp"
+			return 1
+		fi
 	fi
 	# Stop the running daemon before overwriting its binary.
 	if command -v paneru >/dev/null 2>&1; then
@@ -70,7 +97,11 @@ fetch_paneru() {
 	cp "$staged" "$bin"
 	chmod +x "$bin"
 	rm -rf "$tmp"
-	ok "Paneru installed to $bin (from GitHub release)"
+	if [ -n "${PREFER_LOCAL_BUILDS:-}" ] && [ -f "$REPO_ROOT/../paneru/Cargo.toml" ]; then
+		ok "Paneru installed to $bin (from local source build)"
+	else
+		ok "Paneru installed to $bin (from GitHub release)"
+	fi
 	# Pin the stable ad-hoc signing identifier (same one the fork's local
 	# builds and newer CI releases stamp — see assets/rustc-sign.sh in
 	# iv-lite/paneru). Release tarballs built without it carry a per-build

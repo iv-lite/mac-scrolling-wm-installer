@@ -27,16 +27,25 @@ run_step() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Flags: --help
+# Flags: --help, --prefer-local-builds
 # ─────────────────────────────────────────────────────────────
 for arg in "$@"; do
 	case "$arg" in
 		--help|-h)
-			echo "Usage: ./install"
+			echo "Usage: ./install [--prefer-local-builds]"
 			echo ""
 			echo "  Installs Paneru + Ghostty with an niri-like sliding-strip"
-			echo "  layout (no flags currently)."
+			echo "  layout."
+			echo ""
+			echo "  --prefer-local-builds  Build sibling checkouts in ../ instead"
+			echo "                         of downloading releases: ../paneru"
+			echo "                         (cargo) and ../mac-cheatsheet-viewer"
+			echo "                         (tauri). Local build failures abort"
+			echo "                         the install (no release fallback)."
 			exit 0
+			;;
+		--prefer-local-builds)
+			export PREFER_LOCAL_BUILDS=1
 			;;
 		-*)
 			echo "Unknown option: $arg (run './install --help')" >&2
@@ -44,6 +53,12 @@ for arg in "$@"; do
 			;;
 	esac
 done
+
+if [ -n "${PREFER_LOCAL_BUILDS:-}" ]; then
+	echo ""
+	echo "  ${CYAN}Local builds preferred — sibling checkouts in ../ will be"
+	echo "  built from source instead of downloading releases.${RESET}"
+fi
 
 # Fresh install vs. upgrade of an existing setup
 if command -v paneru >/dev/null 2>&1; then
