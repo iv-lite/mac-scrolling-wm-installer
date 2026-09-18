@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 CYAN=$'\033[0;36m'
 GREEN=$'\033[0;32m'
 YELLOW=$'\033[0;33m'
@@ -49,12 +51,8 @@ if command -v paneru >/dev/null 2>&1; then
 	if [ "$healthy" -eq 1 ]; then
 		ok "Paneru answers state queries (daemon healthy)"
 	else
-		warn "Paneru is not answering state queries — it is likely running WITHOUT Accessibility access (no tiling)."
-		echo "     Fix, in order:"
-		echo "       1. codesign --force --sign - --identifier com.github.karinushka.paneru \"\$(command -v paneru)\""
-		echo "       2. bash scripts/grant-permissions  (terminal needs Full Disk Access for this to work)"
-		echo "       3. Or grant manually: System Settings → Privacy & Security → Accessibility → enable 'paneru'"
-		echo "       4. paneru restart"
+		warn "Paneru is not answering state queries — attempting self-repair..."
+		bash "$SCRIPT_DIR/repair-paneru"
 	fi
 fi
 

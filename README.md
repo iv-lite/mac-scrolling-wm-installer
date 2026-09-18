@@ -263,10 +263,11 @@ get a fresh ad-hoc identity each time, which macOS treats as a new app (see
 "Installing from Github" in the
 [fork README](https://github.com/iv-lite/paneru#installing-from-github)).
 The installer now pins the stable identifier
-(`com.github.karinushka.paneru`) onto the downloaded binary and re-grants
-before starting the service, and `enable-services` fails loudly when the
-daemon doesn't answer `paneru query state --json`. If you still see no
-tiling, repair by hand:
+(`com.github.karinushka.paneru`) onto the downloaded binary, re-grants
+before starting the service, and `enable-services` runs a self-repair on
+an unhealthy daemon (`scripts/repair-paneru`: re-sign → re-grant →
+restart → re-check, twice, then one manual-grant pause when interactive).
+If you still see no tiling, repair by hand:
 
 ```sh
 codesign --force --sign - --identifier com.github.karinushka.paneru "$(command -v paneru)"

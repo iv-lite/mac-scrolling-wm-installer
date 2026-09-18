@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+
+# ─────────────────────────────────────────────────────────────
+# Self-repair a permission-less Paneru: re-pin the stable ad-hoc
+# signing identifier, re-grant Accessibility, restart, re-check.
+# Replacing the binary voids the old TCC grant (each unsigned build
+# carries a fresh ad-hoc identity), so the daemon can end up running
+# without ever tiling. Called by enable-services when the health
+# poll fails; safe to run by hand too: bash scripts/repair-paneru
+# ─────────────────────────────────────────────────────────────
+PANERU_BIN="$(command -v paneru 2>/dev/null || true)"
+if [ -z "$PANERU_BIN" ]; then
+	warn "paneru not on PATH — nothing to repair"
+	exit 0
+fi
+
+codesign_paneru() {
+	command -v codesign >/dev/null 2>&1 || return 1
+	codesign --force --sign - --identifier com.github.karinushka.paneru "$PANERU_BIN" >/dev/null 2>&1 || return 1
+	codesign -dv "$PANERU_BIN" 2>&1 | grep -q 'Identifier=com.github.karinushka.paneru'
+}
+
+restart_paneru() {
+	if pgrep -qx paneru >/dev/null 2>&1; then
+		paneru restart >/dev/null 2>&1
+	else
+		paneru start >/dev/null 2>&1
+	fi
+}
+
+wait_healthy() {
+	local i
+	for i in $(seq 1 10); do
+		if paneru query state --json >/dev/null 2>&1; then
+			return 0
+		fi
+		sleep 1
+	done
+	return 1
+}
+
+manual_steps() {
+	echo "     Fix, in order:"
+	echo "       1. codesign --force --sign - --identifier com.github.karinushka.paneru \"\$(command -v paneru)\""
+	echo "       2. bash scripts/grant-permissions  (terminal needs Full Disk Access for this to work)"
+	echo "       3. Or grant manually: System Settings → Privacy & Security → Accessibility → enable 'paneru'"
+	echo "       4. paneru restart"
+}
+
+round=0
+while [ "$round" -lt 2 ]; do
+	round=$(( round + 1 ))
+	note "Repair round $round/2: re-sign → re-grant → restart..."
+	if codesign_paneru; then
+		ok "Code-signing identifier pinned (com.github.karinushka.paneru)"
+	else
+		warn "codesign pinning failed (codesign missing or refused)"
+	fi
+	bash "$SCRIPT_DIR/grant-permissions" || warn "grant-permissions reported failure"
+	if restart_paneru; then
+		note "Paneru restarted — re-checking..."
+	else
+		warn "Paneru restart failed"
+	fi
+	if wait_healthy; then
+		ok "Paneru answers state queries (repaired)"
+		exit 0
+	fi
+	warn "Still unhealthy after round $round"
+done
+
+# Automated repair exhausted. One interactive chance for the manual
+# grant (TTY only — never block SSH/CI/test VMs).
+if [ -t 0 ]; then
+	warn "Automatic repair did not restore tiling."
+	echo "     Grant manually: System Settings → Privacy & Security →"
+	echo "     Accessibility → enable 'paneru', then press Enter."
+	read -r -p "     Press Enter to restart Paneru and re-check (or Ctrl-C to skip): " _ || true
+	if restart_paneru && wait_healthy; then
+		ok "Paneru answers state queries (repaired after manual grant)"
+		exit 0
+	fi
+fi
+
+warn "Paneru is still not answering state queries — likely running WITHOUT Accessibility access (no tiling)."
+manual_steps
+exit 0
