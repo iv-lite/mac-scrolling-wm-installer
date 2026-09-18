@@ -68,6 +68,11 @@ paneru.setup {
     -- its own animation. A helper warp on top lands late and re-triggers
     -- focus as a visible second step — so display moves perform no warp.
     mouse_follows_focus = true,
+    -- Cmd+Alt-drag a tiled window across a display boundary to move it to
+    -- that display's strip live (focus follows). Plain drags snap back to
+    -- their own strip. New in the iv-lite fork (main, after v0.2.1):
+    -- older binaries ignore the unknown key.
+    mouse_drag_display_modifier = "cmd + alt",
     -- Horizontally stacked (side-by-side) monitors: arrange displays
     -- vertically in macOS, set this to -1 so edge crossings feel left/right.
     horizontal_mouse_warp = -1,

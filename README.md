@@ -102,6 +102,7 @@ window in the same lane), **Ctrl**.
 | `Cmd` + `Ctrl` + `Alt` + `→` | Send the focused window to the next display (stay) |
 | `Cmd` + `Ctrl` + `↑` | Warp the mouse to the next display |
 | `Cmd` + `Ctrl` + `↓` | Warp the mouse to the previous display |
+| `Cmd` + `Alt` + drag across display edge | Move the window to that display live (focus follows; plain drags snap back) |
 | `Cmd` + `Option` + `↑`/`↓` | Focus a column above/below — crosses displays when no window is there |
 | `Cmd` + `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
 
