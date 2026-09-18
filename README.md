@@ -228,8 +228,13 @@ moves. Two things make it feel native:
   so a full 3-finger swipe lands exactly on the next full-width window
   (page-flip).
 - `options.preset_column_widths = { 0.3, 0.5, 1.0 }` cycling and
-  `window_fullwidth` (Cmd+Option+M) cover on-demand sizing; new windows are
-  appended at the end and never resize existing ones.
+  `window_fullwidth` (Cmd+Option+M) cover on-demand sizing; new windows
+  start full-width (`options.default_ratio = 1.0`, Firefox stays `0.5` by
+  rule), are appended at the end and never resize existing ones.
+- A lone column narrower than the viewport is centered
+  (`options.center_single_column = true`); multi-column strips stay
+  left-pinned. `auto_center` remains `false`, so focus changes never
+  recenter — only the single-column case does.
 
 ## The menu bar
 

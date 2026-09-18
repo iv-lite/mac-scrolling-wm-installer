@@ -88,7 +88,19 @@ paneru.setup {
     -- Off: no auto-centering scroll on focus changes. Display moves then
     -- play as the daemon's single native motion instead of arrival scroll
     -- plus re-centering steps; center manually with Cmd+Option+Space.
+    -- center_single_column below is independent: it only centers a lone
+    -- column, never recenters on focus changes.
     auto_center = false,
+    -- On: a lone column narrower than the viewport is centered instead of
+    -- left-pinned. Multi-column strips are unaffected. Needs fork with
+    -- d8b5677; older binaries silently ignore it (left-pin).
+    center_single_column = true,
+    -- New windows start full-width. An explicit per-window `width` rule
+    -- still wins (e.g. firefox below stays 0.5); unset would keep the
+    -- OS-given size. Clamped to a 0.0–1.0 ratio. Needs fork with d8b5677;
+    -- older binaries silently ignore it. Saved session restore wins over
+    -- this on startup.
+    default_ratio = 1.0,
     create_virtual_workspace_automatically = true,
     reap_empty_workspaces = true,
     window_resize_cycle = true,
@@ -99,7 +111,7 @@ paneru.setup {
   },
 
   -- ─── Screen padding (outer gaps; Paneru has no inner-gap option) ───
-  padding = { top = 15, bottom = 15, left = 15, right = 15 },
+  padding = { top = 8, bottom = 8, left = 8, right = 8 },
 
   -- ─── Swipe & gestures ───
   swipe = {
@@ -149,7 +161,8 @@ paneru.setup {
     -- Firefox: external links spawn a new window carrying Firefox's own
     -- restored size hint, which lands slightly off the column grid and
     -- overlaps the neighbour. Force the initial column ratio so every
-    -- main window tiles at grid width; small popups/dialogs are left to
+    -- main window tiles at grid width (explicit `width` wins over
+    -- `default_ratio` above); small popups/dialogs are left to
     -- the spawn handler below (size-gated) so they can still float.
     firefox = { title = ".*", bundle_id = "org.mozilla.firefox", width = 0.5, horizontal_padding = 8, vertical_padding = 8 },
     -- Inner gaps: Paneru has no global inner-gap option, so this applies
