@@ -51,7 +51,8 @@ cmd_install() {
   note "Syncing repo into the guest (${GUEST_DIR})..."
   sync_repo
   note "Running install inside the guest..."
-  guest "cd '${GUEST_DIR}' && ./install"
+  # PREVIEW_INSTALL_ARGS forwards flags, e.g. PREVIEW_INSTALL_ARGS=--prefer-local-builds
+  guest "cd '${GUEST_DIR}' && ./install ${PREVIEW_INSTALL_ARGS:-}"
   ok "install finished in guest"
   warn "Re-run grants if Accessibility failed:  ./tests/preview access"
   ask_cleanup

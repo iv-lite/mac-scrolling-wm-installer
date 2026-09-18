@@ -20,9 +20,29 @@ infinite-strip tiler with hot-reloadable TOML config, native macOS workspaces
 ```
 
 Re-running `./install` **upgrades** an existing setup: Homebrew components
-(Paneru, Ghostty, tccutil-rs) are updated (no-op when current), configs are
-refreshed from this repo (previous copies kept as `*.bak`), and the service is
-restarted so the new binary/config apply immediately.
+(Ghostty, tccutil-rs) are updated (no-op when current), Paneru is refreshed
+from its GitHub releases, configs are refreshed from this repo (previous
+copies kept as `*.bak`), and the service is restarted so the new
+binary/config apply immediately.
+
+### Local development (`--prefer-local-builds`)
+
+```sh
+./install --prefer-local-builds
+```
+
+With sibling checkouts next to this repo, the installer builds them from
+source instead of downloading releases — no release needed to test a change:
+
+| Sibling repo | Built with | Used for |
+|---|---|---|
+| `../paneru` | `cargo build --release --bin paneru` (in place, keeps `target/` cache) | the installed binary |
+| `../mac-cheatsheet-viewer` | local Tauri build (same as the release-fetch fallback) | the cheat-sheet app |
+
+A missing sibling falls back to its release download; a failed local build
+aborts the install (fail fast, so errors surface). Brew/curl dependencies
+(Ghostty, tccutil-rs, Antigen) are unaffected by the flag. In VM tests,
+forward it via `PREVIEW_INSTALL_ARGS=--prefer-local-builds ./tests/preview install`.
 
 The installer runs these steps from `scripts/`:
 
@@ -33,6 +53,7 @@ The installer runs these steps from `scripts/`:
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
 | `install-antigen` | Install Antigen (`~/antigen.zsh`) + write `~/.config/zsh/antigen.zsh` (git, command-not-found, completions, autosuggestions, syntax-highlighting last, typewritten theme) + wire it into `~/.zshrc` |
 | `install-paneru` | Install Paneru from the `iv-lite/paneru` GitHub releases (newest in list; `PANERU_TAG` pins) + write `~/.config/paneru/init.lua` + install its launchd service |
+| `repair-paneru` | Self-repair an unhealthy daemon: re-sign → re-grant → restart → re-check (run by `enable-services`, or by hand) |
 | `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build) |
 | `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
 | `enable-services` | Start Paneru |
