@@ -71,6 +71,28 @@ fetch_paneru() {
 	chmod +x "$bin"
 	rm -rf "$tmp"
 	ok "Paneru installed to $bin (from GitHub release)"
+	# Pin the stable ad-hoc signing identifier (same one the fork's local
+	# builds and newer CI releases stamp — see assets/rustc-sign.sh in
+	# iv-lite/paneru). Release tarballs built without it carry a per-build
+	# identity, which macOS TCC treats as a new app: the old Accessibility
+	# grant silently stops matching and paneru runs without tiling. Pinning
+	# here makes the grant (re-applied by grant-permissions below) stick,
+	# including across future upgrades.
+	if command -v codesign >/dev/null 2>&1; then
+		if codesign --force --sign - --identifier com.github.karinushka.paneru "$bin" >/dev/null 2>&1; then
+			if codesign -dv "$bin" 2>&1 | grep -q 'Identifier=com.github.karinushka.paneru'; then
+				ok "Code-signing identifier pinned (com.github.karinushka.paneru)"
+			else
+				warn "codesign ran but the identifier did not stick — the Accessibility grant may not survive upgrades"
+			fi
+		else
+			warn "codesign failed — the Accessibility grant may not survive this upgrade"
+		fi
+	else
+		note "codesign not found (not macOS?) — skipping identifier pinning"
+	fi
+	note "Replacing the binary voids the previous Accessibility grant;"
+	note "grant-permissions (next) re-applies it before the service starts."
 	return 0
 }
 

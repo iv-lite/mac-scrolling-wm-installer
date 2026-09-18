@@ -257,6 +257,23 @@ popup). Immediate recourse: `paneru restart`. Re-enable the indicator once a
 Paneru release includes the #390 fix; concurrently, keep Paneru at ≥ 0.5.0 so
 the event-tap watchdog (karinushka/paneru#350) is present.
 
+**Paneru runs but doesn't tile after an upgrade.** Replacing the binary voids
+the Accessibility grant: release builds without a pinned signing identifier
+get a fresh ad-hoc identity each time, which macOS treats as a new app (see
+"Installing from Github" in the
+[fork README](https://github.com/iv-lite/paneru#installing-from-github)).
+The installer now pins the stable identifier
+(`com.github.karinushka.paneru`) onto the downloaded binary and re-grants
+before starting the service, and `enable-services` fails loudly when the
+daemon doesn't answer `paneru query state --json`. If you still see no
+tiling, repair by hand:
+
+```sh
+codesign --force --sign - --identifier com.github.karinushka.paneru "$(command -v paneru)"
+bash scripts/grant-permissions   # terminal needs Full Disk Access for this
+paneru restart
+```
+
 **Paneru won't start / instantly exits.** Paneru hard-exits unless it has
 Accessibility and "Displays have separate Spaces" is **ON**. The installer's
 `configure-system` / `ensure-separate-spaces` handles the latter. If grants

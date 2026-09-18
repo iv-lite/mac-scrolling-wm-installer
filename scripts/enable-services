@@ -31,5 +31,32 @@ if command -v paneru >/dev/null 2>&1; then
 	fi
 fi
 
+# ─────────────────────────────────────────────────────────────
+# Post-start health check: the daemon must answer state queries.
+# A permission-less daemon (voided Accessibility grant after a binary
+# swap) starts fine but never tiles — catch that here instead of
+# leaving a silently broken setup behind.
+# ─────────────────────────────────────────────────────────────
+if command -v paneru >/dev/null 2>&1; then
+	healthy=0
+	for i in $(seq 1 10); do
+		if paneru query state --json >/dev/null 2>&1; then
+			healthy=1
+			break
+		fi
+		sleep 1
+	done
+	if [ "$healthy" -eq 1 ]; then
+		ok "Paneru answers state queries (daemon healthy)"
+	else
+		warn "Paneru is not answering state queries — it is likely running WITHOUT Accessibility access (no tiling)."
+		echo "     Fix, in order:"
+		echo "       1. codesign --force --sign - --identifier com.github.karinushka.paneru \"\$(command -v paneru)\""
+		echo "       2. bash scripts/grant-permissions  (terminal needs Full Disk Access for this to work)"
+		echo "       3. Or grant manually: System Settings → Privacy & Security → Accessibility → enable 'paneru'"
+		echo "       4. paneru restart"
+	fi
+fi
+
 echo ""
 ok "Services enabled"
