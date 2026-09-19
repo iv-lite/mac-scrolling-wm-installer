@@ -20,14 +20,30 @@ fail() { echo "  ${RED}✗ $*${RESET}"; }
 # 3. manual instructions as last resort
 # ─────────────────────────────────────────────────────────────
 revoke_stale() {
-	local bin="$1"
+	local bin="$1" revoke_err before_list
 	if [ -z "$bin" ]; then return 0; fi
 	if [ ! -e "$bin" ]; then return 0; fi
 	if ! command -v tccutil-rs >/dev/null 2>&1; then return 0; fi
-	# Best-effort: a clean first install has nothing to revoke.
-	# sudo -n so this never prompts; failures are silent by design.
-	tccutil-rs revoke --user Accessibility "$bin" >/dev/null 2>&1 || true
-	sudo -n tccutil-rs revoke Accessibility "$bin" >/dev/null 2>&1 || true
+	# Best-effort and never fatal, but loud when there is evidence of a
+	# leftover: a clean target with no entry fails revokes by design, so
+	# only report when the entry was actually there. A revoke that fails
+	# usually means this terminal lacks Full Disk Access (fully quit +
+	# reopen the terminal after granting it). sudo -n so this never prompts.
+	before_list="$(tccutil-rs list --service Accessibility 2>&1 || true)"
+	if revoke_err="$(tccutil-rs revoke --user Accessibility "$bin" 2>&1)"; then
+		if printf '%s' "$before_list" | grep -qF "$bin"; then
+			note "Revoked stale Accessibility grant for $bin (user db)"
+		fi
+	elif printf '%s' "$before_list" | grep -qF "$bin"; then
+		warn "Could not revoke stale Accessibility grant for $bin (user db): $revoke_err"
+	fi
+	if revoke_err="$(sudo -n tccutil-rs revoke Accessibility "$bin" 2>&1)"; then
+		if printf '%s' "$before_list" | grep -qF "$bin"; then
+			note "Revoked stale Accessibility grant for $bin (system db)"
+		fi
+	elif printf '%s' "$before_list" | grep -qF "$bin"; then
+		warn "Could not revoke stale Accessibility grant for $bin (system db): $revoke_err"
+	fi
 }
 
 grant() {

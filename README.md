@@ -290,11 +290,17 @@ get a fresh ad-hoc identity each time, which macOS treats as a new app (see
 "Installing from Github" in the
 [fork README](https://github.com/iv-lite/paneru#installing-from-github)).
 The installer now pins the stable identifier
-(`com.github.karinushka.paneru`) onto the downloaded binary, re-grants
+(`com.github.karinushka.paneru`) onto the downloaded binary, revokes the
+stale grant **before** replacing the binary, re-grants
 before starting the service, and `enable-services` runs a self-repair on
 an unhealthy daemon (`scripts/repair-paneru`: re-sign → re-grant →
 restart → re-check, twice, then one manual-grant pause when interactive).
-If you still see no tiling, repair by hand:
+Revoking and granting both go through `tccutil-rs`, which can only touch
+the TCC database when the terminal running the installer has **Full Disk
+Access** (System Settings → Privacy & Security → Full Disk Access, then
+fully quit and reopen the terminal) — without it the old entry survives
+and the installer says so loudly instead of failing silently. If you still
+see no tiling, repair by hand:
 
 ```sh
 codesign --force --sign - --identifier com.github.karinushka.paneru "$(command -v paneru)"

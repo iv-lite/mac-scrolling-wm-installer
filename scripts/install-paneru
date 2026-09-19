@@ -97,12 +97,90 @@ fetch_paneru() {
 	# Revoke any stale Accessibility grant before overwriting the binary:
 	# replacing (or re-signing) it voids the old TCC entry, and this runs
 	# for every source — local build, release download, and the
-	# prefer-local fallback alike. Best-effort: a clean first install has
-	# nothing to revoke; sudo -n so this never prompts. grant-permissions
-	# (next step) re-applies a fresh grant before the service starts.
-	if [ -e "$bin" ] && command -v tccutil-rs >/dev/null 2>&1; then
-		tccutil-rs revoke --user Accessibility "$bin" >/dev/null 2>&1 || true
-		sudo -n tccutil-rs revoke Accessibility "$bin" >/dev/null 2>&1 || true
+	# prefer-local fallback alike. Best-effort and never fatal, but loud:
+	# leftovers and failures are reported instead of failing silently.
+	# grant-permissions (next step) re-applies a fresh grant before the
+	# service starts.
+	#
+	# NOTE: tccutil-rs can only read/write TCC.db when this terminal has
+	# Full Disk Access (fully quit + reopen the terminal after granting
+	# it). Without that the revoke fails and the stale entry survives —
+	# the checks below say so explicitly.
+	if command -v tccutil-rs >/dev/null 2>&1; then
+		# Candidate locations holding a stale grant: the resolved install
+		# target plus well-known alternates from previous installs.
+		revoke_targets=""
+		seen="|"
+		for candidate in "$bin" /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
+			[ -n "$candidate" ] && [ -e "$candidate" ] || continue
+			case "$seen" in
+				*"|$candidate|"*) continue ;;
+			esac
+			seen="$seen$candidate|"
+			revoke_targets="$revoke_targets$candidate
+"
+		done
+		if [ -z "$revoke_targets" ]; then
+			note "No existing Paneru binary — nothing to revoke (clean install)"
+		else
+			if before_list="$(tccutil-rs list --service Accessibility 2>&1)"; then
+				list_ok=1
+			else
+				list_ok=0
+				list_err="$before_list"
+			fi
+			while IFS= read -r target; do
+				[ -n "$target" ] || continue
+				if revoke_err="$(tccutil-rs revoke --user Accessibility "$target" 2>&1)"; then
+					if [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$target"; then
+						note "Revoked stale Accessibility grant for $target (user db)"
+					fi
+				elif [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$target"; then
+					# Only noisy when the entry was actually there: without
+					# Full Disk Access the DB is unreadable (covered by the
+					# unverifiable warning below), and a clean target fails
+					# revokes by design.
+					warn "Could not revoke Accessibility grant for $target (user db): $revoke_err"
+				fi
+				if revoke_err="$(sudo -n tccutil-rs revoke Accessibility "$target" 2>&1)"; then
+					if [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$target"; then
+						note "Revoked stale Accessibility grant for $target (system db)"
+					fi
+				elif [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$target"; then
+					# Only noisy when the entry was actually there: a clean
+					# target fails here by design (and sudo -n fails without
+					# passwordless sudo anyway).
+					warn "Could not revoke Accessibility grant for $target (system db): $revoke_err"
+				fi
+			done <<< "$revoke_targets"
+			# Restart tccd so the removal is picked up (System Settings UI
+			# included) before the new binary lands.
+			sudo -n launchctl stop com.apple.tccd >/dev/null 2>&1 || true
+			if [ "$list_ok" -eq 1 ]; then
+				after_list="$(tccutil-rs list --service Accessibility 2>&1 || true)"
+				while IFS= read -r target; do
+					[ -n "$target" ] || continue
+					if printf '%s' "$after_list" | grep -qF "$target"; then
+						warn "Stale Accessibility grant for $target is STILL present —"
+						warn "the new binary will run without tiling until re-granted."
+						echo "     This terminal needs Full Disk Access (System Settings →"
+						echo "     Privacy & Security → Full Disk Access), then fully quit"
+						echo "     and reopen the terminal and re-run ./install."
+					elif printf '%s' "$before_list" | grep -qF "$target"; then
+						ok "Stale Accessibility grant removed for $target"
+					else
+						note "No prior Accessibility grant for $target"
+					fi
+				done <<< "$revoke_targets"
+			else
+				warn "Cannot read the TCC database, so stale-grant removal is unverifiable: $list_err"
+				echo "     If an old Paneru entry survives in System Settings → Accessibility,"
+				echo "     grant this terminal Full Disk Access, fully quit and reopen it,"
+				echo "     then re-run ./install."
+			fi
+		fi
+	else
+		note "tccutil-rs not found — cannot revoke stale grants (grant-permissions handles it later)"
 	fi
 	cp "$staged" "$bin"
 	chmod +x "$bin"
