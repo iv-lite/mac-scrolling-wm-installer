@@ -20,30 +20,44 @@ fail() { echo "  ${RED}✗ $*${RESET}"; }
 # 3. manual instructions as last resort
 # ─────────────────────────────────────────────────────────────
 revoke_stale() {
-	local bin="$1" revoke_err before_list
+	local bin="$1" revoke_err before_list client
 	if [ -z "$bin" ]; then return 0; fi
 	if [ ! -e "$bin" ]; then return 0; fi
 	if ! command -v tccutil-rs >/dev/null 2>&1; then return 0; fi
 	# Best-effort and never fatal, but loud when there is evidence of a
-	# leftover: a clean target with no entry fails revokes by design, so
+	# leftover: a clean client with no entry fails revokes by design, so
 	# only report when the entry was actually there. A revoke that fails
 	# usually means this terminal lacks Full Disk Access (fully quit +
-	# reopen the terminal after granting it). sudo -n so this never prompts.
+	# reopen the terminal after granting it). Clients cover both TCC key
+	# forms: the binary path and the signing identifier.
 	before_list="$(tccutil-rs list --service Accessibility 2>&1 || true)"
-	if revoke_err="$(tccutil-rs revoke --user Accessibility "$bin" 2>&1)"; then
-		if printf '%s' "$before_list" | grep -qF "$bin"; then
-			note "Revoked stale Accessibility grant for $bin (user db)"
+	for client in "$bin" "com.github.karinushka.paneru"; do
+		if revoke_err="$(tccutil-rs revoke --user Accessibility "$client" 2>&1)"; then
+			if printf '%s' "$before_list" | grep -qF "$client"; then
+				note "Revoked stale Accessibility grant for $client (user db)"
+			fi
+		elif printf '%s' "$before_list" | grep -qF "$client"; then
+			warn "Could not revoke stale Accessibility grant for $client (user db): $revoke_err"
 		fi
-	elif printf '%s' "$before_list" | grep -qF "$bin"; then
-		warn "Could not revoke stale Accessibility grant for $bin (user db): $revoke_err"
-	fi
-	if revoke_err="$(sudo -n tccutil-rs revoke Accessibility "$bin" 2>&1)"; then
-		if printf '%s' "$before_list" | grep -qF "$bin"; then
-			note "Revoked stale Accessibility grant for $bin (system db)"
+		if revoke_err="$(sudo -n tccutil-rs revoke Accessibility "$client" 2>&1)"; then
+			if printf '%s' "$before_list" | grep -qF "$client"; then
+				note "Revoked stale Accessibility grant for $client (system db)"
+			fi
+		elif printf '%s' "$before_list" | grep -qF "$client"; then
+			warn "Could not revoke stale Accessibility grant for $client (system db): $revoke_err"
+			# The non-interactive attempt fails without passwordless sudo —
+			# on a TTY offer one interactive retry so a system-db leftover
+			# still has a programmatic path (skipped in CI/VM runs).
+			if [ -t 0 ]; then
+				note "Retrying the system-db revoke with an interactive sudo prompt..."
+				if revoke_err="$(sudo tccutil-rs revoke Accessibility "$client" 2>&1)"; then
+					note "Revoked stale Accessibility grant for $client (system db)"
+				else
+					warn "Interactive sudo revoke failed too: $revoke_err"
+				fi
+			fi
 		fi
-	elif printf '%s' "$before_list" | grep -qF "$bin"; then
-		warn "Could not revoke stale Accessibility grant for $bin (system db): $revoke_err"
-	fi
+	done
 }
 
 grant() {

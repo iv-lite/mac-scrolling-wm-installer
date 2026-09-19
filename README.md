@@ -299,8 +299,10 @@ Revoking and granting both go through `tccutil-rs`, which can only touch
 the TCC database when the terminal running the installer has **Full Disk
 Access** (System Settings → Privacy & Security → Full Disk Access, then
 fully quit and reopen the terminal) — without it the old entry survives
-and the installer says so loudly instead of failing silently. If you still
-see no tiling, repair by hand:
+and the installer says so loudly instead of failing silently. The only
+removal route without Full Disk Access is manual: System Settings →
+Privacy & Security → Accessibility → select the `paneru` entry → `–`.
+If you still see no tiling, repair by hand:
 
 ```sh
 codesign --force --sign - --identifier com.github.karinushka.paneru "$(command -v paneru)"

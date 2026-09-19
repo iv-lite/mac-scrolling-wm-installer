@@ -106,6 +106,11 @@ fetch_paneru() {
 	# Full Disk Access (fully quit + reopen the terminal after granting
 	# it). Without that the revoke fails and the stale entry survives —
 	# the checks below say so explicitly.
+	#
+	# Clients are revoked by binary path AND by signing identifier: TCC.db
+	# rows may be keyed either way (tccutil-rs accepts both), so revoking
+	# only one form can leave the stale entry behind.
+	PANERU_BUNDLE_ID="com.github.karinushka.paneru"
 	if command -v tccutil-rs >/dev/null 2>&1; then
 		# Candidate locations holding a stale grant: the resolved install
 		# target plus well-known alternates from previous installs.
@@ -120,6 +125,10 @@ fetch_paneru() {
 			revoke_targets="$revoke_targets$candidate
 "
 		done
+		# Revoke by path and by identifier; the identifier needs no
+		# existence check (it may outlive any particular binary copy).
+		revoke_clients="$revoke_targets$PANERU_BUNDLE_ID
+"
 		if [ -z "$revoke_targets" ]; then
 			note "No existing Paneru binary — nothing to revoke (clean install)"
 		else
@@ -129,54 +138,62 @@ fetch_paneru() {
 				list_ok=0
 				list_err="$before_list"
 			fi
-			while IFS= read -r target; do
-				[ -n "$target" ] || continue
-				if revoke_err="$(tccutil-rs revoke --user Accessibility "$target" 2>&1)"; then
-					if [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$target"; then
-						note "Revoked stale Accessibility grant for $target (user db)"
+			while IFS= read -r client; do
+				[ -n "$client" ] || continue
+				if revoke_err="$(tccutil-rs revoke --user Accessibility "$client" 2>&1)"; then
+					if [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$client"; then
+						note "Revoked stale Accessibility grant for $client (user db)"
 					fi
-				elif [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$target"; then
+				elif [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$client"; then
 					# Only noisy when the entry was actually there: without
 					# Full Disk Access the DB is unreadable (covered by the
-					# unverifiable warning below), and a clean target fails
+					# unverifiable warning below), and a clean client fails
 					# revokes by design.
-					warn "Could not revoke Accessibility grant for $target (user db): $revoke_err"
+					warn "Could not revoke Accessibility grant for $client (user db): $revoke_err"
 				fi
-				if revoke_err="$(sudo -n tccutil-rs revoke Accessibility "$target" 2>&1)"; then
-					if [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$target"; then
-						note "Revoked stale Accessibility grant for $target (system db)"
+				if revoke_err="$(sudo -n tccutil-rs revoke Accessibility "$client" 2>&1)"; then
+					if [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$client"; then
+						note "Revoked stale Accessibility grant for $client (system db)"
 					fi
-				elif [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$target"; then
+				elif [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$client"; then
 					# Only noisy when the entry was actually there: a clean
-					# target fails here by design (and sudo -n fails without
+					# client fails here by design (and sudo -n fails without
 					# passwordless sudo anyway).
-					warn "Could not revoke Accessibility grant for $target (system db): $revoke_err"
+					warn "Could not revoke Accessibility grant for $client (system db): $revoke_err"
 				fi
-			done <<< "$revoke_targets"
+			done <<< "$revoke_clients"
 			# Restart tccd so the removal is picked up (System Settings UI
 			# included) before the new binary lands.
 			sudo -n launchctl stop com.apple.tccd >/dev/null 2>&1 || true
 			if [ "$list_ok" -eq 1 ]; then
 				after_list="$(tccutil-rs list --service Accessibility 2>&1 || true)"
-				while IFS= read -r target; do
-					[ -n "$target" ] || continue
-					if printf '%s' "$after_list" | grep -qF "$target"; then
-						warn "Stale Accessibility grant for $target is STILL present —"
-						warn "the new binary will run without tiling until re-granted."
-						echo "     This terminal needs Full Disk Access (System Settings →"
-						echo "     Privacy & Security → Full Disk Access), then fully quit"
-						echo "     and reopen the terminal and re-run ./install."
-					elif printf '%s' "$before_list" | grep -qF "$target"; then
-						ok "Stale Accessibility grant removed for $target"
-					else
-						note "No prior Accessibility grant for $target"
-					fi
-				done <<< "$revoke_targets"
+				# Any surviving Paneru row — path-keyed, identifier-keyed, or
+				# otherwise — means the stale grant is still alive, no matter
+				# which client form individual revokes reported on.
+				leftovers="$(printf '%s' "$after_list" | grep -i paneru || true)"
+				if [ -n "$leftovers" ]; then
+					warn "Stale Paneru Accessibility grant is STILL present:"
+					printf '%s\n' "$leftovers" | while IFS= read -r row; do
+						echo "       $row"
+					done
+					warn "the new binary will run without tiling until re-granted."
+					echo "     Either grant this terminal Full Disk Access (System Settings →"
+					echo "     Privacy & Security → Full Disk Access), then fully quit and"
+					echo "     reopen the terminal and re-run ./install — or delete the old"
+					echo "     entry by hand (System Settings → Privacy & Security →"
+					echo "     Accessibility → select 'paneru' → '–'), then re-run."
+				elif printf '%s' "$before_list" | grep -qi paneru; then
+					ok "Stale Paneru Accessibility grant removed"
+				else
+					note "No prior Paneru Accessibility grant"
+				fi
 			else
 				warn "Cannot read the TCC database, so stale-grant removal is unverifiable: $list_err"
 				echo "     If an old Paneru entry survives in System Settings → Accessibility,"
 				echo "     grant this terminal Full Disk Access, fully quit and reopen it,"
-				echo "     then re-run ./install."
+				echo "     then re-run ./install — or delete the old entry by hand"
+				echo "     (System Settings → Privacy & Security → Accessibility →"
+				echo "     select 'paneru' → '–'), then re-run."
 			fi
 		fi
 	else
