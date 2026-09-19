@@ -93,7 +93,7 @@ cmd_check() {
   guest "ls -d /Applications/Aegis.app 2>&1 || echo '(not installed — correct)'"
   echo ""
   echo "── Paneru config options (should set defaults) ──"
-  guest "grep -q 'default_ratio *= *1\\.0' ~/.config/paneru/init.lua && grep -q 'center_single_column *= *true' ~/.config/paneru/init.lua && echo '(default_ratio + center_single_column set)' || echo '(MISSING new options)'"
+  guest "grep -q 'default_ratio *= *1\\.0' ~/.config/paneru/init.lua && grep -q 'center_single_column *= *true' ~/.config/paneru/init.lua && grep -q 'left_drag_scrolls_strip *= *true' ~/.config/paneru/init.lua && grep -q 'border *= *{ *enabled *= *true, *color *= *\"#2b303c66\"' ~/.config/paneru/init.lua && echo '(default_ratio + center_single_column + left_drag_scrolls_strip + inactive border set)' || echo '(MISSING new options)'"
   echo ""
   echo "── Ghostty frameless config (should be present) ──"
   guest "grep -q 'macos-titlebar-style = hidden' ~/.config/ghostty/config && echo '(configured)' || echo '(missing)'"

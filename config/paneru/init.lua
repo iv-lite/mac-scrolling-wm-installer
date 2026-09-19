@@ -149,7 +149,15 @@ paneru.setup {
     menu = {
       indicator = { style = "paged", format = "default", font_size = 13.0 },
     },
-    inactive = { dim = { opacity = 0.0, opacity_night = 0.0 } },
+    inactive = {
+      dim = { opacity = 0.0, opacity_night = 0.0 },
+      -- Subtle inactive borders in the active hue at low hex alpha.
+      -- Width/radius/opacity are shared with active.border below, so the
+      -- effective alpha is 0.84 × 0x66 (≈ 0.34). Needs a post-cedc426 fork
+      -- build (currently uncommitted upstream — --prefer-local-builds picks
+      -- it up as-is); older binaries silently ignore this table.
+      border = { enabled = true, color = "#2b303c66" },
+    },
     active = {
       border = {
         enabled = true,

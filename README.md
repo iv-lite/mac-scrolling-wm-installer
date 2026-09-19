@@ -247,7 +247,9 @@ moves. Two things make it feel native:
   leaving native fullscreen. A brief status popup still announces the active
   workspace on switch; re-enable the indicator once a Paneru release ships #390.
 - **Focus cues**: an active-window border (`decorations.active.border`, Nord
-  blue) replaces JankyBorders — no extra bar process needed. Inactive-window
+  blue) replaces JankyBorders — no extra bar process needed. Inactive windows
+  get a faint border in the same hue (`decorations.inactive.border`, hex alpha
+  over the shared geometry). Inactive-window
   dimming uses native macOS (`decorations.inactive.dim`).
 - **Top gap:** `padding.top` defaults to 15px in the config.
 

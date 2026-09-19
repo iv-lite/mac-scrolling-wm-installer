@@ -244,12 +244,15 @@ fi
 # window/mouse previousdisplay commands. The Cmd+Alt cross-display drag
 # (mouse_drag_display_modifier) needs fork ≥ v0.2.2.
 # The shipped config also sets options.default_ratio,
-# options.center_single_column (need a fork build containing d8b5677) and
+# options.center_single_column (need a fork build containing d8b5677),
 # options.left_drag_scrolls_strip (needs 43940a2, titlebar-only since
-# cedc426) — all still unreleased with no tag yet; --prefer-local-builds
-# from a current sibling checkout has them. Older binaries silently ignore
-# unknown keys: new windows keep their OS size, a lone column left-pins,
-# and plain drags pin to their slot.
+# cedc426) and decorations.inactive.border (needs the post-cedc426
+# inactive-borders work, currently uncommitted upstream) — all still
+# unreleased with no tag yet; --prefer-local-builds from a current sibling
+# checkout has them (including uncommitted changes, which it builds as-is).
+# Older binaries silently ignore unknown keys/tables: new windows keep their
+# OS size, a lone column left-pins, plain drags pin to their slot, and only
+# the active border is drawn.
 # ─────────────────────────────────────────────────────────────
 version="$(paneru --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 case "${version:-0.0.0}" in
