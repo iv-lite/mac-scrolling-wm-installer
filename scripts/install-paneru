@@ -94,6 +94,16 @@ fetch_paneru() {
 		bin="/opt/homebrew/bin/paneru"
 	fi
 	mkdir -p "$(dirname "$bin")"
+	# Revoke any stale Accessibility grant before overwriting the binary:
+	# replacing (or re-signing) it voids the old TCC entry, and this runs
+	# for every source — local build, release download, and the
+	# prefer-local fallback alike. Best-effort: a clean first install has
+	# nothing to revoke; sudo -n so this never prompts. grant-permissions
+	# (next step) re-applies a fresh grant before the service starts.
+	if [ -e "$bin" ] && command -v tccutil-rs >/dev/null 2>&1; then
+		tccutil-rs revoke --user Accessibility "$bin" >/dev/null 2>&1 || true
+		sudo -n tccutil-rs revoke Accessibility "$bin" >/dev/null 2>&1 || true
+	fi
 	cp "$staged" "$bin"
 	chmod +x "$bin"
 	rm -rf "$tmp"
@@ -122,7 +132,7 @@ fetch_paneru() {
 	else
 		note "codesign not found (not macOS?) — skipping identifier pinning"
 	fi
-	note "Replacing the binary voids the previous Accessibility grant;"
+	note "Replacing the binary voids the previous Accessibility grant (revoked above);"
 	note "grant-permissions (next) re-applies it before the service starts."
 	return 0
 }
