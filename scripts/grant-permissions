@@ -14,10 +14,22 @@ fail() { echo "  ${RED}✗ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
 # Grant Accessibility to CLI binaries (invisible in System Settings)
+# 0. revoke any stale grant (binary replacement voids the old entry)
 # 1. user DB via tccutil-rs (no sudo, no SIP disable)
 # 2. system DB with sudo as fallback
 # 3. manual instructions as last resort
 # ─────────────────────────────────────────────────────────────
+revoke_stale() {
+	local bin="$1"
+	if [ -z "$bin" ]; then return 0; fi
+	if [ ! -e "$bin" ]; then return 0; fi
+	if ! command -v tccutil-rs >/dev/null 2>&1; then return 0; fi
+	# Best-effort: a clean first install has nothing to revoke.
+	# sudo -n so this never prompts; failures are silent by design.
+	tccutil-rs revoke --user Accessibility "$bin" >/dev/null 2>&1 || true
+	sudo -n tccutil-rs revoke Accessibility "$bin" >/dev/null 2>&1 || true
+}
+
 grant() {
 	local bin="$1"
 	if [ -z "$bin" ]; then return 0; fi
@@ -25,6 +37,7 @@ grant() {
 		warn "$bin not found — skipping"
 		return 0
 	fi
+	revoke_stale "$bin"
 	if command -v tccutil-rs >/dev/null 2>&1; then
 		if tccutil-rs grant --user Accessibility "$bin" >/dev/null 2>&1; then
 			ok "Accessibility granted to $bin (user db)"

@@ -55,7 +55,7 @@ The installer runs these steps from `scripts/`:
 | `install-paneru` | Install Paneru from the `iv-lite/paneru` GitHub releases (newest in list; `PANERU_TAG` pins) + write `~/.config/paneru/init.lua` + install its launchd service |
 | `repair-paneru` | Self-repair an unhealthy daemon: re-sign → re-grant → restart → re-check (run by `enable-services`, or by hand) |
 | `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build) |
-| `grant-permissions` | Grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
+| `grant-permissions` | Revoke stale grant, then grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
 | `enable-services` | Start Paneru |
 
 ### After install
