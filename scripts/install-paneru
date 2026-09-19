@@ -226,11 +226,13 @@ fi
 # event-tap watchdog (karinushka/paneru#350) is present, plus native
 # window/mouse previousdisplay commands. The Cmd+Alt cross-display drag
 # (mouse_drag_display_modifier) needs fork ≥ v0.2.2.
-# The shipped config also sets options.default_ratio and
-# options.center_single_column, which need a fork build containing d8b5677
-# (unreleased — no tag yet; --prefer-local-builds from a current sibling
-# checkout has it). Older binaries silently ignore those two keys:
-# new windows keep their OS size and a lone column left-pins.
+# The shipped config also sets options.default_ratio,
+# options.center_single_column (need a fork build containing d8b5677) and
+# options.left_drag_scrolls_strip (needs 43940a2, titlebar-only since
+# cedc426) — all still unreleased with no tag yet; --prefer-local-builds
+# from a current sibling checkout has them. Older binaries silently ignore
+# unknown keys: new windows keep their OS size, a lone column left-pins,
+# and plain drags pin to their slot.
 # ─────────────────────────────────────────────────────────────
 version="$(paneru --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 case "${version:-0.0.0}" in

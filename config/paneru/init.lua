@@ -71,9 +71,18 @@ paneru.setup {
     -- Hold Cmd+Alt while left-clicking a tiled window to arm the drag;
     -- crossing a display boundary moves it to that display's strip live
     -- (focus follows), landing in the nearest column (see
-    -- insert_windows_mid_strip below). Without the shortcut, tiled windows
-    -- pin to their slot and cannot be mouse-moved. Shipped in fork ≥ v0.2.2.
+    -- insert_windows_mid_strip below). Without the shortcut, a titlebar
+    -- left-drag scrolls the strip (see left_drag_scrolls_strip below) —
+    -- content grabs stay native. Shipped in fork ≥ v0.2.2.
     mouse_drag_display_modifier = "cmd + alt",
+    -- On: dragging a tiled window by its titlebar (resize margins excluded)
+    -- scrolls the workspace strip through the shared swipe pipeline instead
+    -- of moving anything; grabs inside the window content stay fully native.
+    -- Armed (Cmd+Alt) drags still move and transfer as before. Set to false
+    -- to get native titlebar drags back. Needs a fork build containing
+    -- 43940a2 (titlebar-only since cedc426); older binaries silently ignore
+    -- it and plain drags pin to their slot.
+    left_drag_scrolls_strip = true,
     -- Horizontally stacked (side-by-side) monitors: arrange displays
     -- vertically in macOS, set this to -1 so edge crossings feel left/right.
     horizontal_mouse_warp = -1,
