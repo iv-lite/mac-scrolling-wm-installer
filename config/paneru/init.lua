@@ -88,11 +88,14 @@ paneru.setup {
     horizontal_mouse_warp = -1,
     horizontal_mouse_warp_offset = 0,
     preset_column_widths = { 0.3, 0.5, 1.0 },
-    animation_speed = 12.0,
-    -- Lazy expose: at 0.0 any hidden fraction forces the window into view on
-    -- focus change, which can re-fire mid-arrival as strips reflow (extra
-    -- corrective scrolls on top of the animated flight). 1.0 only exposes
-    -- fully-hidden windows; arrival rests looser but quieter.
+    animation_speed = 20.0,
+    -- Lazy expose for unfocused windows: at 0.0 any hidden fraction forces
+    -- a window into view on focus change, which can re-fire mid-arrival as
+    -- strips reflow (extra corrective scrolls on top of the animated
+    -- flight). 1.0 only exposes fully-hidden windows; arrival rests looser
+    -- but quieter. The focused window itself is always brought fully into
+    -- view regardless (upstream visible-focus guarantee) — this ratio
+    -- governs unfocused windows only.
     window_hidden_ratio = 1.0,
     -- Off: no auto-centering scroll on focus changes. Display moves then
     -- play as the daemon's single native motion instead of arrival scroll
