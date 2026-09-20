@@ -94,7 +94,8 @@ paneru.setup {
     -- strips reflow (extra corrective scrolls on top of the animated
     -- flight). 1.0 only exposes fully-hidden windows; arrival rests looser
     -- but quieter. The focused window itself is always brought fully into
-    -- view regardless (upstream visible-focus guarantee) — this ratio
+    -- view regardless (upstream visible-focus guarantee, deferred until the
+    -- strip is at rest so it never fights an in-flight motion) — this ratio
     -- governs unfocused windows only.
     window_hidden_ratio = 1.0,
     -- Off: no auto-centering scroll on focus changes. Display moves then
