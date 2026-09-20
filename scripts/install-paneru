@@ -29,9 +29,18 @@ else
 	PANERU_LABEL="$PANERU_REPO (newest release in list)"
 fi
 
+PANERU_BUNDLE_ID="com.github.karinushka.paneru"
+# Handoff to grant-permissions (next step): created below when the staged
+# binary is byte-identical to the installed one, meaning no identity change
+# voided anything. grant-permissions then preserves a verified grant instead
+# of pointlessly revoking + re-granting it.
+UNCHANGED_SENTINEL="${TMPDIR:-/tmp}/paneru-install-unchanged"
+
 fetch_paneru() {
 	local tar_url tmp staged bin
 	tmp="$(mktemp -d)"
+	# A killed run must not leave a stale skip marker behind.
+	rm -f "$UNCHANGED_SENTINEL"
 	# --prefer-local-builds: build the sibling checkout instead of
 	# downloading a release. Builds in place (keeps target/ cache, tests
 	# dirty WIP as-is). Failures abort — no release fallback.
@@ -94,6 +103,18 @@ fetch_paneru() {
 		bin="/opt/homebrew/bin/paneru"
 	fi
 	mkdir -p "$(dirname "$bin")"
+	# Byte-identical staged binary: same bytes ⇒ same ad-hoc identity ⇒ any
+	# live grant stays live. Skip the overwrite, the re-sign and the whole
+	# revoke block below, and leave a marker so grant-permissions (next step)
+	# preserves a verified grant instead of pointlessly revoking + re-granting
+	# it. Config copy + launchd steps further down still run (they live
+	# outside fetch_paneru).
+	if [ -e "$bin" ] && cmp -s "$staged" "$bin"; then
+		rm -rf "$tmp"
+		ok "Paneru binary unchanged — keeping the existing Accessibility grant"
+		touch "$UNCHANGED_SENTINEL"
+		return 0
+	fi
 	# Revoke any stale Accessibility grant before overwriting the binary:
 	# replacing (or re-signing) it voids the old TCC entry, and this runs
 	# for every source — local build, release download, and the
@@ -110,7 +131,6 @@ fetch_paneru() {
 	# Clients are revoked by binary path AND by signing identifier: TCC.db
 	# rows may be keyed either way (tccutil-rs accepts both), so revoking
 	# only one form can leave the stale entry behind.
-	PANERU_BUNDLE_ID="com.github.karinushka.paneru"
 	if command -v tccutil-rs >/dev/null 2>&1; then
 		# Candidate locations holding a stale grant: the resolved install
 		# target plus well-known alternates from previous installs.

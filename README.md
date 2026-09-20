@@ -23,7 +23,10 @@ Re-running `./install` **upgrades** an existing setup: Homebrew components
 (Ghostty, tccutil-rs) are updated (no-op when current), Paneru is refreshed
 from its GitHub releases, configs are refreshed from this repo (previous
 copies kept as `*.bak`), and the service is restarted so the new
-binary/config apply immediately.
+binary/config apply immediately. When the staged Paneru binary is
+byte-identical to the installed one, the binary (and its Accessibility
+grant) is left untouched — only a real binary change triggers the
+revoke + re-grant cycle.
 
 ### Local development (`--prefer-local-builds`)
 

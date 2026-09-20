@@ -60,11 +60,52 @@ revoke_stale() {
 	done
 }
 
+# Handoff marker left by install-paneru when the staged binary turned out
+# byte-identical to the installed one (same path expression as there).
+UNCHANGED_SENTINEL="${UNCHANGED_SENTINEL:-${TMPDIR:-/tmp}/paneru-install-unchanged}"
+
+# Quiet check: 0 when $1 is listed for Accessibility in either DB.
+# Unreadable DB ⇒ 1, so callers fall back to the full loud flow.
+grant_listed() {
+	local bin="$1"
+	command -v tccutil-rs >/dev/null 2>&1 || return 1
+	tccutil-rs list --user --service Accessibility 2>/dev/null | grep -qF "$bin" && return 0
+	tccutil-rs list --service Accessibility 2>/dev/null | grep -qF "$bin" && return 0
+	return 1
+}
+
 grant() {
 	local bin="$1"
 	if [ -z "$bin" ]; then return 0; fi
 	if [ ! -e "$bin" ]; then
 		warn "$bin not found — skipping"
+		return 0
+	fi
+	# Unchanged-binary fast path: identical bytes mean the code identity is
+	# untouched, so a verified grant is still live — preserve it with zero
+	# TCC writes. No grant found ⇒ grant without a prior revoke (nothing
+	# stale can exist for an unchanged binary). Marker absent ⇒ the full
+	# revoke+grant flow below. Always consumed here so it can never linger.
+	if [ -e "$UNCHANGED_SENTINEL" ]; then
+		rm -f "$UNCHANGED_SENTINEL"
+		if grant_listed "$bin"; then
+			note "Paneru binary unchanged and grant verified — nothing to do"
+			return 0
+		fi
+		note "Paneru binary unchanged but no grant found — granting without revoke"
+		if command -v tccutil-rs >/dev/null 2>&1; then
+			if tccutil-rs grant --user Accessibility "$bin" >/dev/null 2>&1; then
+				ok "Accessibility granted to $bin (user db)"
+				return 0
+			fi
+			sudo -n tccutil-rs grant Accessibility "$bin" >/dev/null 2>&1 && {
+				ok "Accessibility granted to $bin (system db via sudo)"
+				return 0
+			}
+		fi
+		fail "Could not grant Accessibility to $bin automatically."
+		echo "     Grant manually: System Settings → Privacy & Security →"
+		echo "     Accessibility → '+' → add '$bin'"
 		return 0
 	fi
 	revoke_stale "$bin"
