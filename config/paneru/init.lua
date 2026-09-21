@@ -75,24 +75,27 @@ paneru.setup {
     -- left-drag scrolls the strip (see left_drag_scrolls_strip below) —
     -- content grabs stay native. Shipped in fork ≥ v0.2.2.
     mouse_drag_display_modifier = "cmd + alt",
-    -- On: dragging a tiled window by its titlebar (resize margins excluded)
-    -- scrolls the workspace strip through the shared swipe pipeline instead
-    -- of moving anything; grabs inside the window content stay fully native.
-    -- Only horizontal pointer motion drives anything — vertical travel is
-    -- dropped so a shaky drag can't pull columns off their slots.
+    -- On: dragging a tiled window by its titlebar (top 28px, resize margins
+    -- excluded) scrolls the workspace strip through the shared swipe pipeline
+    -- instead of moving anything; content, toolbar and tab grabs stay fully
+    -- native. Only horizontal pointer motion drives anything — vertical
+    -- travel is dropped so a shaky drag can't pull columns off their slots.
     -- Armed (Cmd+Alt) drags still move and transfer as before. Set to false
     -- to get native titlebar drags back. Needs a fork build containing
-    -- 43940a2 (titlebar-only since cedc426, horizontal-only since the
-    -- drag-friction WIP); older binaries silently ignore
+    -- 43940a2 (titlebar-only since cedc426, horizontal-only since 4f2b95c,
+    -- top-28px since 57519b7); older binaries silently ignore
     -- it and plain drags pin to their slot.
     left_drag_scrolls_strip = true,
-    -- Sustained left-drag friction: the further the strip (or armed column)
-    -- has travelled from the grab anchor, the less each new pixel counts
-    -- (exp falloff over drag_friction_distance_tau_px), and a strip held
-    -- still with the button down is released to the inertia/snap pipeline
-    -- on its own after drag_friction_idle_settle_ms. Disable for exact 1:1
-    -- pointer tracking. Needs a fork build containing the drag-friction
-    -- WIP; older binaries silently ignore these keys.
+    -- Left-drag friction: the faster the recent motion, the less each new
+    -- pixel counts (exp falloff over recent travel scaled by
+    -- drag_friction_distance_tau_px, decaying with a 300ms time constant),
+    -- and a strip held still with the button down is released to the
+    -- inertia/snap pipeline on its own after drag_friction_idle_settle_ms.
+    -- Slow motion always tracks 1:1 and a pause washes the debt away, so
+    -- friction shapes stripes and windows, never the pointer. Disable for
+    -- exact 1:1 pointer tracking. Needs a fork build containing 4f2b95c
+    -- (velocity model since 57519b7); older binaries silently ignore these
+    -- keys.
     drag_friction_enabled = true,
     drag_friction_distance_tau_px = 1200.0,
     drag_friction_idle_settle_ms = 400,
@@ -106,16 +109,20 @@ paneru.setup {
     -- AX writer thread (default-on upstream since d1fb7dd): AX position
     -- commits go to a dedicated thread with per-window coalescing instead of
     -- blocking the main thread per animation frame. The queue is bounded
-    -- (1024) with drop-superseded backpressure plus same-target dedup, and a
-    -- supervisor restarts a dead worker instead of silently degrading.
+    -- (1024) with drop-superseded backpressure plus same-target dedup, and
+    -- the frame orchestrator (4f2b95c, pacing in 3fdc4f3) supervises the
+    -- worker instead of silently degrading.
     -- Apps needing the enhanced-UI workaround always stay synchronous; set
     -- to false if testing shows regressions on your app mix. Older binaries
     -- silently ignore it.
     ax_writer = true,
     -- Paces the pump to the display's retrace via a per-screen display link
-    -- instead of fixed sleeps. Needs macOS 14+ and falls back to the sleep
-    -- ladder when unbound (needs a post-d1fb7dd fork build; older binaries
-    -- silently ignore unknown keys).
+    -- instead of fixed sleeps. Default-on upstream since 3fdc4f3 (pinned
+    -- explicitly here so a future default flip can't silently change
+    -- behaviour); needs macOS 14+ and falls back to the sleep ladder when
+    -- unbound. While a drag or swipe is in flight the pump always runs at
+    -- the 8ms cadence regardless of this flag. Older binaries silently
+    -- ignore unknown keys.
     experimental_vsync = true,
     -- Lazy expose for unfocused windows: at 0.0 any hidden fraction forces
     -- a window into view on focus change, which can re-fire mid-arrival as

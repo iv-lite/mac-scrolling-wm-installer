@@ -273,18 +273,19 @@ fi
 # The shipped config also sets options.default_ratio,
 # options.center_single_column (need a fork build containing d8b5677),
 # options.left_drag_scrolls_strip (needs 43940a2, titlebar-only since
-# cedc426, horizontal-only since the drag-friction WIP),
+# cedc426, horizontal-only since 4f2b95c, top-28px grab zone since 57519b7),
 # decorations.inactive.border (needs 806e2a1) and options.ax_writer
 # (default-on since d1fb7dd; the experimental_ax_writer spelling still works
 # as a deprecated alias; the queue is bounded with same-target dedup plus
-# thread supervision since the orchestrator WIP). options.experimental_vsync
-# is enabled (needs d1fb7dd, macOS 14+). options.drag_friction_* (needs the
-# drag-friction WIP) and restore.missing_windows = "drop" (needs 42add2b;
-# older binaries reject the unknown value, unlike unknown keys) are also
-# set. 416e418 (same-tick drags, most-visible reveal) and 8bda31b (pump
-# focus, overlay gate, chase-ahead borders) need no config. All still
-# unreleased with no tag yet; --prefer-local-builds from a current sibling
-# checkout has them.
+# orchestrator supervision since 4f2b95c, pacing since 3fdc4f3).
+# options.experimental_vsync is enabled (default-on upstream since 3fdc4f3,
+# pinned explicitly; needs macOS 14+). options.drag_friction_* (needs
+# 4f2b95c, velocity model since 57519b7) and restore.missing_windows =
+# "drop" (needs 42add2b; older binaries reject the unknown value, unlike
+# unknown keys) are also set. 416e418 (same-tick drags, most-visible reveal)
+# and 8bda31b (pump focus, overlay gate, chase-ahead borders) need no config.
+# All still unreleased with no tag yet; --prefer-local-builds from a current
+# sibling checkout has them.
 # Older binaries silently ignore unknown keys/tables: new windows keep their
 # OS size, a lone column left-pins, plain drags pin to their slot, only the
 # active border is drawn, AX commits stay on the main thread, and drags track
