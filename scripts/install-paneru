@@ -43,13 +43,88 @@ fetch_paneru() {
 	rm -f "$UNCHANGED_SENTINEL"
 	# --prefer-local-builds: build the sibling checkout instead of
 	# downloading a release. Builds in place (keeps target/ cache, tests
-	# dirty WIP as-is). Failures abort — no release fallback.
+	# dirty WIP as-is unless PANERU_VERIFY=1 / --verify). Failures abort —
+	# no release fallback.
+	# Plain `cargo build --release --bin paneru` is the upstream-suggested
+	# command: default features (lua + vendored LuaJIT) need no system Lua
+	# or pkg-config, and .cargo/config.toml routes the link through the
+	# repo's rustc wrapper (assets/rustc-sign.sh), which ad-hoc-signs the
+	# final binary with the stable identifier at compile time. An exported
+	# RUSTC_WRAPPER (e.g. sccache, as in CI) overrides that wrapper — the
+	# install-time re-pin below covers that case.
 	if [ -n "${PREFER_LOCAL_BUILDS:-}" ] && [ -f "$REPO_ROOT/../paneru/Cargo.toml" ]; then
 		note "Building Paneru from sibling checkout ($REPO_ROOT/../paneru)..."
+		# Command-line-tools SDKs: paneru's build.rs hard-requires them.
+		if ! xcode-select -p >/dev/null 2>&1; then
+			rm -rf "$tmp"
+			echo "  Xcode command-line tools not found — the Paneru build needs their SDKs." >&2
+			echo "  Run 'xcode-select --install', then re-run ./install." >&2
+			return 1
+		fi
+		# Toolchain: paneru pins the minor release in rust-toolchain.toml
+		# (every stable bump invalidates the whole target cache), honored
+		# via rustup. A bare Homebrew cargo ignores the pin and drifts with
+		# brew upgrades, so provision rustup when cargo is missing and put
+		# its shims first so the pin applies even next to a brewed cargo.
 		if ! command -v cargo >/dev/null 2>&1; then
-			note "Installing Rust toolchain via Homebrew..."
-			brew install rust
-			ok "Rust installed"
+			if ! command -v rustup >/dev/null 2>&1; then
+				note "Installing Rust via rustup (honors ../paneru/rust-toolchain.toml)..."
+				if ! command -v brew >/dev/null 2>&1; then
+					rm -rf "$tmp"
+					echo "  Neither cargo/rustup nor Homebrew found — install rustup from https://rustup.rs, then re-run." >&2
+					return 1
+				fi
+				brew install rustup-init
+				rustup-init -y --no-modify-path
+				ok "rustup installed"
+			fi
+			# shellcheck disable=SC1091
+			. "$HOME/.cargo/env" 2>/dev/null || true
+		fi
+		if command -v rustup >/dev/null 2>&1; then
+			if [ -d "$HOME/.cargo/bin" ]; then
+				export PATH="$HOME/.cargo/bin:$PATH"
+			fi
+			if ! (cd "$REPO_ROOT/../paneru" && rustup toolchain install); then
+				rm -rf "$tmp"
+				echo "  Pinned Rust toolchain install failed — aborting." >&2
+				return 1
+			fi
+		else
+			pin="$(grep -E '^channel' "$REPO_ROOT/../paneru/rust-toolchain.toml" | grep -oE '[0-9]+\.[0-9]+' | head -1 || true)"
+			got="$(rustc --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+			if [ -n "${pin:-}" ] && [ -n "${got:-}" ] && [ "${got%.*}" != "$pin" ]; then
+				warn "rustc $got does not match ../paneru/rust-toolchain.toml (channel $pin); install rustup for reproducible builds"
+			fi
+		fi
+		if [ -n "${RUSTC_WRAPPER:-}" ]; then
+			note "RUSTC_WRAPPER=$RUSTC_WRAPPER overrides the repo rustc-sign wrapper — the install-time re-pin below covers signing."
+		fi
+		# Opt-in gate (same suite CI runs): fmt, clippy, tests.
+		if [ -n "${PANERU_VERIFY:-}" ]; then
+			note "Verifying Paneru source (fmt, clippy, tests)..."
+			if ! (cd "$REPO_ROOT/../paneru" && cargo fmt --check); then
+				rm -rf "$tmp"
+				echo "  Paneru 'cargo fmt --check' failed — run 'cargo fmt' in ../paneru, then re-run." >&2
+				return 1
+			fi
+			if ! (cd "$REPO_ROOT/../paneru" && cargo clippy --all-targets -- -D warnings); then
+				rm -rf "$tmp"
+				echo "  Paneru clippy failed — fix the warnings in ../paneru, then re-run." >&2
+				return 1
+			fi
+			test_failed=0
+			if command -v cargo-nextest >/dev/null 2>&1; then
+				(cd "$REPO_ROOT/../paneru" && cargo nextest run --workspace --all-targets) || test_failed=1
+			elif ! (cd "$REPO_ROOT/../paneru" && cargo test --all-targets); then
+				test_failed=1
+			fi
+			if [ "$test_failed" -ne 0 ]; then
+				rm -rf "$tmp"
+				echo "  Paneru tests failed — fix ../paneru, then re-run." >&2
+				return 1
+			fi
+			ok "Paneru source verified"
 		fi
 		if ! (cd "$REPO_ROOT/../paneru" && cargo build --release --bin paneru); then
 			rm -rf "$tmp"
@@ -234,22 +309,27 @@ fetch_paneru() {
 	else
 		ok "Paneru installed to $bin (from GitHub release)"
 	fi
-	# Pin the stable ad-hoc signing identifier (same one the fork's local
-	# builds and newer CI releases stamp — see assets/rustc-sign.sh in
-	# iv-lite/paneru). Release tarballs built without it carry a per-build
-	# identity, which macOS TCC treats as a new app: the old Accessibility
-	# grant silently stops matching and paneru runs without tiling. Pinning
-	# here makes the grant (re-applied by grant-permissions below) stick,
-	# including across future upgrades.
+	# Signing identifier: local builds already carry the stable identifier —
+	# .cargo/config.toml routes the link through assets/rustc-sign.sh, which
+	# ad-hoc-signs the final binary (skipped only when RUSTC_WRAPPER, e.g.
+	# sccache as in CI, overrides it). Release tarballs may carry a per-build
+	# identity instead, which macOS TCC treats as a new app: the old
+	# Accessibility grant silently stops matching and paneru runs without
+	# tiling. Re-pin only when the identifier is missing so local rebuilds
+	# keep their build signature; the pin makes the grant (re-applied by
+	# grant-permissions below) stick, including across future upgrades.
 	if command -v codesign >/dev/null 2>&1; then
-		if codesign --force --sign - --identifier com.github.karinushka.paneru "$bin" >/dev/null 2>&1; then
-			if codesign -dv "$bin" 2>&1 | grep -q 'Identifier=com.github.karinushka.paneru'; then
-				ok "Code-signing identifier pinned (com.github.karinushka.paneru)"
-			else
-				warn "codesign ran but the identifier did not stick — the Accessibility grant may not survive upgrades"
-			fi
+		if codesign -dv "$bin" 2>&1 | grep -q 'Identifier=com.github.karinushka.paneru'; then
+			note "Code-signing identifier already pinned — keeping the build signature"
+		elif codesign --force --sign - --identifier com.github.karinushka.paneru "$bin" >/dev/null 2>&1; then
+			ok "Code-signing identifier pinned (com.github.karinushka.paneru)"
 		else
 			warn "codesign failed — the Accessibility grant may not survive this upgrade"
+		fi
+		if codesign --verify --strict "$bin" >/dev/null 2>&1; then
+			ok "Code signature verifies (strict)"
+		else
+			warn "codesign --verify --strict failed — the binary may not launch cleanly"
 		fi
 	else
 		note "codesign not found (not macOS?) — skipping identifier pinning"

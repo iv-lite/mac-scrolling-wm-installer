@@ -27,12 +27,12 @@ run_step() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Flags: --help, --prefer-local-builds
+# Flags: --help, --prefer-local-builds, --verify
 # ─────────────────────────────────────────────────────────────
 for arg in "$@"; do
 	case "$arg" in
 		--help|-h)
-			echo "Usage: ./install [--prefer-local-builds]"
+			echo "Usage: ./install [--prefer-local-builds] [--verify]"
 			echo ""
 			echo "  Installs Paneru + Ghostty with an niri-like sliding-strip"
 			echo "  layout."
@@ -42,10 +42,17 @@ for arg in "$@"; do
 			echo "                         (cargo) and ../mac-cheatsheet-viewer"
 			echo "                         (tauri). Local build failures abort"
 			echo "                         the install (no release fallback)."
+			echo "  --verify               With --prefer-local-builds, verify"
+			echo "                         ../paneru first (fmt, clippy, tests —"
+			echo "                         same suite CI runs); aborts on failure."
+			echo "                         Same as PANERU_VERIFY=1."
 			exit 0
 			;;
 		--prefer-local-builds)
 			export PREFER_LOCAL_BUILDS=1
+			;;
+		--verify)
+			export PANERU_VERIFY=1
 			;;
 		-*)
 			echo "Unknown option: $arg (run './install --help')" >&2

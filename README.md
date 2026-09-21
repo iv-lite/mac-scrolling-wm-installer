@@ -47,6 +47,19 @@ aborts the install (fail fast, so errors surface). Brew/curl dependencies
 (Ghostty, tccutil-rs, Antigen) are unaffected by the flag. In VM tests,
 forward it via `PREVIEW_INSTALL_ARGS=--prefer-local-builds ./tests/preview install`.
 
+The Paneru build follows the upstream-suggested process: the pinned toolchain
+from `../paneru/rust-toolchain.toml` via rustup (a bare Homebrew cargo would
+ignore the pin), plain `cargo build --release --bin paneru` (default features
+build the vendored LuaJIT — no system Lua needed), and the repo's rustc
+wrapper signs the binary with the stable identifier at compile time. The
+installer preflights the Xcode command-line tools (needed for the macOS SDKs)
+and skips its own re-sign when the identifier is already pinned. To run the
+same gate CI runs before installing (fmt, clippy, tests):
+
+```sh
+./install --prefer-local-builds --verify   # or PANERU_VERIFY=1
+```
+
 The installer runs these steps from `scripts/`:
 
 | Script | Purpose |
