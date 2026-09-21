@@ -78,11 +78,25 @@ paneru.setup {
     -- On: dragging a tiled window by its titlebar (resize margins excluded)
     -- scrolls the workspace strip through the shared swipe pipeline instead
     -- of moving anything; grabs inside the window content stay fully native.
+    -- Only horizontal pointer motion drives anything — vertical travel is
+    -- dropped so a shaky drag can't pull columns off their slots.
     -- Armed (Cmd+Alt) drags still move and transfer as before. Set to false
     -- to get native titlebar drags back. Needs a fork build containing
-    -- 43940a2 (titlebar-only since cedc426); older binaries silently ignore
+    -- 43940a2 (titlebar-only since cedc426, horizontal-only since the
+    -- drag-friction WIP); older binaries silently ignore
     -- it and plain drags pin to their slot.
     left_drag_scrolls_strip = true,
+    -- Sustained left-drag friction: the further the strip (or armed column)
+    -- has travelled from the grab anchor, the less each new pixel counts
+    -- (exp falloff over drag_friction_distance_tau_px), and a strip held
+    -- still with the button down is released to the inertia/snap pipeline
+    -- on its own after drag_friction_idle_settle_ms. Disable for exact 1:1
+    -- pointer tracking. Needs a fork build containing the drag-friction
+    -- WIP; older binaries silently ignore these keys.
+    drag_friction_enabled = true,
+    drag_friction_distance_tau_px = 1200.0,
+    drag_friction_idle_settle_ms = 400,
+    drag_friction_min_rate = 0.05,
     -- Horizontally stacked (side-by-side) monitors: arrange displays
     -- vertically in macOS, set this to -1 so edge crossings feel left/right.
     horizontal_mouse_warp = -1,
@@ -91,16 +105,18 @@ paneru.setup {
     animation_speed = 20.0,
     -- AX writer thread (default-on upstream since d1fb7dd): AX position
     -- commits go to a dedicated thread with per-window coalescing instead of
-    -- blocking the main thread per animation frame. Apps needing the
-    -- enhanced-UI workaround always stay synchronous; set to false if testing
-    -- shows regressions on your app mix. Older binaries silently ignore it.
+    -- blocking the main thread per animation frame. The queue is bounded
+    -- (1024) with drop-superseded backpressure plus same-target dedup, and a
+    -- supervisor restarts a dead worker instead of silently degrading.
+    -- Apps needing the enhanced-UI workaround always stay synchronous; set
+    -- to false if testing shows regressions on your app mix. Older binaries
+    -- silently ignore it.
     ax_writer = true,
-    -- Experimental upstream (default off): paces the pump to the display's
-    -- retrace via a per-screen display link instead of fixed sleeps. Needs
-    -- macOS 14+ and falls back to the sleep ladder when unbound — uncomment
-    -- to try it (needs a post-d1fb7dd fork build; older binaries silently
-    -- ignore unknown keys).
-    -- experimental_vsync = true,
+    -- Paces the pump to the display's retrace via a per-screen display link
+    -- instead of fixed sleeps. Needs macOS 14+ and falls back to the sleep
+    -- ladder when unbound (needs a post-d1fb7dd fork build; older binaries
+    -- silently ignore unknown keys).
+    experimental_vsync = true,
     -- Lazy expose for unfocused windows: at 0.0 any hidden fraction forces
     -- a window into view on focus change, which can re-fire mid-arrival as
     -- strips reflow (extra corrective scrolls on top of the animated
@@ -207,7 +223,14 @@ paneru.setup {
   restore = {
     enabled = true,
     startup_grace_ms = 2000,
-    missing_windows = "ignore",
+    -- Drop: at grace expiry, saved windows whose app never opened are
+    -- pruned from the in-memory state and the state file is rewritten, so
+    -- a stale cached display can't resurrect them on a later restart
+    -- (state v3 also remembers each window's display/frame). Needs fork
+    -- 42add2b — unlike unknown keys, an unknown *value* fails config
+    -- parsing on older binaries, so keep "ignore" if you pin an older
+    -- Paneru.
+    missing_windows = "drop",
   },
 }
 

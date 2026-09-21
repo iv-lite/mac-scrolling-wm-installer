@@ -238,6 +238,17 @@ moves. Two things make it feel native:
   (`options.center_single_column = true`); multi-column strips stay
   left-pinned. `auto_center` remains `false`, so focus changes never
   recenter — only the single-column case does.
+- Titlebar left-drags scroll the strip horizontally only (vertical travel is
+  dropped) with distance friction plus idle-while-held settle
+  (`options.drag_friction_*`, all default-on); armed `Cmd+Alt` drags move
+  live and land in the nearest column. Same-tick strip drags, most-visible
+  release reveal, and single-motion focus arrival are native.
+- Session restore remembers each window's display/frame (state v3) and prunes
+  saved windows whose app never opened at grace expiry
+  (`restore.missing_windows = "drop"`).
+- AX position commits go through a bounded, supervised writer thread
+  (`options.ax_writer = true`), and the pump can pace to the display retrace
+  (`options.experimental_vsync = true`, macOS 14+).
 
 ## The menu bar
 
