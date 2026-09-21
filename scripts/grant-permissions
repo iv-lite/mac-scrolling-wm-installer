@@ -14,6 +14,8 @@ fail() { echo "  ${RED}✗ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
 # Grant Accessibility to CLI binaries (invisible in System Settings)
+# -1. no-FDA handoff: without Full Disk Access no scripted TCC write can
+#     succeed, so skip them all and hand off to the daemon's native dialog
 # 0. revoke any stale grant (binary replacement voids the old entry)
 # 1. user DB via tccutil-rs (no sudo, no SIP disable)
 # 2. system DB with sudo as fallback
@@ -79,6 +81,25 @@ grant() {
 	if [ -z "$bin" ]; then return 0; fi
 	if [ ! -e "$bin" ]; then
 		warn "$bin not found — skipping"
+		return 0
+	fi
+	# No-FDA handoff: without Full Disk Access this terminal can neither
+	# read nor write TCC.db (even sudo cannot bypass it), so every scripted
+	# revoke/grant below is doomed — attempting them only produces walls of
+	# failure noise. Skip them all and hand off to the daemon's native flow
+	# instead: enable-services (next step) starts Paneru, which parks with a
+	# setup dialog and waits; flipping the toggle in System Settings
+	# replaces a stale row itself. The marker (if any) is consumed so it can
+	# never linger into a later FDA run and wrongly skip real work.
+	if command -v tccutil-rs >/dev/null 2>&1 && ! tccutil-rs list --service Accessibility >/dev/null 2>&1; then
+		rm -f "$UNCHANGED_SENTINEL"
+		note "No Full Disk Access for this terminal — skipping scripted grants entirely."
+		echo "     macOS blocks TCC.db reads and writes without it; revoke/grant"
+		echo "     commands would only fail. enable-services (next) starts Paneru,"
+		echo "     which shows a setup dialog and waits: flip the toggle in"
+		echo "     System Settings → Privacy & Security → Accessibility and tiling"
+		echo "     starts. Only if Paneru is already listed-but-dead, remove it"
+		echo "     with '–' first, then toggle it back on."
 		return 0
 	fi
 	# Unchanged-binary fast path: identical bytes mean the code identity is

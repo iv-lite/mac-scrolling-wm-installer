@@ -89,6 +89,18 @@ paneru.setup {
     horizontal_mouse_warp_offset = 0,
     preset_column_widths = { 0.3, 0.5, 1.0 },
     animation_speed = 20.0,
+    -- AX writer thread (default-on upstream since d1fb7dd): AX position
+    -- commits go to a dedicated thread with per-window coalescing instead of
+    -- blocking the main thread per animation frame. Apps needing the
+    -- enhanced-UI workaround always stay synchronous; set to false if testing
+    -- shows regressions on your app mix. Older binaries silently ignore it.
+    ax_writer = true,
+    -- Experimental upstream (default off): paces the pump to the display's
+    -- retrace via a per-screen display link instead of fixed sleeps. Needs
+    -- macOS 14+ and falls back to the sleep ladder when unbound — uncomment
+    -- to try it (needs a post-d1fb7dd fork build; older binaries silently
+    -- ignore unknown keys).
+    -- experimental_vsync = true,
     -- Lazy expose for unfocused windows: at 0.0 any hidden fraction forces
     -- a window into view on focus change, which can re-fire mid-arrival as
     -- strips reflow (extra corrective scrolls on top of the animated

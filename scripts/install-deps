@@ -54,19 +54,20 @@ fi
 # terminal has Full Disk Access — macOS blocks TCC.db reads and writes
 # otherwise, and even sudo cannot bypass it. Probe now, before any binary
 # is replaced, so an upgrade without FDA is a conscious choice rather
-# than a silent leftover (install-paneru verifies removal again later).
-# Never fatal: without FDA the installer falls back to loud warnings
-# plus manual removal steps.
+# than a surprise later. Never fatal: without FDA the installer skips all
+# scripted TCC writes and hands off to Paneru's native setup dialog instead
+# (approve it / flip the toggle in System Settings and tiling starts).
 # ─────────────────────────────────────────────────────────────
 if command -v paneru >/dev/null 2>&1 && command -v tccutil-rs >/dev/null 2>&1; then
 	if ! tccutil-rs list --service Accessibility >/dev/null 2>&1; then
 		warn "This terminal cannot read the TCC database (no Full Disk Access) —"
-		warn "the existing Paneru Accessibility grant can NOT be removed programmatically."
-		echo "     Before upgrading: either grant this terminal Full Disk Access"
+		warn "scripted grant handling is off for this run; the daemon dialog takes over."
+		echo "     Either grant this terminal Full Disk Access"
 		echo "     (System Settings → Privacy & Security → Full Disk Access, then fully"
-		echo "     quit and reopen the terminal and re-run ./install), or delete the old"
-		echo "     Paneru entry by hand (System Settings → Privacy & Security →"
-		echo "     Accessibility → select 'paneru' → '–'), then re-run."
+		echo "     quit and reopen the terminal and re-run ./install) — or simply continue:"
+		echo "     Paneru will show a setup dialog on start; flip the toggle in"
+		echo "     System Settings → Privacy & Security → Accessibility and tiling"
+		echo "     starts (the toggle replaces a stale row itself)."
 	fi
 fi
 

@@ -303,11 +303,13 @@ restart → re-check, twice, then one manual-grant pause when interactive).
 Revoking and granting both go through `tccutil-rs`, which can only touch
 the TCC database when the terminal running the installer has **Full Disk
 Access** (System Settings → Privacy & Security → Full Disk Access, then
-fully quit and reopen the terminal) — without it the old entry survives
-and the installer says so loudly instead of failing silently. The only
-removal route without Full Disk Access is manual: System Settings →
-Privacy & Security → Accessibility → select the `paneru` entry → `–`.
-If you still see no tiling, repair by hand:
+fully quit and reopen the terminal). Without it the installer skips all
+scripted TCC writes and hands off to Paneru itself: the freshly started
+daemon parks with a setup dialog and waits — flip the toggle in System
+Settings → Privacy & Security → Accessibility and tiling starts (the toggle
+replaces a stale row itself). Only if Paneru is already listed-but-dead,
+remove that entry with `–` first, then toggle it back on. If you still
+see no tiling, repair by hand:
 
 ```sh
 codesign --force --sign - --identifier com.github.karinushka.paneru "$(command -v paneru)"

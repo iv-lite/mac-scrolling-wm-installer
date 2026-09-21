@@ -125,8 +125,9 @@ fetch_paneru() {
 	#
 	# NOTE: tccutil-rs can only read/write TCC.db when this terminal has
 	# Full Disk Access (fully quit + reopen the terminal after granting
-	# it). Without that the revoke fails and the stale entry survives —
-	# the checks below say so explicitly.
+	# it). The readability probe below gates everything: without it all
+	# revokes are skipped with one calm handoff instead of a wall of
+	# per-client failures.
 	#
 	# Clients are revoked by binary path AND by signing identifier: TCC.db
 	# rows may be keyed either way (tccutil-rs accepts both), so revoking
@@ -151,6 +152,12 @@ fetch_paneru() {
 "
 		if [ -z "$revoke_targets" ]; then
 			note "No existing Paneru binary — nothing to revoke (clean install)"
+		elif ! tccutil-rs list --service Accessibility >/dev/null 2>&1; then
+			note "No Full Disk Access for this terminal — skipping stale-grant removal."
+			echo "     Revokes cannot succeed without it; the new binary installs"
+			echo "     normally and grant-permissions (next) hands off to Paneru's"
+			echo "     setup dialog — flip the toggle in System Settings →"
+			echo "     Privacy & Security → Accessibility and tiling starts."
 		else
 			if before_list="$(tccutil-rs list --service Accessibility 2>&1)"; then
 				list_ok=1
@@ -266,13 +273,14 @@ fi
 # The shipped config also sets options.default_ratio,
 # options.center_single_column (need a fork build containing d8b5677),
 # options.left_drag_scrolls_strip (needs 43940a2, titlebar-only since
-# cedc426) and decorations.inactive.border (needs the post-cedc426
-# inactive-borders work, currently uncommitted upstream) — all still
-# unreleased with no tag yet; --prefer-local-builds from a current sibling
-# checkout has them (including uncommitted changes, which it builds as-is).
+# cedc426), decorations.inactive.border (needs 806e2a1) and options.ax_writer
+# (default-on since d1fb7dd; the experimental_ax_writer spelling still works
+# as a deprecated alias). options.experimental_vsync is documented but
+# commented out (needs d1fb7dd, macOS 14+). All still unreleased with no tag
+# yet; --prefer-local-builds from a current sibling checkout has them.
 # Older binaries silently ignore unknown keys/tables: new windows keep their
-# OS size, a lone column left-pins, plain drags pin to their slot, and only
-# the active border is drawn.
+# OS size, a lone column left-pins, plain drags pin to their slot, only the
+# active border is drawn, and AX commits stay on the main thread.
 # ─────────────────────────────────────────────────────────────
 version="$(paneru --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 case "${version:-0.0.0}" in
