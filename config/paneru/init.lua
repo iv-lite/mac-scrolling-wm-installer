@@ -109,9 +109,8 @@ paneru.setup {
     -- AX writer thread (default-on upstream since d1fb7dd): AX position
     -- commits go to a dedicated thread with per-window coalescing instead of
     -- blocking the main thread per animation frame. The queue is bounded
-    -- (1024) with drop-superseded backpressure plus same-target dedup, and
-    -- the frame orchestrator (4f2b95c, pacing in 3fdc4f3) supervises the
-    -- worker instead of silently degrading.
+    -- (1024) with drop-superseded backpressure plus same-target dedup (both
+    -- since 4f2b95c; worker supervision was reverted in f5c1535).
     -- Apps needing the enhanced-UI workaround always stay synchronous; set
     -- to false if testing shows regressions on your app mix. Older binaries
     -- silently ignore it.
@@ -120,9 +119,7 @@ paneru.setup {
     -- instead of fixed sleeps. Default-on upstream since 3fdc4f3 (pinned
     -- explicitly here so a future default flip can't silently change
     -- behaviour); needs macOS 14+ and falls back to the sleep ladder when
-    -- unbound. While a drag or swipe is in flight the pump always runs at
-    -- the 8ms cadence regardless of this flag. Older binaries silently
-    -- ignore unknown keys.
+    -- unbound. Older binaries silently ignore unknown keys.
     experimental_vsync = true,
     -- Lazy expose for unfocused windows: at 0.0 any hidden fraction forces
     -- a window into view on focus change, which can re-fire mid-arrival as

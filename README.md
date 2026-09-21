@@ -254,17 +254,16 @@ moves. Two things make it feel native:
 - Titlebar (top 28px) left-drags scroll the strip horizontally only (vertical
   travel is dropped) with velocity friction plus idle-while-held settle
   (`options.drag_friction_*`, all default-on — fast motion damps, slow motion
-  tracks 1:1, pauses wash the debt away); toolbar/tab grabs stay native and
-  armed `Cmd+Alt` drags move live, landing in the nearest column. Same-tick
-  strip drags, most-visible release reveal, and single-motion focus arrival
-  are native.
+  tracks 1:1, pauses wash the debt away); toolbar/tab/content grabs stay native
+  and cost nothing beyond press/release bookkeeping, while armed `Cmd+Alt`
+  drags move live, landing in the nearest column. Same-tick strip drags,
+  most-visible release reveal, and single-motion focus arrival are native.
 - Session restore remembers each window's display/frame (state v3) and prunes
   saved windows whose app never opened at grace expiry
   (`restore.missing_windows = "drop"`).
-- AX position commits go through a bounded, supervised writer thread
+- AX position commits go through a bounded writer thread
   (`options.ax_writer = true`), and the pump paces to the display retrace by
-  default (`options.experimental_vsync = true`, macOS 14+, 8ms forced cadence
-  during drags/swipes).
+  default (`options.experimental_vsync = true`, macOS 14+).
 
 ## The menu bar
 
@@ -356,8 +355,7 @@ paneru restart
 
 Paneru's own debug trail: `paneru printstate` (via `paneru send-cmd printstate`),
 logs from its LaunchAgent, and the interactive `paneru` front-run for the same
-output. Frame-time stats (p50/p95/max per 120-frame window) log under
-`RUST_LOG='paneru::perf=debug'`. A quick health check of the whole stack:
+output. A quick health check of the whole stack:
 
 ```sh
 bash scripts/ensure-separate-spaces check   # must print "enabled (mode 1)"
