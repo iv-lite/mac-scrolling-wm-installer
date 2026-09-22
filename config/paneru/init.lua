@@ -86,20 +86,13 @@ paneru.setup {
     -- top-28px since 57519b7); older binaries silently ignore
     -- it and plain drags pin to their slot.
     left_drag_scrolls_strip = true,
-    -- Left-drag friction: the faster the recent motion, the less each new
-    -- pixel counts (exp falloff over recent travel scaled by
-    -- drag_friction_distance_tau_px, decaying with a 300ms time constant),
-    -- and a strip held still with the button down is released to the
-    -- inertia/snap pipeline on its own after drag_friction_idle_settle_ms.
-    -- Slow motion always tracks 1:1 and a pause washes the debt away, so
-    -- friction shapes stripes and windows, never the pointer. Disable for
-    -- exact 1:1 pointer tracking. Needs a fork build containing 4f2b95c
-    -- (velocity model since 57519b7); older binaries silently ignore these
-    -- keys.
-    drag_friction_enabled = true,
-    drag_friction_distance_tau_px = 1200.0,
-    drag_friction_idle_settle_ms = 400,
-    drag_friction_min_rate = 0.05,
+    -- Held drags track the pointer 1:1 with no damping: a strip held still
+    -- with the button down simply waits at its raw offset. Friction lives
+    -- only on the release path — the raw-hand release velocity seeds the
+    -- inertia/snap glide on mouse-up (press-without-travel still stops
+    -- dead). Needs a fork build containing b4852e0; older binaries damp
+    -- held motion via drag_friction_* instead (removed upstream, still
+    -- parsed when present).
     -- Horizontally stacked (side-by-side) monitors: arrange displays
     -- vertically in macOS, set this to -1 so edge crossings feel left/right.
     horizontal_mouse_warp = -1,
@@ -108,19 +101,21 @@ paneru.setup {
     animation_speed = 20.0,
     -- AX writer thread (default-on upstream since d1fb7dd): AX position
     -- commits go to a dedicated thread with per-window coalescing instead of
-    -- blocking the main thread per animation frame. The queue is bounded
-    -- (1024) with drop-superseded backpressure plus same-target dedup (both
-    -- since 4f2b95c; worker supervision was reverted in f5c1535).
+    -- blocking the main thread per animation frame. Batches drain in
+    -- window-id order; commits carry frame epochs so whole-frame
+    -- convergence is observable, with a stuck-writer watchdog (both since
+    -- 113bd4e; worker supervision was reverted in f5c1535).
     -- Apps needing the enhanced-UI workaround always stay synchronous; set
     -- to false if testing shows regressions on your app mix. Older binaries
     -- silently ignore it.
     ax_writer = true,
-    -- Paces the pump to the display's retrace via a per-screen display link
-    -- instead of fixed sleeps. Default-on upstream since 3fdc4f3 (pinned
-    -- explicitly here so a future default flip can't silently change
-    -- behaviour); needs macOS 14+ and falls back to the sleep ladder when
-    -- unbound. Older binaries silently ignore unknown keys.
-    experimental_vsync = true,
+    -- Whether tiled windows are resized to fill their tile slot — at launch
+    -- when windows snap into strips and on every later layout change.
+    -- Pinned explicitly here so a future default flip can't silently change
+    -- behaviour; set to false to tile windows at their native sizes instead
+    -- (slots derive from member sizes, positions stay managed). Needs a
+    -- fork build containing e25b6f9; older binaries silently ignore it.
+    maximize_tiled_windows = true,
     -- Lazy expose for unfocused windows: at 0.0 any hidden fraction forces
     -- a window into view on focus change, which can re-fire mid-arrival as
     -- strips reflow (extra corrective scrolls on top of the animated
@@ -146,6 +141,10 @@ paneru.setup {
     -- older binaries silently ignore it. Saved session restore wins over
     -- this on startup.
     default_ratio = 1.0,
+    -- Dynamic rows: a new virtual-workspace row spawns when you cross past
+    -- the last one, and empty rows are reaped (both booleans, default false
+    -- upstream; upstream CONFIGURATION.md mislabels reap_empty_workspaces
+    -- as String — src/config.rs is Option<bool>).
     create_virtual_workspace_automatically = true,
     reap_empty_workspaces = true,
     window_resize_cycle = true,
@@ -156,6 +155,7 @@ paneru.setup {
   },
 
   -- ─── Screen padding (outer gaps; Paneru has no inner-gap option) ───
+  -- 8px on all sides (top gap leaves the native menu bar visible).
   padding = { top = 8, bottom = 8, left = 8, right = 8 },
 
   -- ─── Swipe & gestures ───

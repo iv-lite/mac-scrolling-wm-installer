@@ -260,23 +260,27 @@ fi
 # options.center_single_column (need a fork build containing d8b5677),
 # options.left_drag_scrolls_strip (needs 43940a2, titlebar-only since
 # cedc426, horizontal-only since 4f2b95c, top-28px grab zone since 57519b7),
-# decorations.inactive.border (needs 806e2a1) and options.ax_writer
+# decorations.inactive.border (needs 806e2a1), options.ax_writer
 # (default-on since d1fb7dd; the experimental_ax_writer spelling still works
-# as a deprecated alias; the queue is bounded with same-target dedup since
-# 4f2b95c — worker supervision and orchestrator pacing were reverted in
-# f5c1535).
-# options.experimental_vsync is enabled (default-on upstream since 3fdc4f3,
-# pinned explicitly; needs macOS 14+). options.drag_friction_* (needs
-# 4f2b95c, velocity model since 57519b7) and restore.missing_windows =
-# "drop" (needs 42add2b; older binaries reject the unknown value, unlike
-# unknown keys) are also set. 416e418 (same-tick drags, most-visible reveal)
-# and 8bda31b (pump focus, overlay gate, chase-ahead borders) need no config.
+# as a deprecated alias; window-id drain order since c148819, frame epochs +
+# stuck-writer watchdog since 113bd4e — worker supervision and orchestrator
+# pacing were reverted in f5c1535) and options.maximize_tiled_windows
+# (needs e25b6f9).
+# Held drags track 1:1 with friction only on the release glide (b4852e0 —
+# the drag_friction_* keys are removed upstream and no longer set here, but
+# old configs still parse). Vsync retrace pacing is always-on where
+# supported since e25b6f9 (the experimental_vsync flag is removed, no longer
+# set here). restore.missing_windows = "drop" (needs 42add2b; older binaries
+# reject the unknown value, unlike unknown keys) is also set. 416e418
+# (same-tick drags, most-visible reveal), 8bda31b (pump focus, overlay gate,
+# chase-ahead borders), c148819 (rigid strip riding) and 8ed9e3d (driven
+# moves cancel live glides) need no config.
 # All still unreleased with no tag yet; --prefer-local-builds from a current
 # sibling checkout has them.
 # Older binaries silently ignore unknown keys/tables: new windows keep their
 # OS size, a lone column left-pins, plain drags pin to their slot, only the
-# active border is drawn, AX commits stay on the main thread, and drags track
-# 1:1 with no idle settle. (restore.missing_windows = "drop" is the
+# active border is drawn, AX commits stay on the main thread, and tiled
+# windows fill their slot. (restore.missing_windows = "drop" is the
 # exception: pin "ignore" if you run an older Paneru.)
 # ─────────────────────────────────────────────────────────────
 version="$(paneru --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"

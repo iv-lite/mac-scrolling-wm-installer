@@ -121,8 +121,8 @@ window in the same lane), **Ctrl**.
 | `Cmd` + `Option` + `Tab` | Focus the last-focused window on this workspace |
 
 > Workspace rows are **dynamic**: a new row spawns when you cross the last one
-> and vanishes once it's empty (`create_virtual_workspace_automatically` /
-> `reap_empty_workspaces` in `[options]`).
+> and vanishes once it's empty (`create_virtual_workspace_automatically = true` /
+> `reap_empty_workspaces = true` in `[options]`, both booleans defaulting to false upstream).
 
 > Paneru virtual workspaces are stacks of horizontal strips *inside* a native
 > macOS workspace. Each native Space (per display, with separate Spaces on) has
@@ -253,18 +253,21 @@ moves. Two things make it feel native:
   left-pinned. `auto_center` remains `false`, so focus changes never
   recenter — only the single-column case does.
 - Titlebar (top 28px) left-drags scroll the strip horizontally only (vertical
-  travel is dropped) with velocity friction plus idle-while-held settle
-  (`options.drag_friction_*`, all default-on — fast motion damps, slow motion
-  tracks 1:1, pauses wash the debt away); toolbar/tab/content grabs stay native
-  and cost nothing beyond press/release bookkeeping, while armed `Cmd+Alt`
-  drags move live, landing in the nearest column. Same-tick strip drags,
-  most-visible release reveal, and single-motion focus arrival are native.
+  travel is dropped) tracking the pointer 1:1 while held — friction lives
+  only on the release glide (raw-hand release velocity seeds inertia/snap);
+  toolbar/tab/content grabs stay native and drive nothing beyond
+  press/release bookkeeping, while armed `Cmd+Alt` drags move live, landing
+  in the nearest column. Same-tick strip drags, most-visible release reveal,
+  rigid strip riding, and single-motion focus arrival are native.
+- Tiled windows fill their tile slot (`options.maximize_tiled_windows = true`,
+  at launch snap and on every layout change).
 - Session restore remembers each window's display/frame (state v3) and prunes
   saved windows whose app never opened at grace expiry
   (`restore.missing_windows = "drop"`).
-- AX position commits go through a bounded writer thread
-  (`options.ax_writer = true`), and the pump paces to the display retrace by
-  default (`options.experimental_vsync = true`, macOS 14+).
+- AX position commits go through a dedicated writer thread
+  (`options.ax_writer = true`, window-id drain order, frame-epoch
+  convergence with stuck-writer watchdog), and the pump paces to the display
+  retrace where supported (always-on, macOS 14+).
 
 ## The menu bar
 
@@ -281,7 +284,7 @@ moves. Two things make it feel native:
   get a faint border in the same hue (`decorations.inactive.border`, hex alpha
   over the shared geometry). Inactive-window
   dimming uses native macOS (`decorations.inactive.dim`).
-- **Top gap:** `padding.top` defaults to 15px in the config.
+- **Top gap:** `padding.top` is 8px in the config (all sides 8px, menu bar kept visible).
 
 ## No title bars (the macOS reality)
 

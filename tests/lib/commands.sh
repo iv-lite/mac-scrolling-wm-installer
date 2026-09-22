@@ -93,7 +93,7 @@ cmd_check() {
   guest "ls -d /Applications/Aegis.app 2>&1 || echo '(not installed — correct)'"
   echo ""
   echo "── Paneru config options (should set defaults) ──"
-  guest "grep -q 'default_ratio *= *1\\.0' ~/.config/paneru/init.lua && grep -q 'center_single_column *= *true' ~/.config/paneru/init.lua && grep -q 'left_drag_scrolls_strip *= *true' ~/.config/paneru/init.lua && grep -q 'border *= *{ *enabled *= *true, *color *= *\"#2b303c66\"' ~/.config/paneru/init.lua && echo '(default_ratio + center_single_column + left_drag_scrolls_strip + inactive border set)' || echo '(MISSING new options)'"
+  guest "grep -q 'default_ratio *= *1\\.0' ~/.config/paneru/init.lua && grep -q 'center_single_column *= *true' ~/.config/paneru/init.lua && grep -q 'left_drag_scrolls_strip *= *true' ~/.config/paneru/init.lua && grep -q 'maximize_tiled_windows *= *true' ~/.config/paneru/init.lua && grep -q 'reap_empty_workspaces *= *true' ~/.config/paneru/init.lua && grep -q 'create_virtual_workspace_automatically *= *true' ~/.config/paneru/init.lua && grep -q 'padding *= *{ *top *= *8' ~/.config/paneru/init.lua && grep -q 'border *= *{ *enabled *= *true, *color *= *\"#2b303c66\"' ~/.config/paneru/init.lua && ! grep -q 'drag_friction_[a-z_]* *=' ~/.config/paneru/init.lua && ! grep -q 'experimental_vsync *=' ~/.config/paneru/init.lua && echo '(default_ratio + center_single_column + left_drag_scrolls_strip + maximize + reap/create + padding 8 + inactive border set, stale keys absent)' || echo '(MISSING new options)'"
   echo ""
   echo "── Ghostty frameless config (should be present) ──"
   guest "grep -q 'macos-titlebar-style = hidden' ~/.config/ghostty/config && echo '(configured)' || echo '(missing)'"
