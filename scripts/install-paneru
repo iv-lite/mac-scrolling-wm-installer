@@ -29,18 +29,24 @@ else
 	PANERU_LABEL="$PANERU_REPO (newest release in list)"
 fi
 
-PANERU_BUNDLE_ID="com.github.karinushka.paneru"
 # Handoff to grant-permissions (next step): created below when the staged
 # binary is byte-identical to the installed one, meaning no identity change
 # voided anything. grant-permissions then preserves a verified grant instead
 # of pointlessly revoking + re-granting it.
 UNCHANGED_SENTINEL="${TMPDIR:-/tmp}/paneru-install-unchanged"
+# Created below when the binary was actually replaced. Replacing an
+# identifier-pinned binary at the same path preserves the live TCC grant
+# (verified live: tiling survives the swap), so nothing is revoked here —
+# grant-permissions preserves a listed grant and the enable-services health
+# poll confirms it; only a failed poll triggers revoke + re-grant via
+# repair-paneru. Absent on clean installs (no prior binary ⇒ no grant).
+CHANGED_SENTINEL="${TMPDIR:-/tmp}/paneru-install-changed"
 
 fetch_paneru() {
 	local tar_url tmp staged bin
 	tmp="$(mktemp -d)"
-	# A killed run must not leave a stale skip marker behind.
-	rm -f "$UNCHANGED_SENTINEL"
+	# A killed run must not leave stale skip markers behind.
+	rm -f "$UNCHANGED_SENTINEL" "$CHANGED_SENTINEL"
 	# --prefer-local-builds: build the sibling checkout instead of
 	# downloading a release. Builds in place (keeps target/ cache, tests
 	# dirty WIP as-is unless PANERU_VERIFY=1 / --verify). Failures abort —
@@ -179,127 +185,27 @@ fetch_paneru() {
 	fi
 	mkdir -p "$(dirname "$bin")"
 	# Byte-identical staged binary: same bytes ⇒ same ad-hoc identity ⇒ any
-	# live grant stays live. Skip the overwrite, the re-sign and the whole
-	# revoke block below, and leave a marker so grant-permissions (next step)
-	# preserves a verified grant instead of pointlessly revoking + re-granting
-	# it. Config copy + launchd steps further down still run (they live
-	# outside fetch_paneru).
+	# live grant stays live. Skip the overwrite and the re-sign, and leave a
+	# marker so grant-permissions (next step) preserves a verified grant
+	# instead of pointlessly revoking + re-granting it. Config copy +
+	# launchd steps further down still run (they live outside fetch_paneru).
 	if [ -e "$bin" ] && cmp -s "$staged" "$bin"; then
 		rm -rf "$tmp"
 		ok "Paneru binary unchanged — keeping the existing Accessibility grant"
 		touch "$UNCHANGED_SENTINEL"
 		return 0
 	fi
-	# Revoke any stale Accessibility grant before overwriting the binary:
-	# replacing (or re-signing) it voids the old TCC entry, and this runs
-	# for every source — local build, release download, and the
-	# prefer-local fallback alike. Best-effort and never fatal, but loud:
-	# leftovers and failures are reported instead of failing silently.
-	# grant-permissions (next step) re-applies a fresh grant before the
-	# service starts.
-	#
-	# NOTE: tccutil-rs can only read/write TCC.db when this terminal has
-	# Full Disk Access (fully quit + reopen the terminal after granting
-	# it). The readability probe below gates everything: without it all
-	# revokes are skipped with one calm handoff instead of a wall of
-	# per-client failures.
-	#
-	# Clients are revoked by binary path AND by signing identifier: TCC.db
-	# rows may be keyed either way (tccutil-rs accepts both), so revoking
-	# only one form can leave the stale entry behind.
-	if command -v tccutil-rs >/dev/null 2>&1; then
-		# Candidate locations holding a stale grant: the resolved install
-		# target plus well-known alternates from previous installs.
-		revoke_targets=""
-		seen="|"
-		for candidate in "$bin" /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
-			[ -n "$candidate" ] && [ -e "$candidate" ] || continue
-			case "$seen" in
-				*"|$candidate|"*) continue ;;
-			esac
-			seen="$seen$candidate|"
-			revoke_targets="$revoke_targets$candidate
-"
-		done
-		# Revoke by path and by identifier; the identifier needs no
-		# existence check (it may outlive any particular binary copy).
-		revoke_clients="$revoke_targets$PANERU_BUNDLE_ID
-"
-		if [ -z "$revoke_targets" ]; then
-			note "No existing Paneru binary — nothing to revoke (clean install)"
-		elif ! tccutil-rs list --service Accessibility >/dev/null 2>&1; then
-			note "No Full Disk Access for this terminal — skipping stale-grant removal."
-			echo "     Revokes cannot succeed without it; the new binary installs"
-			echo "     normally and grant-permissions (next) hands off to Paneru's"
-			echo "     setup dialog — flip the toggle in System Settings →"
-			echo "     Privacy & Security → Accessibility and tiling starts."
-		else
-			if before_list="$(tccutil-rs list --service Accessibility 2>&1)"; then
-				list_ok=1
-			else
-				list_ok=0
-				list_err="$before_list"
-			fi
-			while IFS= read -r client; do
-				[ -n "$client" ] || continue
-				if revoke_err="$(tccutil-rs revoke --user Accessibility "$client" 2>&1)"; then
-					if [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$client"; then
-						note "Revoked stale Accessibility grant for $client (user db)"
-					fi
-				elif [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$client"; then
-					# Only noisy when the entry was actually there: without
-					# Full Disk Access the DB is unreadable (covered by the
-					# unverifiable warning below), and a clean client fails
-					# revokes by design.
-					warn "Could not revoke Accessibility grant for $client (user db): $revoke_err"
-				fi
-				if revoke_err="$(sudo -n tccutil-rs revoke Accessibility "$client" 2>&1)"; then
-					if [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$client"; then
-						note "Revoked stale Accessibility grant for $client (system db)"
-					fi
-				elif [ "$list_ok" -eq 1 ] && printf '%s' "$before_list" | grep -qF "$client"; then
-					# Only noisy when the entry was actually there: a clean
-					# client fails here by design (and sudo -n fails without
-					# passwordless sudo anyway).
-					warn "Could not revoke Accessibility grant for $client (system db): $revoke_err"
-				fi
-			done <<< "$revoke_clients"
-			# Restart tccd so the removal is picked up (System Settings UI
-			# included) before the new binary lands.
-			sudo -n launchctl stop com.apple.tccd >/dev/null 2>&1 || true
-			if [ "$list_ok" -eq 1 ]; then
-				after_list="$(tccutil-rs list --service Accessibility 2>&1 || true)"
-				# Any surviving Paneru row — path-keyed, identifier-keyed, or
-				# otherwise — means the stale grant is still alive, no matter
-				# which client form individual revokes reported on.
-				leftovers="$(printf '%s' "$after_list" | grep -i paneru || true)"
-				if [ -n "$leftovers" ]; then
-					warn "Stale Paneru Accessibility grant is STILL present:"
-					printf '%s\n' "$leftovers" | while IFS= read -r row; do
-						echo "       $row"
-					done
-					warn "the new binary will run without tiling until re-granted."
-					echo "     Either grant this terminal Full Disk Access (System Settings →"
-					echo "     Privacy & Security → Full Disk Access), then fully quit and"
-					echo "     reopen the terminal and re-run ./install — or delete the old"
-					echo "     entry by hand (System Settings → Privacy & Security →"
-					echo "     Accessibility → select 'paneru' → '–'), then re-run."
-				elif printf '%s' "$before_list" | grep -qi paneru; then
-					ok "Stale Paneru Accessibility grant removed"
-				else
-					note "No prior Paneru Accessibility grant"
-				fi
-			else
-				warn "Cannot read the TCC database, so stale-grant removal is unverifiable: $list_err"
-				echo "     If an old Paneru entry survives in System Settings → Accessibility,"
-				echo "     grant this terminal Full Disk Access, fully quit and reopen it,"
-				echo "     then re-run ./install — or delete the old entry by hand"
-				echo "     (System Settings → Privacy & Security → Accessibility →"
-				echo "     select 'paneru' → '–'), then re-run."
-			fi
-		fi
-	else
-		note "tccutil-rs not found — cannot revoke stale grants (grant-permissions handles it later)"
+	# No proactive revoke: an identifier-pinned replacement at the same path
+	# keeps the live Accessibility grant (verified: tiling survives the
+	# swap), so revoking first would only destroy a working grant and force
+	# a re-grant cycle needing Full Disk Access + sudo for nothing.
+	# grant-permissions (next step) preserves a listed grant, the
+	# enable-services health poll confirms the daemon actually tiles, and
+	# only a failed poll falls back to revoke + re-grant via repair-paneru.
+	# Mark the replacement so grant-permissions can tell it apart from a
+	# clean install (no prior binary ⇒ no grant to preserve ⇒ grant fresh).
+	if [ -e "$bin" ]; then
+		touch "$CHANGED_SENTINEL"
 	fi
 	cp "$staged" "$bin"
 	chmod +x "$bin"
@@ -334,8 +240,8 @@ fetch_paneru() {
 	else
 		note "codesign not found (not macOS?) — skipping identifier pinning"
 	fi
-	note "Replacing the binary voids the previous Accessibility grant (revoked above);"
-	note "grant-permissions (next) re-applies it before the service starts."
+	note "Binary replaced — the listed Accessibility grant carries over;"
+	note "grant-permissions (next) preserves it and enable-services verifies tiling."
 	return 0
 }
 

@@ -16,10 +16,14 @@ fail() { echo "  ${RED}✗ $*${RESET}"; }
 # Grant Accessibility to CLI binaries (invisible in System Settings)
 # -1. no-FDA handoff: without Full Disk Access no scripted TCC write can
 #     succeed, so skip them all and hand off to the daemon's native dialog
-# 0. revoke any stale grant (binary replacement voids the old entry)
+# 0. preserve a listed grant (binary replacement keeps it live — verified:
+#     tiling survives the swap — so never revoke proactively)
 # 1. user DB via tccutil-rs (no sudo, no SIP disable)
 # 2. system DB with sudo as fallback
 # 3. manual instructions as last resort
+# Revokes happen only reactively: enable-services health-polls the daemon
+# and repair-paneru revokes + re-grants when the poll fails (listed-but-dead
+# grant). revoke_stale() below exists for that path.
 # ─────────────────────────────────────────────────────────────
 revoke_stale() {
 	local bin="$1" revoke_err before_list client
@@ -33,7 +37,7 @@ revoke_stale() {
 	# reopen the terminal after granting it). Clients cover both TCC key
 	# forms: the binary path and the signing identifier.
 	before_list="$(tccutil-rs list --service Accessibility 2>&1 || true)"
-	for client in "$bin" "com.github.karinushka.paneru"; do
+	for client in "$bin" "$PANERU_IDENTIFIER"; do
 		if revoke_err="$(tccutil-rs revoke --user Accessibility "$client" 2>&1)"; then
 			if printf '%s' "$before_list" | grep -qF "$client"; then
 				note "Revoked stale Accessibility grant for $client (user db)"
@@ -65,14 +69,25 @@ revoke_stale() {
 # Handoff marker left by install-paneru when the staged binary turned out
 # byte-identical to the installed one (same path expression as there).
 UNCHANGED_SENTINEL="${UNCHANGED_SENTINEL:-${TMPDIR:-/tmp}/paneru-install-unchanged}"
+# Handoff marker left by install-paneru when the installed binary was
+# actually replaced (same path expression as there).
+CHANGED_SENTINEL="${CHANGED_SENTINEL:-${TMPDIR:-/tmp}/paneru-install-changed}"
 
-# Quiet check: 0 when $1 is listed for Accessibility in either DB.
-# Unreadable DB ⇒ 1, so callers fall back to the full loud flow.
+# Signing identifier pinned onto the binary (same one install-paneru and
+# repair-paneru stamp). TCC rows may be keyed by path or by identifier —
+# both forms count as "listed" below.
+PANERU_IDENTIFIER="com.github.karinushka.paneru"
+
+# Quiet check: 0 when $1 (or the signing identifier) is listed for
+# Accessibility in either DB. Unreadable DB ⇒ 1, so callers fall back to
+# the full loud flow.
 grant_listed() {
 	local bin="$1"
 	command -v tccutil-rs >/dev/null 2>&1 || return 1
 	tccutil-rs list --user --service Accessibility 2>/dev/null | grep -qF "$bin" && return 0
 	tccutil-rs list --service Accessibility 2>/dev/null | grep -qF "$bin" && return 0
+	tccutil-rs list --user --service Accessibility 2>/dev/null | grep -qF "$PANERU_IDENTIFIER" && return 0
+	tccutil-rs list --service Accessibility 2>/dev/null | grep -qF "$PANERU_IDENTIFIER" && return 0
 	return 1
 }
 
@@ -105,8 +120,9 @@ grant() {
 	# Unchanged-binary fast path: identical bytes mean the code identity is
 	# untouched, so a verified grant is still live — preserve it with zero
 	# TCC writes. No grant found ⇒ grant without a prior revoke (nothing
-	# stale can exist for an unchanged binary). Marker absent ⇒ the full
-	# revoke+grant flow below. Always consumed here so it can never linger.
+	# stale can exist for an unchanged binary). No marker ⇒ the
+	# replaced-binary or clean-install path below. Always consumed here so
+	# it can never linger.
 	if [ -e "$UNCHANGED_SENTINEL" ]; then
 		rm -f "$UNCHANGED_SENTINEL"
 		if grant_listed "$bin"; then
@@ -114,6 +130,35 @@ grant() {
 			return 0
 		fi
 		note "Paneru binary unchanged but no grant found — granting without revoke"
+		if command -v tccutil-rs >/dev/null 2>&1; then
+			if tccutil-rs grant --user Accessibility "$bin" >/dev/null 2>&1; then
+				ok "Accessibility granted to $bin (user db)"
+				return 0
+			fi
+			sudo -n tccutil-rs grant Accessibility "$bin" >/dev/null 2>&1 && {
+				ok "Accessibility granted to $bin (system db via sudo)"
+				return 0
+			}
+		fi
+		fail "Could not grant Accessibility to $bin automatically."
+		echo "     Grant manually: System Settings → Privacy & Security →"
+		echo "     Accessibility → '+' → add '$bin'"
+		return 0
+	fi
+	# Replaced-binary path: the swap preserves a live grant, so a listed
+	# grant is kept with zero TCC writes — its validity is confirmed by the
+	# enable-services health poll (a listed-but-dead grant fails the poll
+	# and repair-paneru revokes + re-grants). No grant found ⇒ grant without
+	# a prior revoke (no row exists under either key form, so nothing stale
+	# can linger). No marker ⇒ clean install or repair path: full
+	# revoke+grant flow below. Always consumed here so it can never linger.
+	if [ -e "$CHANGED_SENTINEL" ]; then
+		rm -f "$CHANGED_SENTINEL"
+		if grant_listed "$bin"; then
+			note "Paneru binary replaced and grant still listed — keeping it (health check in enable-services confirms tiling)"
+			return 0
+		fi
+		note "Paneru binary replaced but no grant found — granting without revoke"
 		if command -v tccutil-rs >/dev/null 2>&1; then
 			if tccutil-rs grant --user Accessibility "$bin" >/dev/null 2>&1; then
 				ok "Accessibility granted to $bin (user db)"

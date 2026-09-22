@@ -14,10 +14,10 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
 # Self-repair a permission-less Paneru: re-pin the stable ad-hoc
-# signing identifier, re-grant Accessibility, restart, re-check.
-# Replacing the binary voids the old TCC grant (each unsigned build
-# carries a fresh ad-hoc identity), so the daemon can end up running
-# without ever tiling. Called by enable-services when the health
+# signing identifier, revoke + re-grant Accessibility, restart, re-check.
+# Binary replacement normally preserves the grant, so reaching here means
+# the listed grant is dead (or missing) — this is the only place that
+# revokes proactively. Called by enable-services when the health
 # poll fails; safe to run by hand too: bash scripts/repair-paneru
 # ─────────────────────────────────────────────────────────────
 PANERU_BIN="$(command -v paneru 2>/dev/null || true)"

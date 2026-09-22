@@ -35,9 +35,10 @@ fi
 
 # ─────────────────────────────────────────────────────────────
 # Post-start health check: the daemon must answer state queries.
-# A permission-less daemon (voided Accessibility grant after a binary
-# swap) starts fine but never tiles — catch that here instead of
-# leaving a silently broken setup behind.
+# This is also the validity proof for a preserved grant: binary
+# replacement keeps a listed grant live, but only tiling confirms it —
+# a listed-but-dead grant starts fine yet never tiles, so catch that here
+# instead of leaving a silently broken setup behind.
 # ─────────────────────────────────────────────────────────────
 if command -v paneru >/dev/null 2>&1; then
 	healthy=0

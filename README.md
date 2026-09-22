@@ -25,8 +25,9 @@ from its GitHub releases, configs are refreshed from this repo (previous
 copies kept as `*.bak`), and the service is restarted so the new
 binary/config apply immediately. When the staged Paneru binary is
 byte-identical to the installed one, the binary (and its Accessibility
-grant) is left untouched — only a real binary change triggers the
-revoke + re-grant cycle.
+grant) is left untouched — a real binary change replaces just the binary
+and keeps a listed grant (validity confirmed by the post-start health
+check; only a failed check triggers revoke + re-grant via repair).
 
 ### Local development (`--prefer-local-builds`)
 
@@ -71,7 +72,7 @@ The installer runs these steps from `scripts/`:
 | `install-paneru` | Install Paneru from the `iv-lite/paneru` GitHub releases (newest in list; `PANERU_TAG` pins) + write `~/.config/paneru/init.lua` + install its launchd service |
 | `repair-paneru` | Self-repair an unhealthy daemon: re-sign → re-grant → restart → re-check (run by `enable-services`, or by hand) |
 | `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build) |
-| `grant-permissions` | Revoke stale grant, then grant Accessibility via tccutil-rs (user → sudo → manual fallback) |
+| `grant-permissions` | Preserve a listed Accessibility grant (zero TCC writes), otherwise grant via tccutil-rs (user → sudo → manual fallback); revokes only on the repair path |
 | `enable-services` | Start Paneru |
 
 ### After install
@@ -315,20 +316,17 @@ popup). Immediate recourse: `paneru restart`. Re-enable the indicator once a
 Paneru release includes the #390 fix; concurrently, keep Paneru at ≥ 0.5.0 so
 the event-tap watchdog (karinushka/paneru#350) is present.
 
-**Paneru runs but doesn't tile after an upgrade.** Replacing the binary voids
-the Accessibility grant: release builds without a pinned signing identifier
-get a fresh ad-hoc identity each time, which macOS treats as a new app (see
-"Installing from Github" in the
-[fork README](https://github.com/iv-lite/paneru#installing-from-github)).
-The installer now pins the stable identifier
-(`com.github.karinushka.paneru`) onto the downloaded binary, revokes the
-stale grant **before** replacing the binary, re-grants
-before starting the service, and `enable-services` runs a self-repair on
-an unhealthy daemon (`scripts/repair-paneru`: re-sign → re-grant →
-restart → re-check, twice, then one manual-grant pause when interactive).
-Revoking and granting both go through `tccutil-rs`, which can only touch
-the TCC database when the terminal running the installer has **Full Disk
-Access** (System Settings → Privacy & Security → Full Disk Access, then
+**Paneru runs but doesn't tile after an upgrade.** Replacing an
+identifier-pinned binary at the same path normally preserves the
+Accessibility grant (the installer pins the stable identifier
+`com.github.karinushka.paneru` onto the downloaded binary and keeps a listed
+grant with zero TCC writes — verified live: tiling survives the swap).
+If tiling still doesn't start, the grant is stale-but-listed: `enable-services`
+runs a self-repair on an unhealthy daemon (`scripts/repair-paneru`: re-sign →
+revoke + re-grant → restart → re-check, twice, then one manual-grant pause
+when interactive). Revoking and granting both go through `tccutil-rs`, which
+can only touch the TCC database when the terminal running the installer has
+**Full Disk Access** (System Settings → Privacy & Security → Full Disk Access, then
 fully quit and reopen the terminal). Without it the installer skips all
 scripted TCC writes and hands off to Paneru itself: the freshly started
 daemon parks with a setup dialog and waits — flip the toggle in System
