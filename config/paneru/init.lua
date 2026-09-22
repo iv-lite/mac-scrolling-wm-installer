@@ -128,8 +128,11 @@ paneru.setup {
     -- Off: no auto-centering scroll on focus changes. Display moves then
     -- play as the daemon's single native motion instead of arrival scroll
     -- plus re-centering steps; center manually with Cmd+Option+Space.
-    -- center_single_column below is independent: it only centers a lone
-    -- column, never recenters on focus changes.
+    -- Keyboard focus itself is always a single strip flight (strip-only
+    -- centering with monotonic offsets; the focus echo stands down while
+    -- the strip is mid-flight, since dd0f628). center_single_column below
+    -- is independent: it only centers a lone column, never recenters on
+    -- focus changes.
     auto_center = false,
     -- On: a lone column narrower than the viewport is centered instead of
     -- left-pinned. Multi-column strips are unaffected. Needs fork with

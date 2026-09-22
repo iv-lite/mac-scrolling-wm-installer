@@ -258,7 +258,9 @@ moves. Two things make it feel native:
   toolbar/tab/content grabs stay native and drive nothing beyond
   press/release bookkeeping, while armed `Cmd+Alt` drags move live, landing
   in the nearest column. Same-tick strip drags, most-visible release reveal,
-  rigid strip riding, and single-motion focus arrival are native.
+  rigid strip riding, and single-flight keyboard focus (strip-only centering
+  with monotonic offsets; the focus echo stands down while the strip is
+  mid-flight) are native.
 - Tiled windows fill their tile slot (`options.maximize_tiled_windows = true`,
   at launch snap and on every layout change).
 - Session restore remembers each window's display/frame (state v3) and prunes

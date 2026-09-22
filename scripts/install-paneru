@@ -273,8 +273,10 @@ fi
 # set here). restore.missing_windows = "drop" (needs 42add2b; older binaries
 # reject the unknown value, unlike unknown keys) is also set. 416e418
 # (same-tick drags, most-visible reveal), 8bda31b (pump focus, overlay gate,
-# chase-ahead borders), c148819 (rigid strip riding) and 8ed9e3d (driven
-# moves cancel live glides) need no config.
+# chase-ahead borders), c148819 (rigid strip riding), 8ed9e3d (driven
+# moves cancel live glides) and dd0f628 (single-flight keyboard focus:
+# strip-only centering, echo stand-down while the strip is mid-flight)
+# need no config.
 # All still unreleased with no tag yet; --prefer-local-builds from a current
 # sibling checkout has them.
 # Older binaries silently ignore unknown keys/tables: new windows keep their
