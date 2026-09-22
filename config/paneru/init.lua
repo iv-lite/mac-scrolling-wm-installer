@@ -98,7 +98,15 @@ paneru.setup {
     horizontal_mouse_warp = -1,
     horizontal_mouse_warp_offset = 0,
     preset_column_widths = { 0.3, 0.5, 1.0 },
-    animation_speed = 20.0,
+    -- Fixed 150ms smootherstep tween (zero velocity at both ends, lockstep
+    -- bursts, 2px first-tick kick, 40ms retarget floor). Needs a fork build
+    -- containing a7d2d7c (bursts since 1d5f429); older binaries silently
+    -- ignore this key and fall back to animation_speed below.
+    animation_duration_ms = 150,
+    -- Legacy fallback for pre-a7d2d7c binaries: 12.0 maps to the same 150ms
+    -- (1800/rate); kept so release binaries without the new key keep the
+    -- same feel instead of drifting to the old default.
+    animation_speed = 12.0,
     -- AX writer thread (default-on upstream since d1fb7dd): AX position
     -- commits go to a dedicated thread with per-window coalescing instead of
     -- blocking the main thread per animation frame. Batches drain in
@@ -150,6 +158,9 @@ paneru.setup {
     -- as String — src/config.rs is Option<bool>).
     create_virtual_workspace_automatically = true,
     reap_empty_workspaces = true,
+    -- Off: virtual-row switches snap instead of animating (native Spaces
+    -- animation is what virtual rows exist to avoid). Default false upstream.
+    virtual_workspace_animations = false,
     window_resize_cycle = true,
     -- On: a window moved to another strip (Cmd+Alt cross-display drag, or a
     -- virtual-workspace move) lands in the column matching its on-screen
@@ -190,19 +201,17 @@ paneru.setup {
     },
     inactive = {
       dim = { opacity = 0.0, opacity_night = 0.0 },
-      -- Subtle inactive borders in the active hue at low hex alpha.
-      -- Width/radius/opacity are shared with active.border below, so the
-      -- effective alpha is 0.84 × 0x66 (≈ 0.34). Needs a post-cedc426 fork
-      -- build (currently uncommitted upstream — --prefer-local-builds picks
-      -- it up as-is); older binaries silently ignore this table.
-      border = { enabled = true, color = "#2b303c66" },
+      -- Off: inactive borders re-sync every tiled window on each animating
+      -- tick — the largest overlay cost in this config. The active border
+      -- below keeps the focus cue on its own.
+      border = { enabled = false },
     },
     active = {
       border = {
         enabled = true,
         color = "#2b303c",
-        opacity = 0.84,
-        width = 4.0,
+        opacity = 1.0,
+        width = 2.0,
         radius = "auto",
       },
     },

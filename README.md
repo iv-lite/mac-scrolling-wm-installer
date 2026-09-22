@@ -263,6 +263,12 @@ moves. Two things make it feel native:
   mid-flight) are native.
 - Tiled windows fill their tile slot (`options.maximize_tiled_windows = true`,
   at launch snap and on every layout change).
+- Driven moves glide on a fixed 150ms `smootherstep` tween
+  (`options.animation_duration_ms = 150`, lockstep bursts, 2px first-tick
+  kick, 40ms retrace-aware retarget floor) with `options.animation_speed =
+  12.0` kept as the legacy fallback for older binaries (1800/rate maps
+  12.0 onto the same 150ms); virtual-row switches snap
+  (`options.virtual_workspace_animations = false`).
 - Session restore remembers each window's display/frame (state v3) and prunes
   saved windows whose app never opened at grace expiry
   (`restore.missing_windows = "drop"`).
@@ -281,10 +287,10 @@ moves. Two things make it feel native:
   run loop that services Paneru's `CGEventTap` — keybindings silently die after
   leaving native fullscreen. A brief status popup still announces the active
   workspace on switch; re-enable the indicator once a Paneru release ships #390.
-- **Focus cues**: an active-window border (`decorations.active.border`, Nord
-  blue) replaces JankyBorders — no extra bar process needed. Inactive windows
-  get a faint border in the same hue (`decorations.inactive.border`, hex alpha
-  over the shared geometry). Inactive-window
+- **Focus cues**: a slim active-window border (`decorations.active.border`, Nord
+  blue, 2px at full opacity) replaces JankyBorders — no extra bar process needed.
+  Inactive borders stay off (`decorations.inactive.border`) since they re-sync
+  every tiled window on each animating tick; inactive-window
   dimming uses native macOS (`decorations.inactive.dim`).
 - **Top gap:** `padding.top` is 8px in the config (all sides 8px, menu bar kept visible).
 

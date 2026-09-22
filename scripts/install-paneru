@@ -260,12 +260,17 @@ fi
 # options.center_single_column (need a fork build containing d8b5677),
 # options.left_drag_scrolls_strip (needs 43940a2, titlebar-only since
 # cedc426, horizontal-only since 4f2b95c, top-28px grab zone since 57519b7),
-# decorations.inactive.border (needs 806e2a1), options.ax_writer
+# options.ax_writer
 # (default-on since d1fb7dd; the experimental_ax_writer spelling still works
 # as a deprecated alias; window-id drain order since c148819, frame epochs +
 # stuck-writer watchdog since 113bd4e — worker supervision and orchestrator
 # pacing were reverted in f5c1535) and options.maximize_tiled_windows
-# (needs e25b6f9).
+# (needs e25b6f9). options.animation_duration_ms = 150 (fixed smootherstep
+# tween, lockstep bursts, first-tick kick; needs a7d2d7c, bursts since
+# 1d5f429) with options.animation_speed = 12.0 kept as the legacy fallback
+# for older binaries (1800/rate maps 12.0 onto the same 150ms), plus
+# options.virtual_workspace_animations = false (no config needed on older
+# binaries — false is the default).
 # Held drags track 1:1 with friction only on the release glide (b4852e0 —
 # the drag_friction_* keys are removed upstream and no longer set here, but
 # old configs still parse). Vsync retrace pacing is always-on where
@@ -280,9 +285,9 @@ fi
 # All still unreleased with no tag yet; --prefer-local-builds from a current
 # sibling checkout has them.
 # Older binaries silently ignore unknown keys/tables: new windows keep their
-# OS size, a lone column left-pins, plain drags pin to their slot, only the
-# active border is drawn, AX commits stay on the main thread, and tiled
-# windows fill their slot. (restore.missing_windows = "drop" is the
+# OS size, a lone column left-pins, plain drags pin to their slot, AX commits
+# stay on the main thread, tiled windows fill their slot, and glides fall
+# back to the animation_speed rate. (restore.missing_windows = "drop" is the
 # exception: pin "ignore" if you run an older Paneru.)
 # ─────────────────────────────────────────────────────────────
 version="$(paneru --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
