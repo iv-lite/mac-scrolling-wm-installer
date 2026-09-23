@@ -102,15 +102,13 @@ paneru.setup {
     horizontal_mouse_warp = -1,
     horizontal_mouse_warp_offset = 0,
     preset_column_widths = { 0.3, 0.5, 1.0 },
-    -- Fixed 150ms smootherstep tween (zero velocity at both ends, lockstep
-    -- bursts, 2px first-tick kick, 40ms retarget floor). Needs a fork build
-    -- containing a7d2d7c (bursts since 1d5f429); older binaries silently
-    -- ignore this key and fall back to animation_speed below.
-    animation_duration_ms = 150,
-    -- Legacy fallback for pre-a7d2d7c binaries: 12.0 maps to the same 150ms
-    -- (1800/rate); kept so release binaries without the new key keep the
-    -- same feel instead of drifting to the old default.
-    animation_speed = 12.0,
+    -- On: driven moves glide on the fixed 150ms smootherstep tween (zero
+    -- velocity at both ends, lockstep bursts, 2px first-tick kick, 40ms
+    -- retarget floor); false snaps instantly. One switch since fork 7496610
+    -- (replaces the old animation_speed / animation_duration_ms knobs, now
+    -- removed upstream). Older binaries silently ignore this key and glide
+    -- on their own default, so it is safe on every build.
+    animations = true,
     -- AX writer thread (default-on upstream since d1fb7dd): AX position
     -- commits go to a dedicated thread with per-window coalescing instead of
     -- blocking the main thread per animation frame. Batches drain in

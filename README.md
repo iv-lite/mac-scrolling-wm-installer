@@ -274,11 +274,10 @@ moves. Two things make it feel native:
 - Tiled windows fill their tile slot (`options.maximize_tiled_windows = true`,
   at launch snap and on every layout change).
 - Driven moves glide on a fixed 150ms `smootherstep` tween
-  (`options.animation_duration_ms = 150`, lockstep bursts, 2px first-tick
-  kick, 40ms retrace-aware retarget floor) with `options.animation_speed =
-  12.0` kept as the legacy fallback for older binaries (1800/rate maps
-  12.0 onto the same 150ms); virtual-row switches snap
-  (`options.virtual_workspace_animations = false`).
+  (`options.animations = true`: lockstep bursts, 2px first-tick kick, 40ms
+  retrace-aware retarget floor; `false` snaps instantly — one switch since
+  fork `7496610`, older binaries ignore it and glide on their default);
+  virtual-row switches snap (`options.virtual_workspace_animations = false`).
 - Session restore remembers each window's display/frame (state v3) and prunes
   saved windows whose app never opened at grace expiry
   (`restore.missing_windows = "drop"`).
