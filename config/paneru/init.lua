@@ -102,9 +102,10 @@ paneru.setup {
     horizontal_mouse_warp = -1,
     horizontal_mouse_warp_offset = 0,
     preset_column_widths = { 0.3, 0.5, 1.0 },
-    -- On: driven moves glide on the fixed 150ms smootherstep tween (zero
-    -- velocity at both ends, lockstep bursts, 2px first-tick kick, 40ms
-    -- retarget floor); false snaps instantly. One switch since fork 7496610
+    -- On: driven moves glide (snappy ease — gentle attack, decisive
+    -- landing — lockstep bursts, 2px first-tick kick, distance-proportional
+    -- duration around the 150ms base, up to 220ms on long/ultrawide
+    -- traverses); false snaps instantly. One switch since fork 7496610
     -- (replaces the old animation_speed / animation_duration_ms knobs, now
     -- removed upstream). Older binaries silently ignore this key and glide
     -- on their own default, so it is safe on every build.
@@ -114,7 +115,8 @@ paneru.setup {
     -- blocking the main thread per animation frame. Batches drain in
     -- window-id order; commits carry frame epochs so whole-frame
     -- convergence is observable, with a stuck-writer watchdog (both since
-    -- 113bd4e; worker supervision was reverted in f5c1535).
+    -- 113bd4e; worker supervision was reverted in f5c1535) plus a
+    -- degrade-to-sync fallback ladder with automatic recovery (837a6e4).
     -- Apps needing the enhanced-UI workaround always stay synchronous; set
     -- to false if testing shows regressions on your app mix. Older binaries
     -- silently ignore it.

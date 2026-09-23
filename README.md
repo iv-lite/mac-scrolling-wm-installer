@@ -273,17 +273,19 @@ moves. Two things make it feel native:
   so they never rest next to whitespace.
 - Tiled windows fill their tile slot (`options.maximize_tiled_windows = true`,
   at launch snap and on every layout change).
-- Driven moves glide on a fixed 150ms `smootherstep` tween
-  (`options.animations = true`: lockstep bursts, 2px first-tick kick, 40ms
-  retrace-aware retarget floor; `false` snaps instantly — one switch since
-  fork `7496610`, older binaries ignore it and glide on their default);
+- Driven moves glide with a snappy ease (`options.animations = true`: gentle
+  attack, decisive landing, lockstep bursts, 2px first-tick kick,
+  distance-proportional duration around the 150ms base up to 220ms on
+  long/ultrawide traverses; `false` snaps instantly — one switch since fork
+  `7496610`, older binaries ignore it and glide on their default);
   virtual-row switches snap (`options.virtual_workspace_animations = false`).
 - Session restore remembers each window's display/frame (state v3) and prunes
   saved windows whose app never opened at grace expiry
   (`restore.missing_windows = "drop"`).
 - AX position commits go through a dedicated writer thread
   (`options.ax_writer = true`, window-id drain order, frame-epoch
-  convergence with stuck-writer watchdog), and the pump paces to the display
+  convergence with stuck-writer watchdog, degrade-to-sync fallback ladder
+  with automatic recovery), and the pump paces to the display
   retrace where supported (always-on, macOS 14+).
 
 ## The menu bar

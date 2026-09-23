@@ -296,15 +296,16 @@ fi
 # as a deprecated alias; window-id drain order since c148819, frame epochs +
 # stuck-writer watchdog since 113bd4e — worker supervision and orchestrator
 # pacing were reverted in f5c1535) and options.maximize_tiled_windows
-# (needs e25b6f9). options.animations = true (fixed 150ms smootherstep
-# tween, lockstep bursts, first-tick kick; needs 7496610, which removed the
-# old animation_speed / animation_duration_ms knobs — pre-7496610 binaries
-# silently ignore it and glide on their own default), plus
-# options.virtual_workspace_animations = false (no config needed on older
-# binaries — false is the default).
-# Held drags track 1:1 with friction only on the release glide (b4852e0 —
-# the drag_friction_* keys are removed upstream and no longer set here, but
-# old configs still parse). Vsync retrace pacing is always-on where
+# (needs e25b6f9). options.animations = true (snappy ease, lockstep bursts,
+# first-tick kick, distance-proportional duration around the 150ms base up
+# to 220ms; needs 7496610, which removed the old animation_speed /
+# animation_duration_ms knobs — pre-7496610 binaries silently ignore it and
+# glide on their own default), plus options.virtual_workspace_animations =
+# false (no config needed on older binaries — false is the default).
+# Held drags fold each HID burst into one drive per frame and track 1:1 with
+# friction only on the release glide (b4852e0 — the drag_friction_* keys are
+# removed upstream and no longer set here, but old configs still parse;
+# per-frame folding since 6793ee8). Vsync retrace pacing is always-on where
 # supported since e25b6f9 (the experimental_vsync flag is removed, no longer
 # set here). restore.missing_windows = "drop" (needs 42add2b; older binaries
 # reject the unknown value, unlike unknown keys) is also set. 416e418
@@ -320,7 +321,11 @@ fi
 # `paneru install` converging binary + plist + app shim) needs no config.
 # 088fa45 (already-placed centering skips redundant markers, pure clicks
 # issue no reorder/homing/reshuffle, holders carry no timeout fuse) needs
-# no config either.
+# no config either. 3c053fb (optional Swift overlay backend via dlopen
+# strangler, Rust fallback; non-default cargo feature, runtime opt-in) and
+# 6793ee8 (snappy easing, proportional glides, folded drag input) need no
+# config either. 837a6e4 (writer-degraded fallback ladder with fast resize
+# path and stall recovery) needs no config either.
 # All still unreleased with no tag yet; --prefer-local-builds from a current
 # sibling checkout has them.
 # Older binaries silently ignore unknown keys/tables: new windows keep their
