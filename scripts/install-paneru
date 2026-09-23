@@ -325,7 +325,9 @@ fi
 # strangler, Rust fallback; non-default cargo feature, runtime opt-in) and
 # 6793ee8 (snappy easing, proportional glides, folded drag input) need no
 # config either. 837a6e4 (writer-degraded fallback ladder with fast resize
-# path and stall recovery) needs no config either.
+# path and stall recovery) needs no config either. 30ff4d8 (owner-viewport
+# focus centering, warp-rebased drag anchor, deferred expose on transient
+# frames, per-frame fold bound) needs no config either.
 # All still unreleased with no tag yet; --prefer-local-builds from a current
 # sibling checkout has them.
 # Older binaries silently ignore unknown keys/tables: new windows keep their
