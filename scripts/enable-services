@@ -41,6 +41,12 @@ fi
 # instead of leaving a silently broken setup behind.
 # ─────────────────────────────────────────────────────────────
 if command -v paneru >/dev/null 2>&1; then
+	# Upstream 0a29efc: the Spotlight shim must exec the canonical daemon.
+	# Never fatal — just point at the heal (install-paneru refreshes it).
+	shim_script="$HOME/Applications/Paneru.app/Contents/MacOS/Paneru"
+	if [ -f "$shim_script" ] && ! grep -qF "$HOME/.local/bin/paneru" "$shim_script" 2>/dev/null; then
+		warn "Paneru.app shim does not point at ~/.local/bin/paneru — re-run 'paneru install-app' to refresh it"
+	fi
 	healthy=0
 	for i in $(seq 1 10); do
 		if paneru query state --json >/dev/null 2>&1; then

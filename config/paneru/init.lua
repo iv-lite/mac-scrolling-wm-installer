@@ -63,10 +63,12 @@ paneru.setup {
   -- ─── Global options ───
   options = {
     focus_follows_mouse = true,
-    -- Daemon-native pointer follow: Paneru warps to the window itself on
-    -- keyboard-driven focus changes (including display moves), in sync with
-    -- its own animation. A helper warp on top lands late and re-triggers
-    -- focus as a visible second step — so display moves perform no warp.
+    -- Daemon-native pointer follow: Paneru warps to the focused window's
+    -- center on keyboard-driven focus changes (even when the cursor is
+    -- already inside it), in sync with its own animation. Clicks own their
+    -- cursor (never yanked) and mid-drag focus changes never warp, so
+    -- display moves perform no extra warp. A helper warp on top lands late
+    -- and re-triggers focus as a visible second step.
     mouse_follows_focus = true,
     -- Hold Cmd+Alt while left-clicking a tiled window to arm the drag;
     -- crossing a display boundary moves it to that display's strip live
@@ -76,14 +78,16 @@ paneru.setup {
     -- content grabs stay native. Shipped in fork ≥ v0.2.2.
     mouse_drag_display_modifier = "cmd + alt",
     -- On: dragging a tiled window by its titlebar (top 28px, resize margins
-    -- excluded) scrolls the workspace strip through the shared swipe pipeline
-    -- instead of moving anything; content, toolbar and tab grabs stay fully
-    -- native. Only horizontal pointer motion drives anything — vertical
+    -- excluded) or by blank toolbar chrome scrolls the workspace strip
+    -- through the shared swipe pipeline instead of moving anything; buttons,
+    -- text fields, tab drags and content grabs stay fully native. Only
+    -- horizontal pointer motion drives anything — vertical
     -- travel is dropped so a shaky drag can't pull columns off their slots.
     -- Armed (Cmd+Alt) drags still move and transfer as before. Set to false
     -- to get native titlebar drags back. Needs a fork build containing
     -- 43940a2 (titlebar-only since cedc426, horizontal-only since 4f2b95c,
-    -- top-28px since 57519b7); older binaries silently ignore
+    -- top-28px since 57519b7, blank toolbar chrome since e803dd5); older
+    -- binaries silently ignore
     -- it and plain drags pin to their slot.
     left_drag_scrolls_strip = true,
     -- Held drags track the pointer 1:1 with no damping: a strip held still

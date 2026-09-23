@@ -192,7 +192,16 @@ grant() {
 
 note "Granting Accessibility permissions..."
 
-grant "$(command -v paneru 2>/dev/null || true)"
+# Canonical daemon path (upstream 0a29efc): the plist and the Paneru.app
+# shim both point here, so this is the identity that must hold the grant.
+# The invoking PATH copy is granted too when it differs (migration window
+# where a legacy /opt/homebrew/bin/paneru still shadows canonical).
+CANONICAL_BIN="$HOME/.local/bin/paneru"
+INVOKING_BIN="$(command -v paneru 2>/dev/null || true)"
+grant "$CANONICAL_BIN"
+if [ -n "$INVOKING_BIN" ] && [ "$INVOKING_BIN" != "$CANONICAL_BIN" ]; then
+	grant "$INVOKING_BIN"
+fi
 
 # ─────────────────────────────────────────────────────────────
 # Post-grant verification: check the TCC database via tccutil-rs
@@ -218,7 +227,10 @@ verify_grant() {
 }
 
 if command -v tccutil-rs >/dev/null 2>&1; then
-	verify_grant "$(command -v paneru 2>/dev/null || true)"
+	verify_grant "$CANONICAL_BIN"
+	if [ -n "$INVOKING_BIN" ] && [ "$INVOKING_BIN" != "$CANONICAL_BIN" ]; then
+		verify_grant "$INVOKING_BIN"
+	fi
 else
 	warn "tccutil-rs not found — skipping verification"
 fi

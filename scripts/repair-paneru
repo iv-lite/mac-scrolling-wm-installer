@@ -20,7 +20,14 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 # revokes proactively. Called by enable-services when the health
 # poll fails; safe to run by hand too: bash scripts/repair-paneru
 # ─────────────────────────────────────────────────────────────
-PANERU_BIN="$(command -v paneru 2>/dev/null || true)"
+# Canonical first (upstream 0a29efc): the plist and shim point at
+# ~/.local/bin/paneru, so that is the identity to re-sign and re-grant.
+# Fall back to the PATH copy when canonical is missing (migration window).
+if [ -x "$HOME/.local/bin/paneru" ]; then
+	PANERU_BIN="$HOME/.local/bin/paneru"
+else
+	PANERU_BIN="$(command -v paneru 2>/dev/null || true)"
+fi
 if [ -z "$PANERU_BIN" ]; then
 	warn "paneru not on PATH — nothing to repair"
 	exit 0

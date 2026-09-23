@@ -43,7 +43,8 @@ UNCHANGED_SENTINEL="${TMPDIR:-/tmp}/paneru-install-unchanged"
 CHANGED_SENTINEL="${TMPDIR:-/tmp}/paneru-install-changed"
 
 fetch_paneru() {
-	local tar_url tmp staged bin
+	local tar_url tmp staged bin canonical legacy
+	canonical="$HOME/.local/bin/paneru"
 	tmp="$(mktemp -d)"
 	# A killed run must not leave stale skip markers behind.
 	rm -f "$UNCHANGED_SENTINEL" "$CHANGED_SENTINEL"
@@ -174,16 +175,22 @@ fetch_paneru() {
 			return 1
 		fi
 	fi
-	# Stop the running daemon before overwriting its binary.
+	# Stop the running daemon before overwriting its binary. `paneru
+	# install` (below) converges the invoking binary onto the canonical
+	# daemon path ~/.local/bin/paneru (upstream 0a29efc): every install
+	# vector lands there, and the launchd plist + Paneru.app shim point
+	# at it once and never drift.
 	if command -v paneru >/dev/null 2>&1; then
 		paneru stop >/dev/null 2>&1 || true
 	fi
-	if command -v paneru >/dev/null 2>&1; then
-		bin="$(command -v paneru)"
-	else
-		bin="/opt/homebrew/bin/paneru"
-	fi
+	bin="$canonical"
 	mkdir -p "$(dirname "$bin")"
+	# Make the canonical dir visible to the rest of this install (and warn
+	# below when it is not on the user's PATH).
+	case ":$PATH:" in
+		*":$HOME/.local/bin:"*) ;;
+		*) export PATH="$HOME/.local/bin:$PATH" ;;
+	esac
 	# Byte-identical staged binary: same bytes ⇒ same ad-hoc identity ⇒ any
 	# live grant stays live. Skip the overwrite and the re-sign, and leave a
 	# marker so grant-permissions (next step) preserves a verified grant
@@ -191,6 +198,14 @@ fetch_paneru() {
 	# launchd steps further down still run (they live outside fetch_paneru).
 	if [ -e "$bin" ] && cmp -s "$staged" "$bin"; then
 		rm -rf "$tmp"
+		# Canonical already matches: still drop pre-migration copies so
+		# two daemons never linger (they are not the live identity).
+		for legacy in /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
+			if [ "$legacy" != "$bin" ] && [ -e "$legacy" ]; then
+				rm -f "$legacy"
+				note "Removed legacy Paneru binary $legacy (canonical is $bin)"
+			fi
+		done
 		ok "Paneru binary unchanged — keeping the existing Accessibility grant"
 		touch "$UNCHANGED_SENTINEL"
 		return 0
@@ -210,6 +225,20 @@ fetch_paneru() {
 	cp "$staged" "$bin"
 	chmod +x "$bin"
 	rm -rf "$tmp"
+	# Legacy copies from before the canonical-path migration (upstream
+	# 0a29efc): two daemons must never linger, so drop any that are not
+	# the canonical file itself. The TCC grant lives on the canonical
+	# path (re-applied by grant-permissions below).
+	for legacy in /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
+		if [ "$legacy" != "$bin" ] && [ -e "$legacy" ]; then
+			rm -f "$legacy"
+			note "Removed legacy Paneru binary $legacy (canonical is $bin)"
+		fi
+	done
+	# A stale `command -v paneru` shim outside the canonical path (e.g. a
+	# Homebrew link shadowing ~/.local/bin) would keep launching the old
+	# daemon: prefer canonical for the rest of this run.
+	hash -r 2>/dev/null || true
 	if [ -n "${PREFER_LOCAL_BUILDS:-}" ] && [ -f "$REPO_ROOT/../paneru/Cargo.toml" ]; then
 		ok "Paneru installed to $bin (from local source build)"
 	else
@@ -259,7 +288,9 @@ fi
 # The shipped config also sets options.default_ratio,
 # options.center_single_column (need a fork build containing d8b5677),
 # options.left_drag_scrolls_strip (needs 43940a2, titlebar-only since
-# cedc426, horizontal-only since 4f2b95c, top-28px grab zone since 57519b7),
+# cedc426, horizontal-only since 4f2b95c, top-28px grab zone since 57519b7,
+# blank toolbar chrome since e803dd5 — buttons, text fields and tab drags
+# inside the toolbar stay native),
 # options.ax_writer
 # (default-on since d1fb7dd; the experimental_ax_writer spelling still works
 # as a deprecated alias; window-id drain order since c148819, frame epochs +
@@ -281,7 +312,12 @@ fi
 # chase-ahead borders), c148819 (rigid strip riding), 8ed9e3d (driven
 # moves cancel live glides) and dd0f628 (single-flight keyboard focus:
 # strip-only centering, echo stand-down while the strip is mid-flight)
-# need no config.
+# need no config. e803dd5 (keyboard focus recenters the cursor even when it
+# is already inside the window; clicks own their cursor and mid-drag focus
+# changes never warp) and 314ede8 (strips fill the viewport on focus, move
+# and drag so they never rest next to whitespace) need no config either.
+# 0a29efc (canonical daemon path ~/.local/bin/paneru; idempotent
+# `paneru install` converging binary + plist + app shim) needs no config.
 # All still unreleased with no tag yet; --prefer-local-builds from a current
 # sibling checkout has them.
 # Older binaries silently ignore unknown keys/tables: new windows keep their
@@ -331,15 +367,32 @@ note "the popup still shows the active workspace. Re-enable after a Paneru relea
 note "Cmd+Shift+? opens the shortcut cheat sheet via the helper above."
 
 # ─────────────────────────────────────────────────────────────
-# launchd service (applies Accessibility before start)
+# launchd service + app shim (applies Accessibility before start)
 # ─────────────────────────────────────────────────────────────
-note "Installing Paneru launchd service..."
-if [ -f "$HOME/Library/LaunchAgents/com.github.karinushka.paneru.plist" ]; then
-	ok "Paneru launchd service already installed (reinstall refreshes the plist)"
-else
-	paneru install
-	ok "Paneru service installed"
+# `paneru install` is idempotent since upstream 0a29efc: it converges the
+# invoking binary onto ~/.local/bin/paneru, re-stamps the stable ad-hoc
+# identifier when the bytes changed, and rewrites the plist whenever its
+# Program= drifted. Always run it (a no-op when converged) so updates heal
+# instead of stranding the old daemon path. `paneru start`/`restart` heal
+# a bootstrapped stale definition the same way.
+note "Installing Paneru launchd service (canonical: ~/.local/bin/paneru)..."
+paneru install
+ok "Paneru service installed (converged onto the canonical binary)"
+# The Spotlight shim must exec the canonical daemon or updates launch the
+# old binary: refresh whenever it points elsewhere (or is missing).
+shim_script="$HOME/Applications/Paneru.app/Contents/MacOS/Paneru"
+shim_target=""
+if [ -f "$shim_script" ]; then
+	shim_target="$(awk '/^ *exec /{line=$0} END{print line}' "$shim_script" | sed -e "s/^ *exec //" -e "s/ start *$//" -e "s/^'//" -e "s/'\$//" -e "s/'\"'\"'/'/g" || true)"
 fi
+if [ "$shim_target" != "$HOME/.local/bin/paneru" ]; then
+	paneru install-app >/dev/null 2>&1 || true
+	ok "Paneru app launcher refreshed (points at the canonical daemon)"
+fi
+case ":$PATH:" in
+	*":$HOME/.local/bin:"*) ;;
+	*) warn " ~/.local/bin is not on PATH — add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your shell profile so 'paneru' resolves to the canonical daemon" ;;
+esac
 
 warn "Paneru will be started by enable-services after permissions are granted."
-echo "     (grant Accessibility to $(command -v paneru) to let it move windows)"
+echo "     (grant Accessibility to $HOME/.local/bin/paneru to let it move windows)"

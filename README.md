@@ -21,11 +21,15 @@ infinite-strip tiler with hot-reloadable TOML config, native macOS workspaces
 
 Re-running `./install` **upgrades** an existing setup: Homebrew components
 (Ghostty, tccutil-rs) are updated (no-op when current), Paneru is refreshed
-from its GitHub releases, configs are refreshed from this repo (previous
+from its GitHub releases into the canonical daemon path
+`~/.local/bin/paneru` (pre-migration copies in `/opt/homebrew/bin` are
+removed so two daemons never linger; make sure `~/.local/bin` is on your
+`PATH`), configs are refreshed from this repo (previous
 copies kept as `*.bak`), and the service is restarted so the new
-binary/config apply immediately. When the staged Paneru binary is
-byte-identical to the installed one, the binary (and its Accessibility
-grant) is left untouched — a real binary change replaces just the binary
+binary/config apply immediately. `paneru install` is idempotent: it skips
+the copy and the re-stamp when the canonical binary already matches, and
+rewrites the launchd plist / `Paneru.app` shim whenever they drifted
+elsewhere — a real binary change replaces just the binary
 and keeps a listed grant (validity confirmed by the post-start health
 check; only a failed check triggers revoke + re-grant via repair).
 
@@ -69,7 +73,7 @@ The installer runs these steps from `scripts/`:
 | `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Paneru draws its indicator in it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
 | `install-antigen` | Install Antigen (`~/antigen.zsh`) + write `~/.config/zsh/antigen.zsh` (git, command-not-found, completions, autosuggestions, syntax-highlighting last, typewritten theme) + wire it into `~/.zshrc` |
-| `install-paneru` | Install Paneru from the `iv-lite/paneru` GitHub releases (newest in list; `PANERU_TAG` pins) + write `~/.config/paneru/init.lua` + install its launchd service |
+| `install-paneru` | Install Paneru from the `iv-lite/paneru` GitHub releases (newest in list; `PANERU_TAG` pins) into `~/.local/bin/paneru` + write `~/.config/paneru/init.lua` + converge its launchd service and app shim onto the canonical path |
 | `repair-paneru` | Self-repair an unhealthy daemon: re-sign → re-grant → restart → re-check (run by `enable-services`, or by hand) |
 | `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build) |
 | `grant-permissions` | Preserve a listed Accessibility grant (zero TCC writes), otherwise grant via tccutil-rs (user → sudo → manual fallback); revokes only on the repair path |
@@ -85,7 +89,9 @@ The installer runs these steps from `scripts/`:
 3. **Paneru** shows the active virtual workspace in a brief popup on switch.
 4. If the Accessibility grant failed, grant it manually:
    System Settings → Privacy & Security → Accessibility (enable `paneru`,
-   usually shown as `paneru` `/opt/homebrew/bin/paneru`).
+   usually shown as `paneru` `~/.local/bin/paneru`). After updating, run
+   `paneru install` followed by `paneru restart` first so the service
+   points at the new binary — then grant once for the updated build.
 5. Ghostty opens **frameless** (`macos-titlebar-style = hidden` in
    `~/.config/ghostty/config`) — drag its window edge with `Option+Click`.
 
@@ -108,8 +114,11 @@ window in the same lane), **Ctrl**.
 | `Cmd` + `Option` + `Shift` + `Space` | Snap an overflowing window into the viewport |
 | `Cmd` + `Option` + `M` | Toggle full-width for the focused window |
 
-> Focus **follows the mouse**, and keyboard navigation warps the cursor to the
-> focused window (`focus_follows_mouse` / `mouse_follows_focus` in `[options]`).
+> Focus **follows the mouse**, and keyboard navigation warps the cursor to
+> the **center** of the focused window (`focus_follows_mouse` /
+> `mouse_follows_focus` in `[options]`) — even when the cursor is already
+> inside it. Clicks own their cursor (never yanked) and mid-drag focus
+> changes never warp.
 
 ### Workspaces (dynamic rows)
 
@@ -252,15 +261,16 @@ moves. Two things make it feel native:
   (`options.center_single_column = true`); multi-column strips stay
   left-pinned. `auto_center` remains `false`, so focus changes never
   recenter — only the single-column case does.
-- Titlebar (top 28px) left-drags scroll the strip horizontally only (vertical
+- Titlebar (top 28px) **or blank toolbar chrome** left-drags scroll the strip horizontally only (vertical
   travel is dropped) tracking the pointer 1:1 while held — friction lives
   only on the release glide (raw-hand release velocity seeds inertia/snap);
-  toolbar/tab/content grabs stay native and drive nothing beyond
+  buttons, text fields, tab drags and content grabs stay native and drive nothing beyond
   press/release bookkeeping, while armed `Cmd+Alt` drags move live, landing
   in the nearest column. Same-tick strip drags, most-visible release reveal,
   rigid strip riding, and single-flight keyboard focus (strip-only centering
   with monotonic offsets; the focus echo stands down while the strip is
-  mid-flight) are native.
+  mid-flight) are native. Strips fill the viewport on focus, move and drag
+  so they never rest next to whitespace.
 - Tiled windows fill their tile slot (`options.maximize_tiled_windows = true`,
   at launch snap and on every layout change).
 - Driven moves glide on a fixed 150ms `smootherstep` tween
@@ -328,11 +338,14 @@ Paneru release includes the #390 fix; concurrently, keep Paneru at ≥ 0.5.0 so
 the event-tap watchdog (karinushka/paneru#350) is present.
 
 **Paneru runs but doesn't tile after an upgrade.** Replacing an
-identifier-pinned binary at the same path normally preserves the
+identifier-pinned binary at the same canonical path normally preserves the
 Accessibility grant (the installer pins the stable identifier
 `com.github.karinushka.paneru` onto the downloaded binary and keeps a listed
 grant with zero TCC writes — verified live: tiling survives the swap).
-If tiling still doesn't start, the grant is stale-but-listed: `enable-services`
+If tiling still doesn't start, converge first (`paneru install`, then
+`paneru restart`) so the plist and shim point at the new binary — then
+re-grant once, since ad-hoc signatures change hash per build.
+If it is still dead, the grant is stale-but-listed: `enable-services`
 runs a self-repair on an unhealthy daemon (`scripts/repair-paneru`: re-sign →
 revoke + re-grant → restart → re-check, twice, then one manual-grant pause
 when interactive). Revoking and granting both go through `tccutil-rs`, which
@@ -347,7 +360,7 @@ remove that entry with `–` first, then toggle it back on. If you still
 see no tiling, repair by hand:
 
 ```sh
-codesign --force --sign - --identifier com.github.karinushka.paneru "$(command -v paneru)"
+codesign --force --sign - --identifier com.github.karinushka.paneru "$HOME/.local/bin/paneru"
 bash scripts/grant-permissions   # terminal needs Full Disk Access for this
 paneru restart
 ```

@@ -83,8 +83,13 @@ cmd_check() {
   guest "paneru query state --json" 2>&1 || true
   echo ""
   echo "── Paneru binary + native display commands ──"
+  guest "test -x ~/.local/bin/paneru && ~/.local/bin/paneru --version" 2>&1 || true
   guest "command -v paneru && paneru --version" 2>&1 || true
   guest "paneru send-cmd mouse previousdisplay" 2>&1 || true
+  echo ""
+  echo "── Paneru service convergence (plist + shim must point at canonical) ──"
+  guest "grep -qF '.local/bin/paneru' ~/Library/LaunchAgents/com.github.karinushka.paneru.plist && echo '(plist points at canonical)' || echo '(plist drift or missing)'"
+  guest "grep -qF '.local/bin/paneru' ~/Applications/Paneru.app/Contents/MacOS/Paneru 2>/dev/null && echo '(shim points at canonical)' || echo '(shim drift or missing)'"
   echo ""
   echo "── Installed formulae ──"
   guest "brew list | grep -Ei 'rift|aerospace|aerospacebar|borders|tccutil|ghostty' || echo '(none found)'"
