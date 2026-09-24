@@ -66,9 +66,11 @@ paneru.setup {
     -- Daemon-native pointer follow: Paneru warps to the focused window's
     -- center on keyboard-driven focus changes (even when the cursor is
     -- already inside it), in sync with its own animation. Clicks own their
-    -- cursor (never yanked) and mid-drag focus changes never warp, so
-    -- display moves perform no extra warp. A helper warp on top lands late
-    -- and re-triggers focus as a visible second step.
+    -- cursor (never yanked, never grown — click-focus clamps down only) and
+    -- mid-drag focus changes never warp, so display moves perform no extra
+    -- warp. Hover pokes are throttled (2px) and pure clicks skip the
+    -- most-visible reveal; focus steps use a 2px arrival quantum. A helper
+    -- warp on top lands late and re-triggers focus as a visible second step.
     mouse_follows_focus = true,
     -- Hold Cmd+Alt while left-clicking a tiled window to arm the drag;
     -- crossing a display boundary moves it to that display's strip live
@@ -92,20 +94,24 @@ paneru.setup {
     left_drag_scrolls_strip = true,
     -- Held drags track the pointer 1:1 with no damping: a strip held still
     -- with the button down simply waits at its raw offset. Friction lives
-    -- only on the release path — the raw-hand release velocity seeds the
-    -- inertia/snap glide on mouse-up (press-without-travel still stops
-    -- dead). Needs a fork build containing b4852e0; older binaries damp
-    -- held motion via drag_friction_* instead (removed upstream, still
-    -- parsed when present).
+    -- only on the release path — the pace-sensitive release velocity
+    -- (flick vs crawl) seeds the inertia/snap glide on mouse-up
+    -- (press-without-travel still stops dead; a small dead-zone absorbs
+    -- click jitter). Scroll-glide drags never cross displays, and hover
+    -- focus is deferred while the button is held — only the scroll
+    -- mouse-up may seed release inertia. Needs a fork build containing
+    -- b4852e0; older binaries damp held motion via drag_friction_*
+    -- instead (removed upstream, still parsed when present).
     -- Horizontally stacked (side-by-side) monitors: arrange displays
     -- vertically in macOS, set this to -1 so edge crossings feel left/right.
     horizontal_mouse_warp = -1,
     horizontal_mouse_warp_offset = 0,
     preset_column_widths = { 0.3, 0.5, 1.0 },
-    -- On: driven moves glide (snappy ease — gentle attack, decisive
-    -- landing — lockstep bursts, 2px first-tick kick, distance-proportional
-    -- duration around the 150ms base, up to 220ms on long/ultrawide
-    -- traverses); false snaps instantly. One switch since fork 7496610
+    -- On: driven moves glide (ease-out-cubic fast attack with decelerating
+    -- landing — lockstep bursts with synced pacing via join_duration, 2px
+    -- first-tick kick, distance-proportional duration around the 150ms
+    -- base, up to 220ms on long/ultrawide traverses); false snaps
+    -- instantly. One switch since fork 7496610
     -- (replaces the old animation_speed / animation_duration_ms knobs, now
     -- removed upstream). Older binaries silently ignore this key and glide
     -- on their own default, so it is safe on every build.
@@ -142,7 +148,9 @@ paneru.setup {
     -- plus re-centering steps; center manually with Cmd+Option+Space.
     -- Keyboard focus itself is always a single strip flight (strip-only
     -- centering with monotonic offsets; the focus echo stands down while
-    -- the strip is mid-flight, since dd0f628). center_single_column below
+    -- the strip is mid-flight, since dd0f628; arrival settles via
+    -- DragSettleMarker with unstable-target detection, since 684b931).
+    -- center_single_column below
     -- is independent: it only centers a lone column, never recenters on
     -- focus changes.
     auto_center = false,
@@ -151,8 +159,8 @@ paneru.setup {
     -- d8b5677; older binaries silently ignore it (left-pin).
     center_single_column = true,
     -- New windows start full-width. An explicit per-window `width` rule
-    -- still wins (e.g. firefox below stays 0.5); unset would keep the
-    -- OS-given size. Clamped to a 0.0–1.0 ratio. Needs fork with d8b5677;
+    -- still wins; unset would keep the OS-given size. Clamped to a
+    -- 0.0–1.0 ratio. Needs fork with d8b5677;
     -- older binaries silently ignore it. Saved session restore wins over
     -- this on startup.
     default_ratio = 1.0,
@@ -172,9 +180,21 @@ paneru.setup {
     insert_windows_mid_strip = true,
   },
 
-  -- ─── Screen padding (outer gaps; Paneru has no inner-gap option) ───
+  -- ─── Screen padding (outer edges) ───
   -- 8px on all sides (top gap leaves the native menu bar visible).
+  -- Between-window gaps live in `gaps` below, not here.
   padding = { top = 8, bottom = 8, left = 8, right = 8 },
+
+  -- ─── Between-window gaps (inner gutters) ───
+  -- Per-window inset applied to every tiled window (needs fork with
+  -- 43d3644; older binaries silently ignore this table and tile at zero
+  -- gaps unless a per-rule padding is set). The visual gap between
+  -- neighbours is the sum of the adjacent insets (8 + 8 = 16px between
+  -- columns by default). Values clamp 0–50; a per-window rule
+  -- `horizontal_padding` / `vertical_padding` wins — including 0, which
+  -- opts that app out of the global gaps. Outer screen edges use
+  -- `padding` above.
+  gaps = { horizontal = 8, vertical = 8 },
 
   -- ─── Swipe & gestures ───
   swipe = {
@@ -226,17 +246,6 @@ paneru.setup {
   -- ─── Window rules ───
   windows = {
     calculator = { title = ".*", bundle_id = "com.apple.calculator", floating = true },
-    preferences = { title = "Preferences", floating = true },
-    -- Firefox: external links spawn a new window carrying Firefox's own
-    -- restored size hint, which lands slightly off the column grid and
-    -- overlaps the neighbour. Force the initial column ratio so every
-    -- main window tiles at grid width (explicit `width` wins over
-    -- `default_ratio` above); small popups/dialogs are left to
-    -- the spawn handler below (size-gated) so they can still float.
-    firefox = { title = ".*", bundle_id = "org.mozilla.firefox", width = 0.5, horizontal_padding = 8, vertical_padding = 8 },
-    -- Inner gaps: Paneru has no global inner-gap option, so this applies
-    -- per-window padding to every tiled window.
-    default = { title = ".*", horizontal_padding = 8, vertical_padding = 8 },
   },
 
   -- ─── Session restore (startup-only) ───
@@ -246,7 +255,9 @@ paneru.setup {
     -- Drop: at grace expiry, saved windows whose app never opened are
     -- pruned from the in-memory state and the state file is rewritten, so
     -- a stale cached display can't resurrect them on a later restart
-    -- (state v3 also remembers each window's display/frame). Needs fork
+    -- (state v4 remembers each window's display UUID/frame and falls back
+    -- to the active display, clamped to the viewport, when the saved
+    -- display is gone). Needs fork
     -- 42add2b — unlike unknown keys, an unknown *value* fails config
     -- parsing on older binaries, so keep "ignore" if you pin an older
     -- Paneru.
@@ -263,9 +274,10 @@ paneru.setup {
 -- A link clicked in another app spawns a Firefox window carrying Firefox's
 -- own restored size hint, which lands slightly off the column grid and
 -- overlaps the neighbour (seen live: x=-3 w=1664 next to x=1661 w=1684 on
--- a 3360px display — abutting instead of gapped). The static `firefox`
--- rule above pins the initial ratio; this handler re-pins it at spawn
--- time so the size hint can't win. Small popups/dialogs (< 800x600) are
+-- a 3360px display — abutting instead of gapped). No static `firefox`
+-- rule is set (new windows start at `default_ratio` above); this handler
+-- re-pins main Firefox windows to 0.5 at spawn time so the size hint
+-- can't win. Small popups/dialogs (< 800x600) are
 -- left alone so they can still float.
 paneru.on("window_spawned", paneru.match({ bundle = "org.mozilla.firefox" }), function(event, ws)
   local frame = event.frame or {}

@@ -290,22 +290,30 @@ fi
 # options.left_drag_scrolls_strip (needs 43940a2, titlebar-only since
 # cedc426, horizontal-only since 4f2b95c, top-28px grab zone since 57519b7,
 # blank toolbar chrome since e803dd5 — buttons, text fields and tab drags
-# inside the toolbar stay native),
+# inside the toolbar stay native), and gaps = { horizontal = 8,
+# vertical = 8 } (needs 43d3644; per-window horizontal/vertical_padding
+# wins, including 0 to opt out),
 # options.ax_writer
 # (default-on since d1fb7dd; the experimental_ax_writer spelling still works
 # as a deprecated alias; window-id drain order since c148819, frame epochs +
 # stuck-writer watchdog since 113bd4e — worker supervision and orchestrator
 # pacing were reverted in f5c1535) and options.maximize_tiled_windows
-# (needs e25b6f9). options.animations = true (snappy ease, lockstep bursts,
-# first-tick kick, distance-proportional duration around the 150ms base up
-# to 220ms; needs 7496610, which removed the old animation_speed /
-# animation_duration_ms knobs — pre-7496610 binaries silently ignore it and
-# glide on their own default), plus options.virtual_workspace_animations =
+# (needs e25b6f9). options.animations = true (ease-out-cubic fast attack
+# with decelerating landing, lockstep bursts with synced pacing via
+# join_duration, first-tick kick, distance-proportional duration around
+# the 150ms base up to 220ms; needs 7496610, which removed the old
+# animation_speed / animation_duration_ms knobs — pre-7496610 binaries
+# silently ignore it and glide on their own default; ease-out-cubic
+# since 0a967df, join_duration pacing since 684b931), plus
+# options.virtual_workspace_animations =
 # false (no config needed on older binaries — false is the default).
 # Held drags fold each HID burst into one drive per frame and track 1:1 with
 # friction only on the release glide (b4852e0 — the drag_friction_* keys are
 # removed upstream and no longer set here, but old configs still parse;
-# per-frame folding since 6793ee8). Vsync retrace pacing is always-on where
+# per-frame folding since 6793ee8; pace-sensitive release velocity,
+# click dead-zone, scroll-detach guard and held hover-defer since 0a967df;
+# reveal skipped on pure clicks and size frozen on click-focus since
+# 684b931). Vsync retrace pacing is always-on where
 # supported since e25b6f9 (the experimental_vsync flag is removed, no longer
 # set here). restore.missing_windows = "drop" (needs 42add2b; older binaries
 # reject the unknown value, unlike unknown keys) is also set. 416e418
@@ -327,12 +335,21 @@ fi
 # config either. 837a6e4 (writer-degraded fallback ladder with fast resize
 # path and stall recovery) needs no config either. 30ff4d8 (owner-viewport
 # focus centering, warp-rebased drag anchor, deferred expose on transient
-# frames, per-frame fold bound) needs no config either.
+# frames, per-frame fold bound) needs no config either. 04f9469/a9a2f83
+# (viewport-clamped tiles, new windows glide into view, click-focus
+# clamp-down, state v4 display UUIDs with active-display fallback) need no
+# config. 0a967df (ease-out-cubic, release-only pace friction, scroll
+# detach guard, close-up on removal) needs no config. 5bd61ae (app
+# termination cascades to windows so borders clear and strips re-tile)
+# needs no config. 684b931 (drift-loop kill, glide join pacing, frozen
+# click size, layout-gated borders) needs no config. 43d3644 (global gaps,
+# § above) is the only new table.
 # All still unreleased with no tag yet; --prefer-local-builds from a current
 # sibling checkout has them.
 # Older binaries silently ignore unknown keys/tables: new windows keep their
 # OS size, a lone column left-pins, plain drags pin to their slot, AX commits
-# stay on the main thread, tiled windows fill their slot, and moves glide on
+# stay on the main thread, tiled windows fill their slot, gaps fall back to
+# zero (per-rule padding only), and moves glide on
 # the built-in default. (restore.missing_windows = "drop" is the
 # exception: pin "ignore" if you run an older Paneru.)
 # ─────────────────────────────────────────────────────────────

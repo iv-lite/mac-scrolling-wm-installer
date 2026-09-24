@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Test workflow for the paneru-wm-installer project. Runs the real ./install
-# inside a fresh macOS guest VM and lets you verify Rift tiling +
-# the native menu bar with Rift's indicators visually via screenshots.
+# inside a fresh macOS guest VM and lets you verify Paneru tiling +
+# the native menu bar with Paneru's popup visually via screenshots.
 #
 # Host is auto-detected:
 #   macOS (Apple Silicon) -> Tart hypervisor  (requires macOS 15+, Homebrew)

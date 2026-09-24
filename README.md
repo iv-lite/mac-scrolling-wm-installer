@@ -248,38 +248,49 @@ unfocused windows park off-screen and glide in/out of the screen edges as focus
 moves. Two things make it feel native:
 
 - Paneru keeps a thin **sliver** of each off-screen window visible at the
-  screen edge (`sliver_width` / `sliver_height` in the config) — a workaround
-  for macOS relocating windows that move fully off-screen, not a design choice.
-- `swipe.continuous = false` bounds the strip to its left/right-most window,
+  screen edge (a workaround for macOS relocating windows that move fully
+  off-screen, not a design choice; the shipped config uses the upstream
+  defaults).
+- `swipe.continuous = true` bounds the strip to its left/right-most window,
   so a full 3-finger swipe lands exactly on the next full-width window
   (page-flip).
 - `options.preset_column_widths = { 0.3, 0.5, 1.0 }` cycling and
   `window_fullwidth` (Cmd+Option+M) cover on-demand sizing; new windows
-  start full-width (`options.default_ratio = 1.0`, Firefox stays `0.5` by
-  rule), are appended at the end and never resize existing ones.
+  start full-width (`options.default_ratio = 1.0`, large Firefox windows
+  re-pinned to `0.5` at spawn by the config handler), are appended at the
+  end and never resize existing ones.
+- Between-window gaps come from the `gaps` table (`horizontal = 8`,
+  `vertical = 8`): the per-window inset every tiled window gets. The
+  visual gap between neighbours is the sum (`8 + 8 = 16px` between
+  columns); values clamp `0–50`, a per-window rule wins including `0` to
+  opt out, outer screen edges stay in `padding`.
 - A lone column narrower than the viewport is centered
   (`options.center_single_column = true`); multi-column strips stay
   left-pinned. `auto_center` remains `false`, so focus changes never
   recenter — only the single-column case does.
 - Titlebar (top 28px) **or blank toolbar chrome** left-drags scroll the strip horizontally only (vertical
   travel is dropped) tracking the pointer 1:1 while held — friction lives
-  only on the release glide (raw-hand release velocity seeds inertia/snap);
-  buttons, text fields, tab drags and content grabs stay native and drive nothing beyond
+  only on the release glide (pace-sensitive release velocity seeds inertia/snap,
+  click jitter absorbed by a dead-zone, scroll-glides never transfer displays,
+  hover focus deferred while held); buttons, text fields, tab drags and content grabs stay native and drive nothing beyond
   press/release bookkeeping, while armed `Cmd+Alt` drags move live, landing
-  in the nearest column. Same-tick strip drags, most-visible release reveal,
-  rigid strip riding, and single-flight keyboard focus (strip-only centering
-  with monotonic offsets; the focus echo stands down while the strip is
-  mid-flight) are native. Strips fill the viewport on focus, move and drag
+  in the nearest column. Click-focus never grows a window, pure clicks skip
+  the most-visible reveal, and single-flight keyboard focus (strip-only centering
+  with monotonic offsets plus settle detection; the focus echo stands down while the strip is
+  mid-flight) are native. Tiles clamp to the viewport, new windows glide
+  into view, app quit cascades to its windows (borders clear, strips
+  re-tile), and strips fill the viewport on focus, move and drag
   so they never rest next to whitespace.
 - Tiled windows fill their tile slot (`options.maximize_tiled_windows = true`,
   at launch snap and on every layout change).
-- Driven moves glide with a snappy ease (`options.animations = true`: gentle
-  attack, decisive landing, lockstep bursts, 2px first-tick kick,
+- Driven moves glide with an ease-out-cubic curve (`options.animations = true`: fast
+  attack, decelerating landing, lockstep bursts with synced join pacing, 2px first-tick kick,
   distance-proportional duration around the 150ms base up to 220ms on
   long/ultrawide traverses; `false` snaps instantly — one switch since fork
   `7496610`, older binaries ignore it and glide on their default);
   virtual-row switches snap (`options.virtual_workspace_animations = false`).
-- Session restore remembers each window's display/frame (state v3) and prunes
+- Session restore remembers each window's display UUID/frame (state v4, active-display
+  fallback clamped to the viewport) and prunes
   saved windows whose app never opened at grace expiry
   (`restore.missing_windows = "drop"`).
 - AX position commits go through a dedicated writer thread
@@ -304,6 +315,7 @@ moves. Two things make it feel native:
   every tiled window on each animating tick; inactive-window
   dimming uses native macOS (`decorations.inactive.dim`).
 - **Top gap:** `padding.top` is 8px in the config (all sides 8px, menu bar kept visible).
+  Between-window gutters are separate: `gaps = { horizontal = 8, vertical = 8 }`.
 
 ## No title bars (the macOS reality)
 

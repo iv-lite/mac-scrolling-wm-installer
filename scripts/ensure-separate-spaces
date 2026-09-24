@@ -15,7 +15,7 @@ fail() { echo "  ${RED}✗ $*${RESET}"; }
 # ─────────────────────────────────────────────────────────────
 # Read/set "Displays have separate Spaces" (Space Management Mode).
 #
-# Rift requires this setting to be live-enabled: it queries the private
+# Paneru requires this setting to be live-enabled: it queries the private
 # SkyLight mode (SLSGetSpaceManagementMode == 1), NOT the legacy
 # `defaults write com.apple.spaces spans-displays` knob, which macOS 26
 # no longer applies to the live windowserver state.
@@ -84,7 +84,7 @@ if [ "$ACTION" = "set" ]; then
 fi
 
 fail "'Displays have separate Spaces' is disabled (mode $MODE)."
-echo "     Rift requires this setting ON and it cannot be applied while the"
+echo "     Paneru requires this setting ON and it cannot be applied while the"
 echo "     current GUI session is live (macOS 26 reads the private windowserver"
 echo "     state, not \`defaults write\`). Enable it, then re-run the installer:"
 echo "       System Settings → Desktop & Dock → 'Displays have separate Spaces' → ON"
