@@ -63,35 +63,43 @@ paneru.setup {
   -- ─── Global options ───
   options = {
     focus_follows_mouse = true,
+    -- Drag travel, as a ratio of the working viewport width, above which
+    -- hover-focus sleeps after release — a flung strip must not refocus
+    -- wherever the cursor stopped. <= 0 disables. Default 1.0 (a full
+    -- viewport width).
+    ffm_drag_suppress_ratio = 0.9,
+    -- How long hover-focus sleeps after a viewport-crossing drag. 0
+    -- disables. Default 400ms.
+    ffm_drag_suppress_ms = 400,
     -- Daemon-native pointer follow: Paneru warps to the focused window's
     -- center on keyboard-driven focus changes (even when the cursor is
     -- already inside it), in sync with its own animation. Clicks own their
     -- cursor (never yanked, never grown — click-focus clamps down only) and
     -- mid-drag focus changes never warp, so display moves perform no extra
     -- warp. Hover pokes are throttled (2px) and pure clicks skip the
-    -- most-visible reveal; focus steps use a 2px arrival quantum. A helper
+    -- most-visible reveal; focus steps use a 2px arrival quantum. After a
+    -- viewport-crossing gutter fling, hover-focus sleeps for
+    -- ffm_drag_suppress_ms above. A helper
     -- warp on top lands late and re-triggers focus as a visible second step.
     mouse_follows_focus = true,
     -- Hold Cmd+Alt while left-clicking a tiled window to arm the drag;
     -- crossing a display boundary moves it to that display's strip live
     -- (focus follows), landing in the nearest column (see
-    -- insert_windows_mid_strip below). Without the shortcut, a titlebar
-    -- left-drag scrolls the strip (see left_drag_scrolls_strip below) —
-    -- content grabs stay native. Shipped in fork ≥ v0.2.2.
+    -- insert_windows_mid_strip below). Without the shortcut, gutter drags
+    -- scroll the strip (see left_drag_scrolls_strip below) — window drags
+    -- stay native and glide home. Shipped in fork ≥ v0.2.2.
     mouse_drag_display_modifier = "cmd + alt",
-    -- On: dragging a tiled window by its titlebar (top 28px, resize margins
-    -- excluded) or by blank toolbar chrome scrolls the workspace strip
-    -- through the shared swipe pipeline instead of moving anything; buttons,
-    -- text fields, tab drags and content grabs stay fully native. Only
-    -- horizontal pointer motion drives anything — vertical
-    -- travel is dropped so a shaky drag can't pull columns off their slots.
-    -- Armed (Cmd+Alt) drags still move and transfer as before. Set to false
-    -- to get native titlebar drags back. Needs a fork build containing
-    -- 43940a2 (titlebar-only since cedc426, horizontal-only since 4f2b95c,
-    -- top-28px since 57519b7, blank toolbar chrome since e803dd5); older
-    -- binaries silently ignore
+    -- On: pressing in the strip gutter — padding whitespace between
+    -- windows, or trailing viewport whitespace past the last column
+    -- (single-column strips never arm) — and dragging scrolls the
+    -- workspace strip 1:1 with the pointer. Presses on windows always keep
+    -- fully native behavior (text selection, tabs, native window drags)
+    -- and glide home on release when tiled and non-floating. Armed
+    -- (Cmd+Alt) drags still move and transfer as before. Set to false to
+    -- get fully native drags back. Pre-gutter builds scrolled on titlebar
+    -- grabs instead; older binaries silently ignore
     -- it and plain drags pin to their slot.
-    left_drag_scrolls_strip = true,
+    left_drag_scrolls_strip = false,
     -- Held drags track the pointer 1:1 with no damping: a strip held still
     -- with the button down simply waits at its raw offset. Friction lives
     -- only on the release path — the pace-sensitive release velocity
@@ -109,20 +117,28 @@ paneru.setup {
     preset_column_widths = { 0.3, 0.5, 1.0 },
     -- On: driven moves glide (ease-out-cubic fast attack with decelerating
     -- landing — lockstep bursts with synced pacing via join_duration, 2px
-    -- first-tick kick, distance-proportional duration around the 150ms
-    -- base, up to 220ms on long/ultrawide traverses); false snaps
-    -- instantly. One switch since fork 7496610
-    -- (replaces the old animation_speed / animation_duration_ms knobs, now
-    -- removed upstream). Older binaries silently ignore this key and glide
-    -- on their own default, so it is safe on every build.
+    -- first-tick kick, distance-proportional duration around the 250ms
+    -- default, bounded 80–320ms); false snaps instantly. Glide length is
+    -- animation_duration_ms below. One switch since fork 7496610
+    -- (replaces the old animation_speed knob). Older binaries silently
+    -- ignore unknown keys and glide on their own default, so new keys are
+    -- safe on every build.
     animations = true,
+    -- Tween length for driven moves in milliseconds, clamped 0–2000.
+    -- Longer reads as a visible strip glide; shorter as snappier.
+    -- animations = false still snaps instantly regardless. Default 250.
+    animation_duration_ms = 250,
     -- AX writer thread (default-on upstream since d1fb7dd): AX position
-    -- commits go to a dedicated thread with per-window coalescing instead of
-    -- blocking the main thread per animation frame. Batches drain in
-    -- window-id order; commits carry frame epochs so whole-frame
-    -- convergence is observable, with a stuck-writer watchdog (both since
-    -- 113bd4e; worker supervision was reverted in f5c1535) plus a
-    -- degrade-to-sync fallback ladder with automatic recovery (837a6e4).
+    -- commits (moves plus driving resizes, since d67df09) go to a
+    -- dedicated thread with per-window coalescing instead of blocking the
+    -- main thread per animation frame, and verify reads go through an
+    -- off-main read pool with TTL cache (spot-verifies never stall the
+    -- pump on beachballing apps). Batches drain in window-id order;
+    -- commits carry frame epochs so whole-frame convergence is
+    -- observable, with a stuck-writer watchdog (both since 113bd4e),
+    -- supervised workers with sync fallback (restored in d67df09 —
+    -- supervision was reverted in f5c1535) plus a degrade-to-sync
+    -- fallback ladder with automatic recovery (837a6e4).
     -- Apps needing the enhanced-UI workaround always stay synchronous; set
     -- to false if testing shows regressions on your app mix. Older binaries
     -- silently ignore it.
@@ -257,7 +273,11 @@ paneru.setup {
     -- a stale cached display can't resurrect them on a later restart
     -- (state v4 remembers each window's display UUID/frame and falls back
     -- to the active display, clamped to the viewport, when the saved
-    -- display is gone). Needs fork
+    -- display is gone; duplicate titles tie-break by frame-center
+    -- geometry). After a daemon crash the unlaunched windows are preserved
+    -- regardless (crash flag overrides the prune), state saves every 30s
+    -- when dirty with a `.bak` fallback on corrupt reads — all since
+    -- d67df09, no config. Needs fork
     -- 42add2b — unlike unknown keys, an unknown *value* fails config
     -- parsing on older binaries, so keep "ignore" if you pin an older
     -- Paneru.

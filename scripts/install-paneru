@@ -287,24 +287,31 @@ fi
 # (mouse_drag_display_modifier) needs fork ≥ v0.2.2.
 # The shipped config also sets options.default_ratio,
 # options.center_single_column (need a fork build containing d8b5677),
-# options.left_drag_scrolls_strip (needs 43940a2, titlebar-only since
-# cedc426, horizontal-only since 4f2b95c, top-28px grab zone since 57519b7,
-# blank toolbar chrome since e803dd5 — buttons, text fields and tab drags
-# inside the toolbar stay native), and gaps = { horizontal = 8,
+# options.left_drag_scrolls_strip (gutter-only since 21ed647:
+# padding whitespace / trailing viewport, single-column never arms;
+# window presses stay native and glide home — pre-gutter builds scrolled
+# on titlebar grabs instead), and gaps = { horizontal = 8,
 # vertical = 8 } (needs 43d3644; per-window horizontal/vertical_padding
 # wins, including 0 to opt out),
 # options.ax_writer
 # (default-on since d1fb7dd; the experimental_ax_writer spelling still works
 # as a deprecated alias; window-id drain order since c148819, frame epochs +
-# stuck-writer watchdog since 113bd4e — worker supervision and orchestrator
-# pacing were reverted in f5c1535) and options.maximize_tiled_windows
+# stuck-writer watchdog since 113bd4e — worker supervision was reverted in
+# f5c1535, then restored in d67df09 with sync fallback; verify reads moved
+# to an off-main pool and driving resizes joined the writer lane in
+# d67df09) and options.maximize_tiled_windows
 # (needs e25b6f9). options.animations = true (ease-out-cubic fast attack
 # with decelerating landing, lockstep bursts with synced pacing via
 # join_duration, first-tick kick, distance-proportional duration around
-# the 150ms base up to 220ms; needs 7496610, which removed the old
-# animation_speed / animation_duration_ms knobs — pre-7496610 binaries
+# the 250ms default bounded 80–320ms; needs 7496610 — the old
+# animation_speed knob is gone) plus options.animation_duration_ms = 250
+# (clamped 0–2000; animations = false still snaps; pre-knob binaries
 # silently ignore it and glide on their own default; ease-out-cubic
-# since 0a967df, join_duration pacing since 684b931), plus
+# since 0a967df, join_duration pacing since 684b931, 250ms default +
+# duration knob since 21ed647), plus options.ffm_drag_suppress_ratio = 1.0 /
+# options.ffm_drag_suppress_ms = 400 (hover-focus sleep after a
+# viewport-crossing gutter fling; <= 0 / 0 disables; pre-key binaries
+# silently ignore them), plus
 # options.virtual_workspace_animations =
 # false (no config needed on older binaries — false is the default).
 # Held drags fold each HID burst into one drive per frame and track 1:1 with
@@ -343,13 +350,20 @@ fi
 # termination cascades to windows so borders clear and strips re-tile)
 # needs no config. 684b931 (drift-loop kill, glide join pacing, frozen
 # click size, layout-gated borders) needs no config. 43d3644 (global gaps,
-# § above) is the only new table.
+# § above) is the only new table. 21ed647 (gutter-only drags with native
+# window presses + glide home, animation_duration_ms, ffm_drag_suppress_*
+# sleep) needs the § options above. d67df09 (no-crash Single/unwrap
+# removal, supervised workers with sync fallback, AX reads off-main, writer
+# resize lane, crash-flag + .bak + 30s saves, geometry tie-break, Lua
+# 10s-timeout with no-script fallback) needs no config.
 # All still unreleased with no tag yet; --prefer-local-builds from a current
 # sibling checkout has them.
 # Older binaries silently ignore unknown keys/tables: new windows keep their
-# OS size, a lone column left-pins, plain drags pin to their slot, AX commits
-# stay on the main thread, tiled windows fill their slot, gaps fall back to
-# zero (per-rule padding only), and moves glide on
+# OS size, a lone column left-pins, plain drags pin to their slot, AX work
+# stays on the main thread, tiled windows fill their slot, titlebar drags
+# stay native (no gutter scroll), gaps fall back to
+# zero (per-rule padding only), glides run the built-in length with no FFM
+# sleep, and moves glide on
 # the built-in default. (restore.missing_windows = "drop" is the
 # exception: pin "ignore" if you run an older Paneru.)
 # ─────────────────────────────────────────────────────────────

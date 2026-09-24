@@ -118,7 +118,9 @@ window in the same lane), **Ctrl**.
 > the **center** of the focused window (`focus_follows_mouse` /
 > `mouse_follows_focus` in `[options]`) — even when the cursor is already
 > inside it. Clicks own their cursor (never yanked) and mid-drag focus
-> changes never warp.
+> changes never warp. After a viewport-crossing gutter fling, hover-focus
+> sleeps briefly (`ffm_drag_suppress_ratio = 1.0`,
+> `ffm_drag_suppress_ms = 400`) so the landing spot doesn't instantly refocus.
 
 ### Workspaces (dynamic rows)
 
@@ -149,7 +151,7 @@ window in the same lane), **Ctrl**.
 | `Cmd` + `Ctrl` + `Alt` + `→` | Send the focused window to the next display (stay) |
 | `Cmd` + `Ctrl` + `↑` | Warp the mouse to the next display |
 | `Cmd` + `Ctrl` + `↓` | Warp the mouse to the previous display |
-| `Cmd` + `Alt` + drag across display edge | Hold to arm, cross the edge to move the window to that display live (lands in nearest column; a plain titlebar drag scrolls the strip instead, content grabs stay native — `left_drag_scrolls_strip`) |
+| `Cmd` + `Alt` + drag across display edge | Hold to arm, cross the edge to move the window to that display live (lands in nearest column; a gutter drag scrolls the strip instead, window drags stay native and glide home — `left_drag_scrolls_strip`) |
 | `Cmd` + `Option` + `↑`/`↓` | Focus a column above/below — crosses displays when no window is there |
 | `Cmd` + `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
 
@@ -268,12 +270,14 @@ moves. Two things make it feel native:
   (`options.center_single_column = true`); multi-column strips stay
   left-pinned. `auto_center` remains `false`, so focus changes never
   recenter — only the single-column case does.
-- Titlebar (top 28px) **or blank toolbar chrome** left-drags scroll the strip horizontally only (vertical
-  travel is dropped) tracking the pointer 1:1 while held — friction lives
-  only on the release glide (pace-sensitive release velocity seeds inertia/snap,
-  click jitter absorbed by a dead-zone, scroll-glides never transfer displays,
-  hover focus deferred while held); buttons, text fields, tab drags and content grabs stay native and drive nothing beyond
-  press/release bookkeeping, while armed `Cmd+Alt` drags move live, landing
+- Gutter drags scroll the strip 1:1 — press in the padding whitespace
+  between windows or the trailing viewport past the last column
+  (single-column strips never arm); presses on windows stay fully native
+  (text selection, tabs, native drags) and glide home on release. Friction
+  lives only on the release glide (pace-sensitive release velocity seeds
+  inertia/snap, click jitter absorbed by a dead-zone, scroll-glides never
+  transfer displays, hover focus deferred while held), while armed `Cmd+Alt`
+  drags move live, landing
   in the nearest column. Click-focus never grows a window, pure clicks skip
   the most-visible reveal, and single-flight keyboard focus (strip-only centering
   with monotonic offsets plus settle detection; the focus echo stands down while the strip is
@@ -285,18 +289,22 @@ moves. Two things make it feel native:
   at launch snap and on every layout change).
 - Driven moves glide with an ease-out-cubic curve (`options.animations = true`: fast
   attack, decelerating landing, lockstep bursts with synced join pacing, 2px first-tick kick,
-  distance-proportional duration around the 150ms base up to 220ms on
-  long/ultrawide traverses; `false` snaps instantly — one switch since fork
-  `7496610`, older binaries ignore it and glide on their default);
+  distance-proportional duration around the 250ms default (bounded 80–320ms,
+  tunable via `options.animation_duration_ms = 250`, clamped 0–2000);
+  `false` snaps instantly — one switch since fork
+  `7496610`, older binaries ignore the new keys and glide on their default);
   virtual-row switches snap (`options.virtual_workspace_animations = false`).
 - Session restore remembers each window's display UUID/frame (state v4, active-display
-  fallback clamped to the viewport) and prunes
+  fallback clamped to the viewport, duplicate titles tie-break by geometry) and prunes
   saved windows whose app never opened at grace expiry
-  (`restore.missing_windows = "drop"`).
-- AX position commits go through a dedicated writer thread
+  (`restore.missing_windows = "drop"` — post-crash restarts preserve unlaunched
+  windows regardless; state saves every 30s when dirty with a `.bak` fallback).
+- AX moves and driving resizes go through a dedicated writer thread
   (`options.ax_writer = true`, window-id drain order, frame-epoch
-  convergence with stuck-writer watchdog, degrade-to-sync fallback ladder
-  with automatic recovery), and the pump paces to the display
+  convergence with stuck-writer watchdog, supervised workers with sync
+  fallback, degrade-to-sync fallback ladder with automatic recovery),
+  verify reads go through an off-main pool so slow apps never stall the
+  pump, and the pump paces to the display
   retrace where supported (always-on, macOS 14+).
 
 ## The menu bar
