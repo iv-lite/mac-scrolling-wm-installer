@@ -67,7 +67,8 @@ if [ -n "${PREFER_LOCAL_BUILDS:-}" ]; then
 	echo "  built from source instead of downloading releases.${RESET}"
 fi
 
-# Fresh install vs. upgrade of an existing setup
+# Fresh install vs. upgrade of an existing setup (the binary lives in the
+# brew bin dir, already on PATH — install-paneru puts it there).
 if command -v paneru >/dev/null 2>&1; then
 	MODE="upgrade"
 else

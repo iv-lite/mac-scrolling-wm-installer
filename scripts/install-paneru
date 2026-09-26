@@ -29,25 +29,42 @@ else
 	PANERU_LABEL="$PANERU_REPO (newest release in list)"
 fi
 
-# Handoff to grant-permissions (next step): created below when the staged
-# binary is byte-identical to the installed one, meaning no identity change
-# voided anything. grant-permissions then preserves a verified grant instead
-# of pointlessly revoking + re-granting it.
-UNCHANGED_SENTINEL="${TMPDIR:-/tmp}/paneru-install-unchanged"
-# Created below when the binary was actually replaced. Replacing an
-# identifier-pinned binary at the same path preserves the live TCC grant
-# (verified live: tiling survives the swap), so nothing is revoked here —
-# grant-permissions preserves a listed grant and the enable-services health
-# poll confirms it; only a failed poll triggers revoke + re-grant via
-# repair-paneru. Absent on clean installs (no prior binary ⇒ no grant).
-CHANGED_SENTINEL="${TMPDIR:-/tmp}/paneru-install-changed"
+# Upstream no longer converges anything: `paneru install` is write-once
+# (skips when the plist exists), the plist pins the invoking binary's path,
+# and every reinstall needs one fresh Accessibility grant (ad-hoc signature
+# hash changes per build). So this script picks the install dir itself,
+# copies the binary there, re-pins the identifier unconditionally, and
+# invokes *that* binary's `install`/`install-app` so plist + shim point at
+# the installed path. Updates re-lay the plist via uninstall+install.
+# grant-permissions (next step) always revoke+re-grants; only a failed
+# enable-services health poll falls back to repair-paneru.
+# Preferred dir is the brew bin dir (already on default macOS PATH, no PATH
+# hacks needed for later steps); ~/.local/bin is the fallback when neither
+# brew dir is writable.
+
+pick_bindir() {
+	if [ -n "${PANERU_BINDIR:-}" ]; then
+		mkdir -p "$PANERU_BINDIR" 2>/dev/null || return 1
+		[ -w "$PANERU_BINDIR" ] || return 1
+		echo "$PANERU_BINDIR"
+		return 0
+	fi
+	for d in /opt/homebrew/bin /usr/local/bin; do
+		if [ -d "$d" ] && [ -w "$d" ]; then
+			echo "$d"
+			return 0
+		fi
+	done
+	mkdir -p "$HOME/.local/bin" 2>/dev/null || true
+	echo "$HOME/.local/bin"
+	return 0
+}
 
 fetch_paneru() {
-	local tar_url tmp staged bin canonical legacy
-	canonical="$HOME/.local/bin/paneru"
+	local tar_url tmp staged bin bindir
+	bindir="$(pick_bindir)" || return 1
+	bin="$bindir/paneru"
 	tmp="$(mktemp -d)"
-	# A killed run must not leave stale skip markers behind.
-	rm -f "$UNCHANGED_SENTINEL" "$CHANGED_SENTINEL"
 	# --prefer-local-builds: build the sibling checkout instead of
 	# downloading a release. Builds in place (keeps target/ cache, tests
 	# dirty WIP as-is unless PANERU_VERIFY=1 / --verify). Failures abort —
@@ -175,91 +192,42 @@ fetch_paneru() {
 			return 1
 		fi
 	fi
-	# Stop the running daemon before overwriting its binary. `paneru
-	# install` (below) converges the invoking binary onto the canonical
-	# daemon path ~/.local/bin/paneru (upstream 0a29efc): every install
-	# vector lands there, and the launchd plist + Paneru.app shim point
-	# at it once and never drift.
+	# Stop the running daemon before overwriting its binary. The plist
+	# below is re-laid from the installed binary, so every install vector
+	# lands on the same path and the service never strands an old daemon.
 	if command -v paneru >/dev/null 2>&1; then
 		paneru stop >/dev/null 2>&1 || true
 	fi
-	bin="$canonical"
 	mkdir -p "$(dirname "$bin")"
-	# Make the canonical dir visible to the rest of this install (and warn
-	# below when it is not on the user's PATH).
-	case ":$PATH:" in
-		*":$HOME/.local/bin:"*) ;;
-		*) export PATH="$HOME/.local/bin:$PATH" ;;
-	esac
-	# Byte-identical staged binary: same bytes ⇒ same ad-hoc identity ⇒ any
-	# live grant stays live. Skip the overwrite and the re-sign, and leave a
-	# marker so grant-permissions (next step) preserves a verified grant
-	# instead of pointlessly revoking + re-granting it. Config copy +
-	# launchd steps further down still run (they live outside fetch_paneru).
+	# Byte-identical: skip the copy and the re-sign (same bytes ⇒ same
+	# binary); the plist/app-shim steps further down still run (they live
+	# outside fetch_paneru). Note the grant still needs re-applying per
+	# update only when the bytes changed — grant-permissions (next step)
+	# revoke+re-grants unconditionally, which is a harmless no-op here.
 	if [ -e "$bin" ] && cmp -s "$staged" "$bin"; then
 		rm -rf "$tmp"
-		# Canonical already matches: still drop pre-migration copies so
-		# two daemons never linger (they are not the live identity).
-		for legacy in /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
-			if [ "$legacy" != "$bin" ] && [ -e "$legacy" ]; then
-				rm -f "$legacy"
-				note "Removed legacy Paneru binary $legacy (canonical is $bin)"
-			fi
-		done
-		ok "Paneru binary unchanged — keeping the existing Accessibility grant"
-		touch "$UNCHANGED_SENTINEL"
+		ok "Paneru binary unchanged ($bin)"
 		return 0
-	fi
-	# No proactive revoke: an identifier-pinned replacement at the same path
-	# keeps the live Accessibility grant (verified: tiling survives the
-	# swap), so revoking first would only destroy a working grant and force
-	# a re-grant cycle needing Full Disk Access + sudo for nothing.
-	# grant-permissions (next step) preserves a listed grant, the
-	# enable-services health poll confirms the daemon actually tiles, and
-	# only a failed poll falls back to revoke + re-grant via repair-paneru.
-	# Mark the replacement so grant-permissions can tell it apart from a
-	# clean install (no prior binary ⇒ no grant to preserve ⇒ grant fresh).
-	if [ -e "$bin" ]; then
-		touch "$CHANGED_SENTINEL"
 	fi
 	cp "$staged" "$bin"
 	chmod +x "$bin"
 	rm -rf "$tmp"
-	# Legacy copies from before the canonical-path migration (upstream
-	# 0a29efc): two daemons must never linger, so drop any that are not
-	# the canonical file itself. The TCC grant lives on the canonical
-	# path (re-applied by grant-permissions below).
-	for legacy in /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
-		if [ "$legacy" != "$bin" ] && [ -e "$legacy" ]; then
-			rm -f "$legacy"
-			note "Removed legacy Paneru binary $legacy (canonical is $bin)"
-		fi
-	done
-	# A stale `command -v paneru` shim outside the canonical path (e.g. a
-	# Homebrew link shadowing ~/.local/bin) would keep launching the old
-	# daemon: prefer canonical for the rest of this run.
 	hash -r 2>/dev/null || true
 	if [ -n "${PREFER_LOCAL_BUILDS:-}" ] && [ -f "$REPO_ROOT/../paneru/Cargo.toml" ]; then
 		ok "Paneru installed to $bin (from local source build)"
 	else
 		ok "Paneru installed to $bin (from GitHub release)"
 	fi
-	# Signing identifier: local builds already carry the stable identifier —
-	# .cargo/config.toml routes the link through assets/rustc-sign.sh, which
-	# ad-hoc-signs the final binary (skipped only when RUSTC_WRAPPER, e.g.
-	# sccache as in CI, overrides it). Release tarballs may carry a per-build
-	# identity instead, which macOS TCC treats as a new app: the old
-	# Accessibility grant silently stops matching and paneru runs without
-	# tiling. Re-pin only when the identifier is missing so local rebuilds
-	# keep their build signature; the pin makes the grant (re-applied by
-	# grant-permissions below) stick, including across future upgrades.
+	# Signing identifier: ad-hoc signatures change hash per build, so every
+	# byte change needs one fresh Accessibility grant. Re-pin unconditionally
+	# (local builds already carry it via the repo rustc wrapper unless
+	# RUSTC_WRAPPER overrides it; release tarballs may not). grant-permissions
+	# (next step) re-applies the grant for the new bytes.
 	if command -v codesign >/dev/null 2>&1; then
-		if codesign -dv "$bin" 2>&1 | grep -q 'Identifier=com.github.karinushka.paneru'; then
-			note "Code-signing identifier already pinned — keeping the build signature"
-		elif codesign --force --sign - --identifier com.github.karinushka.paneru "$bin" >/dev/null 2>&1; then
+		if codesign --force --sign - --identifier com.github.karinushka.paneru "$bin" >/dev/null 2>&1; then
 			ok "Code-signing identifier pinned (com.github.karinushka.paneru)"
 		else
-			warn "codesign failed — the Accessibility grant may not survive this upgrade"
+			warn "codesign failed — the Accessibility grant may not apply to this build"
 		fi
 		if codesign --verify --strict "$bin" >/dev/null 2>&1; then
 			ok "Code signature verifies (strict)"
@@ -269,8 +237,8 @@ fetch_paneru() {
 	else
 		note "codesign not found (not macOS?) — skipping identifier pinning"
 	fi
-	note "Binary replaced — the listed Accessibility grant carries over;"
-	note "grant-permissions (next) preserves it and enable-services verifies tiling."
+	note "Binary (re)installed — grant-permissions (next) revoke+re-grants"
+	note "Accessibility for the new bytes (one fresh grant per update)."
 	return 0
 }
 
@@ -287,10 +255,7 @@ fi
 # (mouse_drag_display_modifier) needs fork ≥ v0.2.2.
 # The shipped config also sets options.default_ratio,
 # options.center_single_column (need a fork build containing d8b5677),
-# options.left_drag_scrolls_strip (gutter-only since 21ed647:
-# padding whitespace / trailing viewport, single-column never arms;
-# window presses stay native and glide home — pre-gutter builds scrolled
-# on titlebar grabs instead), and gaps = { horizontal = 8,
+# and gaps = { horizontal = 8,
 # vertical = 8 } (needs 43d3644; per-window horizontal/vertical_padding
 # wins, including 0 to opt out),
 # options.ax_writer
@@ -308,12 +273,14 @@ fi
 # (clamped 0–2000; animations = false still snaps; pre-knob binaries
 # silently ignore it and glide on their own default; ease-out-cubic
 # since 0a967df, join_duration pacing since 684b931, 250ms default +
-# duration knob since 21ed647), plus options.ffm_drag_suppress_ratio = 1.0 /
-# options.ffm_drag_suppress_ms = 400 (hover-focus sleep after a
-# viewport-crossing gutter fling; <= 0 / 0 disables; pre-key binaries
-# silently ignore them), plus
+# duration knob since 21ed647), plus
 # options.virtual_workspace_animations =
 # false (no config needed on older binaries — false is the default).
+# Unarmed window drags move the grabbed column with the pointer and glide
+# home on release; only armed (mouse_drag_display_modifier) drags reorder
+# or transfer across displays. The removed keys left_drag_scrolls_strip
+# (gutter-scroll) and ffm_drag_suppress_ratio/ms (hover-focus sleep) are
+# NOT set here — current builds ignore them, so old configs still parse.
 # Held drags fold each HID burst into one drive per frame and track 1:1 with
 # friction only on the release glide (b4852e0 — the drag_friction_* keys are
 # removed upstream and no longer set here, but old configs still parse;
@@ -332,8 +299,6 @@ fi
 # is already inside the window; clicks own their cursor and mid-drag focus
 # changes never warp) and 314ede8 (strips fill the viewport on focus, move
 # and drag so they never rest next to whitespace) need no config either.
-# 0a29efc (canonical daemon path ~/.local/bin/paneru; idempotent
-# `paneru install` converging binary + plist + app shim) needs no config.
 # 088fa45 (already-placed centering skips redundant markers, pure clicks
 # issue no reorder/homing/reshuffle, holders carry no timeout fuse) needs
 # no config either. 3c053fb (optional Swift overlay backend via dlopen
@@ -350,20 +315,22 @@ fi
 # termination cascades to windows so borders clear and strips re-tile)
 # needs no config. 684b931 (drift-loop kill, glide join pacing, frozen
 # click size, layout-gated borders) needs no config. 43d3644 (global gaps,
-# § above) is the only new table. 21ed647 (gutter-only drags with native
-# window presses + glide home, animation_duration_ms, ffm_drag_suppress_*
-# sleep) needs the § options above. d67df09 (no-crash Single/unwrap
+# § above) is the only new table. d67df09 (no-crash Single/unwrap
 # removal, supervised workers with sync fallback, AX reads off-main, writer
 # resize lane, crash-flag + .bak + 30s saves, geometry tie-break, Lua
 # 10s-timeout with no-script fallback) needs no config.
+# Service note: upstream reverted the canonical-path convergence (0a29efc) —
+# `paneru install` is write-once (skips when the plist exists) and the plist
+# pins the invoking binary's path, so this script re-lays the plist from the
+# installed binary below and every byte change needs one fresh grant.
 # All still unreleased with no tag yet; --prefer-local-builds from a current
 # sibling checkout has them.
 # Older binaries silently ignore unknown keys/tables: new windows keep their
-# OS size, a lone column left-pins, plain drags pin to their slot, AX work
-# stays on the main thread, tiled windows fill their slot, titlebar drags
-# stay native (no gutter scroll), gaps fall back to
-# zero (per-rule padding only), glides run the built-in length with no FFM
-# sleep, and moves glide on
+# OS size, a lone column left-pins, AX work
+# stays on the main thread, tiled windows fill their slot,
+# gaps fall back to
+# zero (per-rule padding only), glides run the built-in length
+# and moves glide on
 # the built-in default. (restore.missing_windows = "drop" is the
 # exception: pin "ignore" if you run an older Paneru.)
 # ─────────────────────────────────────────────────────────────
@@ -410,30 +377,39 @@ note "Cmd+Shift+? opens the shortcut cheat sheet via the helper above."
 # ─────────────────────────────────────────────────────────────
 # launchd service + app shim (applies Accessibility before start)
 # ─────────────────────────────────────────────────────────────
-# `paneru install` is idempotent since upstream 0a29efc: it converges the
-# invoking binary onto ~/.local/bin/paneru, re-stamps the stable ad-hoc
-# identifier when the bytes changed, and rewrites the plist whenever its
-# Program= drifted. Always run it (a no-op when converged) so updates heal
-# instead of stranding the old daemon path. `paneru start`/`restart` heal
-# a bootstrapped stale definition the same way.
-note "Installing Paneru launchd service (canonical: ~/.local/bin/paneru)..."
-paneru install
-ok "Paneru service installed (converged onto the canonical binary)"
-# The Spotlight shim must exec the canonical daemon or updates launch the
-# old binary: refresh whenever it points elsewhere (or is missing).
-shim_script="$HOME/Applications/Paneru.app/Contents/MacOS/Paneru"
-shim_target=""
-if [ -f "$shim_script" ]; then
-	shim_target="$(awk '/^ *exec /{line=$0} END{print line}' "$shim_script" | sed -e "s/^ *exec //" -e "s/ start *$//" -e "s/^'//" -e "s/'\$//" -e "s/'\"'\"'/'/g" || true)"
+# Upstream `paneru install` is write-once: it writes the plist pointing at
+# the invoking binary and skips when the plist already exists (no drift
+# heal). So re-lay the plist from the just-installed binary on every run
+# (uninstall is a no-op when nothing is installed): the plist then always
+# pins the installed path. Invoke via the installed path itself so a PATH
+# shadow can never strand an old daemon. The app shim embeds the invoking
+# path too (no staleness detection upstream), so refresh it every run.
+INSTALLED_BIN="$(command -v paneru 2>/dev/null || true)"
+if [ -z "$INSTALLED_BIN" ] || [ ! -x "$INSTALLED_BIN" ]; then
+	# Fallback dir (~/.local/bin) may not be on PATH — locate it directly.
+	for candidate in "$HOME/.local/bin/paneru" /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
+		if [ -x "$candidate" ]; then
+			INSTALLED_BIN="$candidate"
+			break
+		fi
+	done
 fi
-if [ "$shim_target" != "$HOME/.local/bin/paneru" ]; then
-	paneru install-app >/dev/null 2>&1 || true
-	ok "Paneru app launcher refreshed (points at the canonical daemon)"
+if [ -z "$INSTALLED_BIN" ] || [ ! -x "$INSTALLED_BIN" ]; then
+	warn "paneru not found after install — skipping service setup"
+	exit 1
 fi
 case ":$PATH:" in
-	*":$HOME/.local/bin:"*) ;;
-	*) warn " ~/.local/bin is not on PATH — add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your shell profile so 'paneru' resolves to the canonical daemon" ;;
+	*":$(dirname "$INSTALLED_BIN"):"*) ;;
+	*) export PATH="$(dirname "$INSTALLED_BIN"):$PATH" ;;
 esac
+hash -r 2>/dev/null || true
+note "Installing Paneru launchd service ($INSTALLED_BIN)..."
+"$INSTALLED_BIN" uninstall >/dev/null 2>&1 || true
+"$INSTALLED_BIN" install
+ok "Paneru service installed (plist pins the installed binary)"
+"$INSTALLED_BIN" install-app >/dev/null 2>&1 || true
+ok "Paneru app launcher refreshed"
 
 warn "Paneru will be started by enable-services after permissions are granted."
-echo "     (grant Accessibility to $HOME/.local/bin/paneru to let it move windows)"
+echo "     (grant Accessibility to $INSTALLED_BIN to let it move windows)"
+echo "     (every binary update needs one fresh grant — ad-hoc signatures change per build)"

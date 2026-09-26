@@ -37,16 +37,127 @@ command -v brew >/dev/null 2>&1 || eval "$(/usr/local/bin/brew shellenv 2>/dev/n
 # ─────────────────────────────────────────────────────────────
 # tccutil-rs (user TCC db grants, no SIP disable needed)
 # ─────────────────────────────────────────────────────────────
-if command -v tccutil-rs >/dev/null 2>&1; then
-	note "Upgrading tccutil-rs..."
-	brew upgrade tccutil-rs 2>/dev/null || warn "tccutil-rs upgrade failed (network?) — keeping installed version"
-	ok "tccutil-rs up to date"
-else
-	note "Installing tccutil-rs from uinaf/tap..."
-	brew trust uinaf/tap 2>/dev/null || true
-	brew tap uinaf/tap
-	brew install tccutil-rs
-	ok "tccutil-rs installed"
+# uinaf/tap dropped the formula and archived the repo (Sep 2026), so
+# `brew install tccutil-rs` no longer resolves — fetch the GitHub release
+# instead, tracking latest. TCCUTIL_RS_VERSION pins an exact tag
+# (e.g. v0.2.13); the default `latest` resolves via the releases API each
+# run. TCCUTIL_RS_REPO changes the repo. Never fatal: without the binary
+# grant-permissions degrades to the daemon dialog + manual grants.
+TCCUTIL_RS_REPO="${TCCUTIL_RS_REPO:-uinaf/tccutil-rs}"
+TCCUTIL_RS_VERSION="${TCCUTIL_RS_VERSION:-latest}"
+
+tccutil_rs_tag() {
+	if [ "${TCCUTIL_RS_VERSION:-latest}" != "latest" ]; then
+		echo "$TCCUTIL_RS_VERSION"
+		return 0
+	fi
+	local tag
+	tag="$(curl -fsSL "https://api.github.com/repos/$TCCUTIL_RS_REPO/releases/latest" \
+		| grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+	if [ -z "$tag" ]; then
+		return 1
+	fi
+	echo "$tag"
+}
+
+tccutil_rs_arch() {
+	case "$(uname -m 2>/dev/null || true)" in
+		arm64|aarch64) echo "arm64" ;;
+		x86_64|amd64) echo "amd64" ;;
+		*) return 1 ;;
+	esac
+}
+
+tccutil_rs_bindir() {
+	if [ -n "${PANERU_BINDIR:-}" ]; then
+		mkdir -p "$PANERU_BINDIR" 2>/dev/null || return 1
+		[ -w "$PANERU_BINDIR" ] || return 1
+		echo "$PANERU_BINDIR"
+		return 0
+	fi
+	local d
+	for d in /opt/homebrew/bin /usr/local/bin; do
+		if [ -d "$d" ] && [ -w "$d" ]; then
+			echo "$d"
+			return 0
+		fi
+	done
+	mkdir -p "$HOME/.local/bin" 2>/dev/null || true
+	echo "$HOME/.local/bin"
+	return 0
+}
+
+install_tccutil_rs() {
+	local tag arch bindir bin tmp asset sums want got staged
+	tag="$(tccutil_rs_tag)" || {
+		note "Could not resolve the tccutil-rs release tag"
+		return 1
+	}
+	arch="$(tccutil_rs_arch)" || {
+		note "Unsupported architecture for tccutil-rs ($(uname -m 2>/dev/null || echo unknown))"
+		return 1
+	}
+	# Already there at the resolved tag: nothing to do (a pinned
+	# TCCUTIL_RS_VERSION that matches also lands here).
+	if command -v tccutil-rs >/dev/null 2>&1 && tccutil-rs --version 2>/dev/null | grep -qF "${tag#v}"; then
+		ok "tccutil-rs $tag already installed"
+		return 0
+	fi
+	note "Fetching tccutil-rs $tag ($arch)..."
+	bindir="$(tccutil_rs_bindir)" || return 1
+	bin="$bindir/tccutil-rs"
+	tmp="$(mktemp -d)"
+	# Tags carry a `v` prefix (v0.2.13) but asset files do not
+	# (tccutil-rs-0.2.13-darwin-arm64.tar.gz) — normalize both forms.
+	case "$tag" in
+		v*) ;;
+		*) tag="v$tag" ;;
+	esac
+	asset="tccutil-rs-${tag#v}-darwin-${arch}.tar.gz"
+	if ! curl -fsSL "https://github.com/$TCCUTIL_RS_REPO/releases/download/$tag/$asset" -o "$tmp/tccutil.tgz"; then
+		note "Download failed ($asset)"
+		rm -rf "$tmp"
+		return 1
+	fi
+	if curl -fsSL "https://github.com/$TCCUTIL_RS_REPO/releases/download/$tag/checksums.txt" -o "$tmp/checksums.txt" 2>/dev/null; then
+		want="$(grep -F "  $asset" "$tmp/checksums.txt" 2>/dev/null | head -1 | grep -oE '[0-9a-f]{64}' | head -1 || true)"
+		if [ -n "$want" ]; then
+			if command -v shasum >/dev/null 2>&1; then
+				got="$(shasum -a 256 "$tmp/tccutil.tgz" 2>/dev/null | grep -oE '[0-9a-f]{64}' | head -1 || true)"
+			else
+				got="$(sha256sum "$tmp/tccutil.tgz" 2>/dev/null | grep -oE '[0-9a-f]{64}' | head -1 || true)"
+			fi
+			if [ "$got" != "$want" ]; then
+				note "Checksum mismatch for $asset — refusing to install"
+				rm -rf "$tmp"
+				return 1
+			fi
+			note "Checksum verified"
+		fi
+	fi
+	if ! tar -xzf "$tmp/tccutil.tgz" -C "$tmp"; then
+		note "Extraction failed"
+		rm -rf "$tmp"
+		return 1
+	fi
+	staged="$(find "$tmp" -maxdepth 2 -name tccutil-rs -type f | head -1 || true)"
+	if [ -z "$staged" ]; then
+		note "No tccutil-rs binary inside the release tarball"
+		rm -rf "$tmp"
+		return 1
+	fi
+	mkdir -p "$(dirname "$bin")"
+	cp "$staged" "$bin"
+	chmod +x "$bin"
+	rm -rf "$tmp"
+	hash -r 2>/dev/null || true
+	ok "tccutil-rs $tag installed to $bin"
+	return 0
+}
+
+if ! install_tccutil_rs; then
+	warn "tccutil-rs install failed (network?) — scripted TCC grants will be skipped."
+	warn "Grant Accessibility manually if needed, or set TCCUTIL_RS_VERSION to a known tag and re-run."
 fi
 
 # ─────────────────────────────────────────────────────────────

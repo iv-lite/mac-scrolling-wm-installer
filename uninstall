@@ -25,9 +25,9 @@ echo "   • Revoke its Accessibility permission"
 echo "   • Move configs to ~/.config/backups (not deleted, incl. shortcut helpers)"
 echo "   • Remove Antigen shell setup (~/antigen.zsh, bundling, ~/.zshrc block)"
 echo "   • Remove the Paneru release binary"
+echo "   • Remove the tccutil-rs release binary"
 echo "   • Uninstall brew packages (you'll choose which to keep)"
-echo "     tccutil-rs, ghostty"
-echo "   • Untaps uinaf/tap when nothing kept needs it"
+echo "     ghostty"
 echo "   • Revert system defaults (show the native menu bar again)"
 echo ""
 read -r -p "  Continue? [y/N] " answer
@@ -43,6 +43,7 @@ fi
 echo ""
 note "Stopping services..."
 
+# The binary lives in the brew bin dir (already on PATH).
 if command -v paneru >/dev/null 2>&1; then
 	if paneru stop >/dev/null 2>&1; then
 		ok "Paneru stopped"
@@ -54,6 +55,8 @@ if command -v paneru >/dev/null 2>&1; then
 		paneru uninstall-app >/dev/null 2>&1 || true
 		ok "Paneru app launcher removed (if present)"
 	fi
+else
+	warn "paneru not found on PATH — skipping CLI stop; falling back to plist removal below"
 fi
 # Belt-and-braces in case the CLI wasn't available to clean up after itself
 if [ -f ~/Library/LaunchAgents/com.github.karinushka.paneru.plist ]; then
@@ -72,10 +75,17 @@ fi
 echo ""
 note "Revoking Accessibility permissions..."
 if command -v tccutil-rs >/dev/null 2>&1; then
-	paneru_bin="$(command -v paneru 2>/dev/null || true)"
-	if [ -n "$paneru_bin" ] && [ -e "$paneru_bin" ]; then
-		tccutil-rs revoke --user Accessibility "$paneru_bin" >/dev/null 2>&1 || true
+	revoked=0
+	for paneru_bin in "$HOME/.local/bin/paneru" "$(command -v paneru 2>/dev/null || true)"; do
+		if [ -n "$paneru_bin" ] && [ -e "$paneru_bin" ]; then
+			tccutil-rs revoke --user Accessibility "$paneru_bin" >/dev/null 2>&1 || true
+			revoked=1
+		fi
+	done
+	if [ "$revoked" -eq 1 ]; then
 		ok "Accessibility grant revoked (best-effort)"
+	else
+		note "No Paneru binary found — nothing to revoke"
 	fi
 else
 	note "tccutil-rs not installed — grants (if any) are left in place"
@@ -129,14 +139,22 @@ fi
 # ─────────────────────────────────────────────────────────────
 # 4. Uninstall brew packages + untaps (interactive keep menu)
 # ─────────────────────────────────────────────────────────────
-# Paneru itself is a direct binary converging on the canonical daemon path
-# ~/.local/bin/paneru (upstream 0a29efc; pre-migration copies lived in
-# /opt/homebrew/bin or /usr/local/bin), so remove the binary files
+# Paneru itself is a direct binary in the brew bin dir (with
+# ~/.local/bin/paneru as a fallback location), so remove the binary files
 # themselves.
-for paneru_bin_rm in "$(command -v paneru 2>/dev/null || true)" "$HOME/.local/bin/paneru" /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
+for paneru_bin_rm in "$(command -v paneru 2>/dev/null || true)" /opt/homebrew/bin/paneru /usr/local/bin/paneru "$HOME/.local/bin/paneru"; do
 	if [ -n "$paneru_bin_rm" ] && [ -f "$paneru_bin_rm" ]; then
 		rm -f "$paneru_bin_rm"
 		ok "Removed Paneru binary $paneru_bin_rm"
+	fi
+done
+
+# tccutil-rs is a direct release binary too (uinaf/tap dropped the formula),
+# so remove the binary files themselves.
+for tcc_bin_rm in "$(command -v tccutil-rs 2>/dev/null || true)" /opt/homebrew/bin/tccutil-rs /usr/local/bin/tccutil-rs "$HOME/.local/bin/tccutil-rs"; do
+	if [ -n "$tcc_bin_rm" ] && [ -f "$tcc_bin_rm" ]; then
+		rm -f "$tcc_bin_rm"
+		ok "Removed tccutil-rs binary $tcc_bin_rm"
 	fi
 done
 
@@ -157,7 +175,6 @@ if command -v brew >/dev/null 2>&1; then
 		fi
 	}
 
-	add_pkg tccutil-rs   formula uinaf/tap
 	add_pkg ghostty      cask
 
 	if [ "$n" -eq 0 ]; then

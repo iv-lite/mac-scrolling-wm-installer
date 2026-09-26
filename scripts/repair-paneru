@@ -13,20 +13,23 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
-# Self-repair a permission-less Paneru: re-pin the stable ad-hoc
-# signing identifier, revoke + re-grant Accessibility, restart, re-check.
-# Binary replacement normally preserves the grant, so reaching here means
-# the listed grant is dead (or missing) — this is the only place that
-# revokes proactively. Called by enable-services when the health
-# poll fails; safe to run by hand too: bash scripts/repair-paneru
+# Self-repair an unhealthy Paneru: re-pin the ad-hoc signing identifier,
+# revoke + re-grant Accessibility, restart, re-check. Every binary update
+# needs one fresh grant (ad-hoc signature hash changes per build), so
+# reaching here usually means the grant is stale or missing.
+# Called by enable-services when the health poll fails; safe to run by
+# hand too: bash scripts/repair-paneru
 # ─────────────────────────────────────────────────────────────
-# Canonical first (upstream 0a29efc): the plist and shim point at
-# ~/.local/bin/paneru, so that is the identity to re-sign and re-grant.
-# Fall back to the PATH copy when canonical is missing (migration window).
-if [ -x "$HOME/.local/bin/paneru" ]; then
-	PANERU_BIN="$HOME/.local/bin/paneru"
-else
-	PANERU_BIN="$(command -v paneru 2>/dev/null || true)"
+# The installed binary on PATH (install-paneru puts it in the brew bin
+# dir); fall back to known locations when it is not on PATH.
+PANERU_BIN="$(command -v paneru 2>/dev/null || true)"
+if [ -z "$PANERU_BIN" ]; then
+	for candidate in /opt/homebrew/bin/paneru /usr/local/bin/paneru "$HOME/.local/bin/paneru"; do
+		if [ -x "$candidate" ]; then
+			PANERU_BIN="$candidate"
+			break
+		fi
+	done
 fi
 if [ -z "$PANERU_BIN" ]; then
 	warn "paneru not on PATH — nothing to repair"
@@ -41,16 +44,16 @@ codesign_paneru() {
 
 restart_paneru() {
 	if pgrep -qx paneru >/dev/null 2>&1; then
-		paneru restart >/dev/null 2>&1
+		"$PANERU_BIN" restart >/dev/null 2>&1
 	else
-		paneru start >/dev/null 2>&1
+		"$PANERU_BIN" start >/dev/null 2>&1
 	fi
 }
 
 wait_healthy() {
 	local i
 	for i in $(seq 1 10); do
-		if paneru query state --json >/dev/null 2>&1; then
+		if "$PANERU_BIN" query state --json >/dev/null 2>&1; then
 			return 0
 		fi
 		sleep 1

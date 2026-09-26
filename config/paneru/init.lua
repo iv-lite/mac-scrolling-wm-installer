@@ -63,51 +63,31 @@ paneru.setup {
   -- ─── Global options ───
   options = {
     focus_follows_mouse = true,
-    -- Drag travel, as a ratio of the working viewport width, above which
-    -- hover-focus sleeps after release — a flung strip must not refocus
-    -- wherever the cursor stopped. <= 0 disables. Default 1.0 (a full
-    -- viewport width).
-    ffm_drag_suppress_ratio = 0.9,
-    -- How long hover-focus sleeps after a viewport-crossing drag. 0
-    -- disables. Default 400ms.
-    ffm_drag_suppress_ms = 400,
     -- Daemon-native pointer follow: Paneru warps to the focused window's
     -- center on keyboard-driven focus changes (even when the cursor is
     -- already inside it), in sync with its own animation. Clicks own their
     -- cursor (never yanked, never grown — click-focus clamps down only) and
     -- mid-drag focus changes never warp, so display moves perform no extra
     -- warp. Hover pokes are throttled (2px) and pure clicks skip the
-    -- most-visible reveal; focus steps use a 2px arrival quantum. After a
-    -- viewport-crossing gutter fling, hover-focus sleeps for
-    -- ffm_drag_suppress_ms above. A helper
+    -- most-visible reveal; focus steps use a 2px arrival quantum. A helper
     -- warp on top lands late and re-triggers focus as a visible second step.
     mouse_follows_focus = true,
     -- Hold Cmd+Alt while left-clicking a tiled window to arm the drag;
     -- crossing a display boundary moves it to that display's strip live
     -- (focus follows), landing in the nearest column (see
-    -- insert_windows_mid_strip below). Without the shortcut, gutter drags
-    -- scroll the strip (see left_drag_scrolls_strip below) — window drags
-    -- stay native and glide home. Shipped in fork ≥ v0.2.2.
+    -- insert_windows_mid_strip below). Without the shortcut, drags move the
+    -- grabbed column with the pointer and glide home on release instead of
+    -- transferring anything — only armed drags reorder or transfer.
+    -- Shipped in fork ≥ v0.2.2.
     mouse_drag_display_modifier = "cmd + alt",
-    -- On: pressing in the strip gutter — padding whitespace between
-    -- windows, or trailing viewport whitespace past the last column
-    -- (single-column strips never arm) — and dragging scrolls the
-    -- workspace strip 1:1 with the pointer. Presses on windows always keep
-    -- fully native behavior (text selection, tabs, native window drags)
-    -- and glide home on release when tiled and non-floating. Armed
-    -- (Cmd+Alt) drags still move and transfer as before. Set to false to
-    -- get fully native drags back. Pre-gutter builds scrolled on titlebar
-    -- grabs instead; older binaries silently ignore
-    -- it and plain drags pin to their slot.
-    left_drag_scrolls_strip = false,
     -- Held drags track the pointer 1:1 with no damping: a strip held still
     -- with the button down simply waits at its raw offset. Friction lives
     -- only on the release path — the pace-sensitive release velocity
     -- (flick vs crawl) seeds the inertia/snap glide on mouse-up
     -- (press-without-travel still stops dead; a small dead-zone absorbs
-    -- click jitter). Scroll-glide drags never cross displays, and hover
-    -- focus is deferred while the button is held — only the scroll
-    -- mouse-up may seed release inertia. Needs a fork build containing
+    -- click jitter). Unarmed drags glide home on release, and hover
+    -- focus is deferred while the button is held.
+    -- Needs a fork build containing
     -- b4852e0; older binaries damp held motion via drag_friction_*
     -- instead (removed upstream, still parsed when present).
     -- Horizontally stacked (side-by-side) monitors: arrange displays

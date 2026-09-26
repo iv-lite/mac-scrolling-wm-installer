@@ -13,7 +13,9 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
-# Paneru (per-user launchd service)
+# Paneru (per-user launchd service). The binary lives in the brew bin dir
+# (already on PATH), so a plain lookup suffices — but never skip silently:
+# warn loudly when it is missing.
 # ─────────────────────────────────────────────────────────────
 if command -v paneru >/dev/null 2>&1; then
 	if pgrep -qx paneru >/dev/null 2>&1; then
@@ -31,22 +33,16 @@ if command -v paneru >/dev/null 2>&1; then
 			warn "Paneru failed to start — verify Accessibility permission was granted, then run: paneru start"
 		fi
 	fi
+else
+	warn "paneru not found on PATH — skipping start; re-run ./install after install-paneru succeeds"
 fi
 
 # ─────────────────────────────────────────────────────────────
 # Post-start health check: the daemon must answer state queries.
-# This is also the validity proof for a preserved grant: binary
-# replacement keeps a listed grant live, but only tiling confirms it —
-# a listed-but-dead grant starts fine yet never tiles, so catch that here
-# instead of leaving a silently broken setup behind.
+# Ad-hoc signatures change per build, so a stale grant fails here even
+# when the service starts — repair-paneru then revoke+re-grants.
 # ─────────────────────────────────────────────────────────────
 if command -v paneru >/dev/null 2>&1; then
-	# Upstream 0a29efc: the Spotlight shim must exec the canonical daemon.
-	# Never fatal — just point at the heal (install-paneru refreshes it).
-	shim_script="$HOME/Applications/Paneru.app/Contents/MacOS/Paneru"
-	if [ -f "$shim_script" ] && ! grep -qF "$HOME/.local/bin/paneru" "$shim_script" 2>/dev/null; then
-		warn "Paneru.app shim does not point at ~/.local/bin/paneru — re-run 'paneru install-app' to refresh it"
-	fi
 	healthy=0
 	for i in $(seq 1 10); do
 		if paneru query state --json >/dev/null 2>&1; then
