@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Live reload/restart for --swift development.
+#   bash scripts/dev-swift-watch [--once]
+#
+# Watches two things:
+#   1. config/paneru/init.lua -> copy to ~/.config/paneru/init.lua.
+#      The Swift daemon hot-reloads it in place (DispatchSource watch,
+#      parse-then-swap) — no restart needed.
+#   2. ../paneru/swift-daemon/Sources (+ Package.swift) -> swift build,
+#      install to bindir, re-sign with the stable identity, then
+#      `launchctl kickstart` (restart in place, preserves the Mach
+#      service) + `pq state` health poll.
+#
+# Requires --prefer-local-builds layout (sibling ../paneru checkout).
+# Uses fswatch when available, else a 1s poll loop. Ctrl-C to stop.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/swift-common.sh
+source "$SCRIPT_DIR/lib/swift-common.sh"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+
+PKG="$REPO_ROOT/../paneru/swift-daemon"
+CONFIG_SRC="$REPO_ROOT/config/paneru/init.lua"
+CONFIG_DST="$HOME/.config/paneru/init.lua"
+POLL_INTERVAL="${PANERU_LIVE_POLL:-1}"
+
+if [ ! -f "$PKG/Package.swift" ]; then
+	echo "  dev-swift-watch needs a sibling checkout ($PKG/Package.swift missing)." >&2
+	exit 1
+fi
+if ! command -v swift >/dev/null 2>&1; then
+	echo "  'swift' not found — run 'xcode-select --install' first." >&2
+	exit 1
+fi
+
+pick_bindir() {
+	if [ -n "${PANERU_BINDIR:-}" ]; then
+		mkdir -p "$PANERU_BINDIR" 2>/dev/null || return 1
+		echo "$PANERU_BINDIR"
+		return 0
+	fi
+	for d in /opt/homebrew/bin /usr/local/bin; do
+		if [ -d "$d" ] && [ -w "$d" ]; then
+			echo "$d"
+			return 0
+		fi
+	done
+	mkdir -p "$HOME/.local/bin" 2>/dev/null || true
+	echo "$HOME/.local/bin"
+}
+
+resolve_sign_identity() {
+	bash "$SCRIPT_DIR/ensure-signing-identity" 2>/dev/null || echo "-"
+}
+
+sync_config() {
+	if [ -f "$CONFIG_DST" ] && cmp -s "$CONFIG_SRC" "$CONFIG_DST"; then
+		return 1
+	fi
+	cp "$CONFIG_SRC" "$CONFIG_DST"
+	ok "Config synced → $CONFIG_DST (daemon hot-reloads, no restart)"
+	return 0
+}
+
+rebuild_and_restart() {
+	local staged_bindir staged pq_staged bindir bin pq_bin identity
+	note "Rebuilding Swift daemon..."
+	for product in paneru-swift pq; do
+		if ! (cd "$PKG" && swift build -c release --product "$product"); then
+			warn "Build failed ($product) — fix and save again."
+			return 1
+		fi
+	done
+	staged_bindir="$(cd "$PKG" && swift build -c release --show-bin-path)" || return 1
+	staged="$staged_bindir/paneru-swift"
+	pq_staged="$staged_bindir/pq"
+	bindir="$(pick_bindir)" || return 1
+	bin="$bindir/paneru-swift"
+	pq_bin="$bindir/pq"
+	if [ -e "$bin" ] && cmp -s "$staged" "$bin" \
+		&& [ -e "$pq_bin" ] && cmp -s "$pq_staged" "$pq_bin"; then
+		note "Binaries unchanged — skipping restart"
+		return 0
+	fi
+	if swift_bootstrapped; then
+		launchctl bootout "gui/$(id -u)/$PANERU_SWIFT_LABEL" >/dev/null 2>&1 || true
+		sleep 1
+	fi
+	cp "$staged" "$bin" && chmod +x "$bin"
+	cp "$pq_staged" "$pq_bin" && chmod +x "$pq_bin"
+	hash -r 2>/dev/null || true
+	identity="$(resolve_sign_identity)"
+	if command -v codesign >/dev/null 2>&1; then
+		codesign --force --sign "$identity" --identifier "$PANERU_SWIFT_ID" "$bin" >/dev/null 2>&1 \
+			|| warn "codesign failed — grant may not stick"
+	fi
+	ok "Installed $bin + $pq_bin"
+	if ! swift_start_agent; then
+		warn "Agent plist missing — re-run ./install --prefer-local-builds --swift first."
+		return 1
+	fi
+	sleep 2
+	PQ_BIN="$(command -v pq 2>/dev/null || true)"
+	if swift_wait_healthy 10; then
+		ok "Swift daemon restarted and answering (pq state)"
+	else
+		warn "Restarted but not answering — tail /tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log"
+		return 1
+	fi
+}
+
+if [ "${1:-}" = "--once" ]; then
+	sync_config || true
+	rebuild_and_restart
+	exit $?
+fi
+
+note "Live watch: config + Swift sources (Ctrl-C to stop)"
+note "  config: $CONFIG_SRC"
+note "  sources: $PKG/Sources"
+sync_config || true
+
+if command -v fswatch >/dev/null 2>&1; then
+	note "Using fswatch (poll fallback: PANERU_LIVE_POLL=$POLL_INTERVAL)"
+	# shellcheck disable=SC2086
+	fswatch -o --latency 0.5 "$CONFIG_SRC" "$PKG/Sources" "$PKG/Package.swift" | while read -r _; do
+		sync_config || true
+		# Only rebuild when a source file changed (config-only saves skip it).
+		rebuild_and_restart || true
+		echo ""
+		note "Watching… (Ctrl-C to stop)"
+	done
+else
+	note "fswatch not found (brew install fswatch for instant reload); polling every ${POLL_INTERVAL}s"
+	last_config=""
+	last_sources=""
+	snapshot_sources() {
+		find "$PKG/Sources" "$PKG/Package.swift" -type f -exec stat -f '%m %N' {} + 2>/dev/null | sort
+	}
+	last_sources="$(snapshot_sources)"
+	[ -f "$CONFIG_SRC" ] && last_config="$(stat -f '%m' "$CONFIG_SRC" 2>/dev/null || echo "")"
+	while true; do
+		sleep "$POLL_INTERVAL"
+		changed=0
+		if [ -f "$CONFIG_SRC" ]; then
+			cur="$(stat -f '%m' "$CONFIG_SRC" 2>/dev/null || echo "")"
+			if [ "$cur" != "$last_config" ]; then
+				last_config="$cur"
+				sync_config || true
+			fi
+		fi
+		cur_sources="$(snapshot_sources)"
+		if [ "$cur_sources" != "$last_sources" ]; then
+			last_sources="$cur_sources"
+			changed=1
+		fi
+		if [ "$changed" -eq 1 ]; then
+			rebuild_and_restart || true
+			echo ""
+			note "Watching… (Ctrl-C to stop)"
+		fi
+	done
+fi

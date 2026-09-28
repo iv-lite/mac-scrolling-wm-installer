@@ -88,14 +88,22 @@ echo ""
 note "Revoking Accessibility permissions..."
 if command -v tccutil-rs >/dev/null 2>&1; then
 	revoked=0
-	for paneru_bin in "$HOME/.local/bin/paneru" "$(command -v paneru 2>/dev/null || true)" "$HOME/.local/bin/paneru-swift" "$(command -v paneru-swift 2>/dev/null || true)"; do
-		if [ -n "$paneru_bin" ] && [ -e "$paneru_bin" ]; then
-			tccutil-rs revoke --user Accessibility "$paneru_bin" >/dev/null 2>&1 || true
-			revoked=1
+	# Revoke both path-keyed and identifier-keyed rows (stable-identity
+	# installs key on the identifier). The "Paneru Local" signing cert is
+	# deliberately left in the keychain: it is long-lived and reinstalls
+	# reuse it so the next grant stays sticky.
+	for client in "$HOME/.local/bin/paneru" "$(command -v paneru 2>/dev/null || true)" \
+		"$HOME/.local/bin/paneru-swift" "$(command -v paneru-swift 2>/dev/null || true)" \
+		com.github.karinushka.paneru com.github.karinushka.paneru.swift; do
+		if [ -n "$client" ]; then
+			if [ -e "$client" ] || [[ "$client" == com.github.* ]]; then
+				tccutil-rs revoke --user Accessibility "$client" >/dev/null 2>&1 || true
+				revoked=1
+			fi
 		fi
 	done
 	if [ "$revoked" -eq 1 ]; then
-		ok "Accessibility grant revoked (best-effort)"
+		ok "Accessibility grant revoked (best-effort; signing cert kept for reinstalls)"
 	else
 		note "No Paneru binary found — nothing to revoke"
 	fi

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/swift-common.sh
+source "$SCRIPT_DIR/lib/swift-common.sh"
 
 CYAN=$'\033[0;36m'
 GREEN=$'\033[0;32m'
@@ -12,102 +14,44 @@ note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
+# With PANERU_SWIFT=1 (--swift) the Swift daemon runs instead of Rust
+# under its own agent (see swift-common.sh; same model as upstream
+# swift-daemon/install-service.sh). Never export PANERU_SWIFT_DAEMON here:
+# upstream `1`/`shadow` hard-errors the Rust daemon at launch.
 # ─────────────────────────────────────────────────────────────
-# Paneru (per-user launchd service). The binary lives in the brew bin dir
-# (already on PATH), so a plain lookup suffices — but never skip silently:
-# warn loudly when it is missing.
-# With PANERU_SWIFT=1 (--swift) and an installed paneru-swift, the Swift
-# daemon runs instead of the Rust daemon under its own agent
-# (com.github.karinushka.paneru.swift, same model as upstream
-# swift-daemon/install-service.sh): stop Rust first so both never fight
-# over the same windows, then enable/bootstrap (or kickstart) the Swift
-# agent. Never export PANERU_SWIFT_DAEMON here: upstream `1`/`shadow`
-# hard-errors the Rust daemon at launch.
-# ─────────────────────────────────────────────────────────────
-SWIFT_LABEL="com.github.karinushka.paneru.swift"
 SWIFT_BIN=""
 if [ -n "${PANERU_SWIFT:-}" ]; then
-	SWIFT_BIN="$(command -v paneru-swift 2>/dev/null || true)"
-	if [ -z "$SWIFT_BIN" ]; then
-		for candidate in /opt/homebrew/bin/paneru-swift /usr/local/bin/paneru-swift "$HOME/.local/bin/paneru-swift"; do
-			if [ -x "$candidate" ]; then
-				SWIFT_BIN="$candidate"
-				break
-			fi
-		done
-	fi
+	SWIFT_BIN="$(find_installed_bin paneru-swift || true)"
 	if [ -z "$SWIFT_BIN" ]; then
 		warn "PANERU_SWIFT=1 but no paneru-swift installed — falling back to the Rust daemon"
 	fi
 fi
-
-swift_bootstrapped() {
-	launchctl print "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1
-}
-
-# `pq` talks to the daemon over its Mach XPC service. The installed plist
-# pins PANERU_MACH_SERVICE to the .swift label (see install-paneru), so
-# prefer that; fall back to the bare invocation for pre-pin installs
-# whose daemon still listens on the base name.
-swift_pq() {
-	if [ -n "${PQ_BIN:-}" ]; then
-		PANERU_MACH_SERVICE="$SWIFT_LABEL" "$PQ_BIN" "$@" >/dev/null 2>&1 \
-			|| "$PQ_BIN" "$@" >/dev/null 2>&1
-	else
-		return 1
-	fi
-}
 
 if [ -n "$SWIFT_BIN" ]; then
 	if command -v paneru >/dev/null 2>&1; then
 		note "Stopping Rust daemon (Swift daemon takes over)..."
 		paneru stop >/dev/null 2>&1 || true
 	fi
-	plist="$HOME/Library/LaunchAgents/$SWIFT_LABEL.plist"
+	plist="$HOME/Library/LaunchAgents/$PANERU_SWIFT_LABEL.plist"
 	if [ ! -f "$plist" ]; then
 		warn "Swift agent plist missing ($plist) — re-run ./install to render it; falling back to the Rust daemon"
 		SWIFT_BIN=""
 	else
-		note "Starting Swift daemon agent ($SWIFT_LABEL)..."
-		launchctl enable "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
-		if swift_bootstrapped; then
-			launchctl kickstart "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
-		else
-			launchctl bootstrap "gui/$(id -u)" "$plist" >/dev/null 2>&1 || true
-		fi
+		note "Starting Swift daemon agent ($PANERU_SWIFT_LABEL)..."
+		swift_start_agent || true
 		sleep 3
-		# Health is a real query when pq is installed (same shape as the
-		# Rust `paneru query state` poll below); process liveness alone
-		# can't tell a parked daemon from a tiling one. `pq` also speaks
-		# `run`/`apply`/`state-get`/`state-write`, but `state` is the
-		# health probe — the rest are interactive/diagnostic only.
+		# Health is a real `pq state` query when pq is installed; process
+		# liveness alone can't tell a parked daemon from a tiling one.
 		PQ_BIN="$(command -v pq 2>/dev/null || true)"
-		swift_healthy=0
-		if [ -n "$PQ_BIN" ]; then
-			for i in $(seq 1 10); do
-				if swift_pq state; then
-					swift_healthy=1
-					break
-				fi
-				sleep 1
-			done
-		elif swift_bootstrapped && pgrep -qx paneru-swift >/dev/null 2>&1; then
-			swift_healthy=1
-		fi
-		if [ "$swift_healthy" -eq 1 ]; then
-			ok "Swift daemon agent running and answering queries (logs: /tmp/${SWIFT_LABEL}_$(id -u).out.log)"
+		if swift_wait_healthy 10; then
+			ok "Swift daemon agent running and answering queries (logs: /tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log)"
 			note "Prove it live: grant Accessibility if it parks, then drive windows from its menubar."
 		else
-			warn "Swift agent is not running — check /tmp/${SWIFT_LABEL}_$(id -u).err.log (likely the Accessibility grant)."
+			warn "Swift agent is not running — check /tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log (likely the Accessibility grant)."
 			warn "Live state without launchd: cat /tmp/paneru-swift-state.json. Persistent state: ~/.local/state/paneru/state.json."
 			warn "Falling back to the Rust daemon so tiling stays up..."
-			# Boot the Swift agent out before starting Rust: a bootstrapped
-			# (respawning) Swift agent plus the Rust daemon would both fight
-			# over the same windows and event taps. Same stop semantics as
-			# upstream install-service.sh: bootout, else SIGTERM the job.
-			launchctl bootout "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 \
-				|| launchctl kill SIGTERM "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
-			launchctl disable "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
+			# Boot out before starting Rust: both would fight over windows/taps.
+			swift_stop_agent
 			SWIFT_BIN=""
 		fi
 	fi
@@ -138,8 +82,9 @@ fi
 # ─────────────────────────────────────────────────────────────
 # Post-start health check: the Rust daemon must answer state queries
 # (the Swift agent answered `pq state` above when it runs).
-# Ad-hoc signatures change per build, so a stale grant fails here even
-# when the service starts — repair-paneru then revoke+re-grants.
+# A stale grant fails here even when the service starts — repair-paneru
+# (the sole revoke path) then re-signs with the stable identity,
+# revoke+re-grants, and re-checks.
 # ─────────────────────────────────────────────────────────────
 if [ -z "$SWIFT_BIN" ] && command -v paneru >/dev/null 2>&1; then
 	healthy=0

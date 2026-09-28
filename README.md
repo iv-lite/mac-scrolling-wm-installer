@@ -27,10 +27,10 @@ refreshed from this repo (previous copies kept as `*.bak`), the launchd
 plist is re-laid from the installed binary, and the service is restarted so
 the new binary/config apply immediately. Upstream `paneru install` is
 write-once (skips when the plist exists and pins the invoking binary's
-path), so the installer re-lays the plist itself on every run — and every
-binary update needs one fresh Accessibility grant (ad-hoc signatures change
-per build; grant-permissions revoke+re-grants, and only a failed post-start
-health check triggers repair).
+path), so the installer re-lays the plist itself on every run — upgrades keep
+the existing Accessibility grant (stable `Paneru Local` signing identity;
+grant-permissions grants only when missing, and only a failed post-start
+health check triggers repair, the sole revoke path).
 
 ### Local development (`--prefer-local-builds`)
 
@@ -75,8 +75,13 @@ builds the upstream `paneru-swift` + `RenderPlist` + `pq` products
 (`swift build -c release`, in place keeping `.build/` cache; fully
 offline — all targets are local plus vendored C) and installs
 `paneru-swift` and `pq` next to `paneru`, the daemon signed with
-upstream's identifier (`com.github.karinushka.paneru.swift`) so the grant
-converges with a manual upstream install instead of forking identity
+upstream's identifier (`com.github.karinushka.paneru.swift`) under the
+persistent `Paneru Local` signing identity (`scripts/ensure-signing-identity`,
+`PANERU_SIGN_IDENTITY` overrides for a paid Developer ID) so the grant
+converges with a manual upstream install instead of forking identity —
+and stays valid across rebuilds with no remove/regrant (one final manual
+remove + toggle-on migrates old ad-hoc rows; `PANERU_SIGN_CERT` renames the
+cert before first use only)
 (`pq` needs no grant — it only talks to the daemon over XPC, and is
 otherwise uninstalled upstream; the installer ships it for health
 checks). `enable-services` then stops the Rust daemon and bootstraps the
@@ -100,9 +105,16 @@ and `repair-paneru` use `pq state` as the Swift health check, same as
 (XDG state dir, 30s dirty cadence + `.bak`, crash marker; display UUIDs
 consulted first), every controlled shutdown saves (menubar/XPC
 quit+restart, SIGTERM/SIGINT). Stacks split viewport height, per-window
-SLS corner radii, epoch-clocked eased glides, async AX writes with ack
+SLS corner radii (plus per-window `border_radius` rule overrides),
+epoch-clocked eased glides, async AX writes with ack
 mailbox + stall watchdog, focus-heal, SLS strip-per-Space layouts, and
-modifier-armed cross-display pointer drags are live. Release installs are
+modifier-armed cross-display pointer drags are live. Model focus actuates
+the OS without stealing key (hover/ambient arrivals claim only, close
+heals to the nearest survivor); programmatic moves (reveal/center/snap)
+glide burst-joined while swipe/scroll stay immediate; short singles/tabs
+vertically center; unarmed drags keep native text selection (zero AX
+traffic, ghost + glide-home only) and lone fullWidth-marked columns
+(e.g. the Firefox spawn pin below) center absolutely. Release installs are
 unaffected (no Swift binary ships in release tarballs). With `--verify`,
 every Swift checks runner runs, then the Rust trace corpus is dumped
 like CI (`PANERU_TRACE_OUT cargo test trace`, or your `PANERU_TRACE_DIR`)
@@ -112,6 +124,19 @@ daemon at launch. One path still needs a real login to verify: the
 launchd-held Mach port (`pq` against a hand-run daemon gets no reply —
 expected, use `cat /tmp/paneru-swift-state.json` instead).
 
+Live reload during development (config hot-reloads in place, source
+changes rebuild + kickstart the agent):
+
+```sh
+./install --prefer-local-builds --swift --live   # or PANERU_LIVE=1
+# or, after an install: bash scripts/dev-swift-watch
+```
+
+Shared Swift helpers live in `scripts/lib/swift-common.sh` (label,
+`pq` wrapper, health poll, launchd start/stop) used by
+`install-paneru` / `enable-services` / `repair-paneru`;
+`scripts/verify-swift` holds the `--verify` checks gate.
+
 The installer runs these steps from `scripts/`:
 
 | Script | Purpose |
@@ -120,10 +145,11 @@ The installer runs these steps from `scripts/`:
 | `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Paneru draws its indicator in it) |
 | `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
 | `install-antigen` | Install Antigen (`~/antigen.zsh`) + write `~/.config/zsh/antigen.zsh` (git, command-not-found, completions, autosuggestions, syntax-highlighting last, typewritten theme) + wire it into `~/.zshrc` |
-| `install-paneru` | Install Paneru from the `iv-lite/paneru` GitHub releases (newest in list; `PANERU_TAG` pins) into the brew bin dir + write `~/.config/paneru/init.lua` + re-lay its launchd service from the installed binary and refresh the app shim |
-| `repair-paneru` | Self-repair an unhealthy daemon: re-sign → re-grant → restart → re-check (run by `enable-services`, or by hand) |
+| `install-paneru` | Install Paneru from the `iv-lite/paneru` GitHub releases (newest in list; `PANERU_TAG` pins) into the brew bin dir + write `~/.config/paneru/init.lua` + re-lay its launchd service from the installed binary and refresh the app shim (binaries signed with the persistent `Paneru Local` identity so grants survive updates) |
+| `ensure-signing-identity` | Create/reuse the persistent self-signed `Paneru Local` code-signing identity (one-time keychain approval; `PANERU_SIGN_IDENTITY`/`PANERU_SIGN_CERT` override) |
+| `repair-paneru` | Self-repair an unhealthy daemon: re-sign (stable identity) → revoke + re-grant → restart → re-check (run by `enable-services` on failed health poll, or by hand; the only revoke path) |
 | `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build) |
-| `grant-permissions` | Revoke + re-grant Accessibility via tccutil-rs (user → sudo → manual fallback); hands off to the daemon dialog without Full Disk Access |
+| `grant-permissions` | Grant-if-missing Accessibility via tccutil-rs (user → sudo → manual fallback; never revokes except under `PANERU_GRANT_REVOKE=1` from repair); hands off to the daemon dialog without Full Disk Access |
 | `enable-services` | Start Paneru |
 
 ### After install
@@ -136,9 +162,9 @@ The installer runs these steps from `scripts/`:
 3. **Paneru** shows the active virtual workspace in a brief popup on switch.
 4. If the Accessibility grant failed, grant it manually:
    System Settings → Privacy & Security → Accessibility (enable the
-   installed `paneru` binary). Every binary update needs one fresh grant
-   (ad-hoc signatures change per build) — re-run `./install`, then grant
-   once for the updated build.
+   installed `paneru` / `paneru-swift` binary or `Paneru.app`). Grants are
+   sticky across updates via the stable signing identity — grant once, then
+   re-run `./install` freely with no remove/regrant.
 5. Ghostty opens **frameless** (`macos-titlebar-style = hidden` in
    `~/.config/ghostty/config`) — drag its window edge with `Option+Click`.
 
@@ -403,17 +429,22 @@ popup). Immediate recourse: `paneru restart`. Re-enable the indicator once a
 Paneru release includes the #390 fix; concurrently, keep Paneru at ≥ 0.5.0 so
 the event-tap watchdog (karinushka/paneru#350) is present.
 
-**Paneru runs but doesn't tile after an upgrade.** Every binary update needs
-one fresh Accessibility grant (the installer pins the identifier
-`com.github.karinushka.paneru` onto the downloaded binary, and ad-hoc
-signatures change hash per build). Re-run `./install` — it re-lays the plist
-from the installed binary (`paneru uninstall` + `paneru install`, since
-upstream `install` is write-once) and revoke+re-grants — then grant once if
-prompted.
+**Paneru runs but doesn't tile after an upgrade.** Upgrades keep the existing
+Accessibility grant: the installer signs every binary with the persistent
+`Paneru Local` identity (`scripts/ensure-signing-identity`, identifier
+`com.github.karinushka.paneru` / `.swift`), so the TCC row stays valid across
+rebuilds. Re-run `./install` — it re-lays the plist from the installed binary
+(`paneru uninstall` + `paneru install`, since upstream `install` is write-once)
+and grants only when missing — no remove/regrant, no fresh manual grant.
+One-time migration from old ad-hoc installs: remove the stale `paneru` /
+`paneru-swift` entries with `–` in System Settings → Privacy & Security →
+Accessibility, re-run `./install`, then toggle them back on once; all later
+updates stay sticky.
 If it is still dead, the grant is stale-but-listed: `enable-services`
-runs a self-repair on an unhealthy daemon (`scripts/repair-paneru`: re-sign →
-revoke + re-grant → restart → re-check, twice, then one manual-grant pause
-when interactive). Revoking and granting both go through `tccutil-rs`, which
+runs a self-repair on an unhealthy daemon (`scripts/repair-paneru`: re-sign
+with the stable identity → revoke + re-grant → restart → re-check, twice,
+then one manual-grant pause when interactive; the only path that revokes).
+Revoking and granting both go through `tccutil-rs`, which
 can only touch the TCC database when the terminal running the installer has
 **Full Disk Access** (System Settings → Privacy & Security → Full Disk Access, then
 fully quit and reopen the terminal). Without it the installer skips all
@@ -425,7 +456,8 @@ remove that entry with `–` first, then toggle it back on. If you still
 see no tiling, repair by hand:
 
 ```sh
-codesign --force --sign - --identifier com.github.karinushka.paneru "$(command -v paneru)"
+bash scripts/ensure-signing-identity  # one-time stable cert
+codesign --force --sign "$(bash scripts/ensure-signing-identity 2>/dev/null)" --identifier com.github.karinushka.paneru "$(command -v paneru)"
 bash scripts/grant-permissions   # terminal needs Full Disk Access for this
 paneru restart
 ```

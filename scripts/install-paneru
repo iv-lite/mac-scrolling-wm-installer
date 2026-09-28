@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/swift-common.sh
+source "$SCRIPT_DIR/lib/swift-common.sh"
 
 CYAN=$'\033[0;36m'
 GREEN=$'\033[0;32m'
@@ -30,14 +32,16 @@ else
 fi
 
 # Upstream no longer converges anything: `paneru install` is write-once
-# (skips when the plist exists), the plist pins the invoking binary's path,
-# and every reinstall needs one fresh Accessibility grant (ad-hoc signature
-# hash changes per build). So this script picks the install dir itself,
-# copies the binary there, re-pins the identifier unconditionally, and
-# invokes *that* binary's `install`/`install-app` so plist + shim point at
-# the installed path. Updates re-lay the plist via uninstall+install.
-# grant-permissions (next step) always revoke+re-grants; only a failed
-# enable-services health poll falls back to repair-paneru.
+# (skips when the plist exists) and the plist pins the invoking binary's
+# path. So this script picks the install dir itself, copies the binary
+# there, signs it with the persistent identity from
+# scripts/ensure-signing-identity (stable identifier+certificate DR, so the
+# Accessibility grant survives rebuilds — ad-hoc `codesign -s -` is the
+# cdhash-only fallback), and invokes *that* binary's `install`/`install-app`
+# so plist + shim point at the installed path. Updates re-lay the plist via
+# uninstall+install. grant-permissions (next step) grants only when missing;
+# only a failed enable-services health poll falls back to repair-paneru
+# (the sole revoke+re-grant path).
 # Preferred dir is the brew bin dir (already on default macOS PATH, no PATH
 # hacks needed for later steps); ~/.local/bin is the fallback when neither
 # brew dir is writable.
@@ -57,6 +61,56 @@ pick_bindir() {
 	done
 	mkdir -p "$HOME/.local/bin" 2>/dev/null || true
 	echo "$HOME/.local/bin"
+	return 0
+}
+
+# Persistent signing identity for sticky Accessibility grants. Resolved once
+# per run via scripts/ensure-signing-identity ("Paneru Local" self-signed
+# cert, or $PANERU_SIGN_IDENTITY override for a paid Developer ID). "-" means
+# ad-hoc fallback: installs work, but each byte change needs a fresh grant.
+resolve_sign_identity() {
+	if [ -n "${PANERU_SIGN_IDENTITY_RESOLVED:-}" ]; then
+		echo "$PANERU_SIGN_IDENTITY_RESOLVED"
+		return 0
+	fi
+	local id
+	id="$(bash "$SCRIPT_DIR/ensure-signing-identity" 2>/dev/null || echo "-")"
+	[ -n "$id" ] || id="-"
+	PANERU_SIGN_IDENTITY_RESOLVED="$id"
+	export PANERU_SIGN_IDENTITY_RESOLVED
+	echo "$id"
+}
+
+# Sign $2 with identifier $1 using the persistent identity. Verifies the
+# designated requirement carries identifier+certificate (not cdhash-only)
+# and that `codesign --verify --strict` passes. Returns 0 on success.
+sign_bin() {
+	local identifier="$1" bin="$2" identity
+	identity="$(resolve_sign_identity)"
+	if ! command -v codesign >/dev/null 2>&1; then
+		note "codesign not found (not macOS?) — skipping identifier pinning"
+		return 1
+	fi
+	if ! codesign --force --sign "$identity" --identifier "$identifier" "$bin" >/dev/null 2>&1; then
+		warn "codesign failed — the Accessibility grant may not apply to this build"
+		return 1
+	fi
+	if [ "$identity" = "-" ]; then
+		warn "Ad-hoc signed ($identifier) — grants will NOT survive the next rebuild; run scripts/ensure-signing-identity to fix"
+	else
+		ok "Code-signed with stable identity '$identity' ($identifier)"
+	fi
+	if codesign -d -r- "$bin" 2>/dev/null | grep -q "identifier \"$identifier\""; then
+		ok "Designated requirement carries identifier ($identifier)"
+	else
+		warn "Designated requirement check failed — grant may not stick"
+	fi
+	if codesign --verify --strict "$bin" >/dev/null 2>&1; then
+		ok "Code signature verifies (strict)"
+	else
+		warn "codesign --verify --strict failed — the binary may not launch cleanly"
+		return 1
+	fi
 	return 0
 }
 
@@ -201,9 +255,9 @@ fetch_paneru() {
 	mkdir -p "$(dirname "$bin")"
 	# Byte-identical: skip the copy and the re-sign (same bytes ⇒ same
 	# binary); the plist/app-shim steps further down still run (they live
-	# outside fetch_paneru). Note the grant still needs re-applying per
-	# update only when the bytes changed — grant-permissions (next step)
-	# revoke+re-grants unconditionally, which is a harmless no-op here.
+	# outside fetch_paneru). With the stable signing identity, changed-bytes
+	# installs keep the same TCC identity — grant-permissions (next step)
+	# grants only when missing, a no-op here.
 	if [ -e "$bin" ] && cmp -s "$staged" "$bin"; then
 		rm -rf "$tmp"
 		ok "Paneru binary unchanged ($bin)"
@@ -218,58 +272,23 @@ fetch_paneru() {
 	else
 		ok "Paneru installed to $bin (from GitHub release)"
 	fi
-	# Signing identifier: ad-hoc signatures change hash per build, so every
-	# byte change needs one fresh Accessibility grant. Re-pin unconditionally
-	# (local builds already carry it via the repo rustc wrapper unless
-	# RUSTC_WRAPPER overrides it; release tarballs may not). grant-permissions
-	# (next step) re-applies the grant for the new bytes.
-	if command -v codesign >/dev/null 2>&1; then
-		if codesign --force --sign - --identifier com.github.karinushka.paneru "$bin" >/dev/null 2>&1; then
-			ok "Code-signing identifier pinned (com.github.karinushka.paneru)"
-		else
-			warn "codesign failed — the Accessibility grant may not apply to this build"
-		fi
-		if codesign --verify --strict "$bin" >/dev/null 2>&1; then
-			ok "Code signature verifies (strict)"
-		else
-			warn "codesign --verify --strict failed — the binary may not launch cleanly"
-		fi
-	else
-		note "codesign not found (not macOS?) — skipping identifier pinning"
-	fi
-	note "Binary (re)installed — grant-permissions (next) revoke+re-grants"
-	note "Accessibility for the new bytes (one fresh grant per update)."
+	# Signing identity: the persistent identity from ensure-signing-identity
+	# gives a stable identifier+certificate DR so the Accessibility grant
+	# survives rebuilds (local builds already carry the identifier via the
+	# repo rustc wrapper unless RUSTC_WRAPPER overrides it; release tarballs
+	# may not — either way we re-sign here). grant-permissions (next step)
+	# grants only when missing.
+	sign_bin "com.github.karinushka.paneru" "$bin" || true
+	note "Binary (re)installed — grant-permissions (next) grants Accessibility"
+	note "only when missing (stable identity keeps existing grants valid)."
 	return 0
 }
 
+# See docs/version-floor.md for the fork feature floor (event-tap
+# watchdog, previousdisplay commands, animation/gaps/ax_writer keys).
 # ─────────────────────────────────────────────────────────────
-# Swift daemon (opt-in via PANERU_SWIFT=1 / --swift, only with
-# --prefer-local-builds from a sibling checkout containing swift-daemon).
-# Mirrors upstream swift-daemon/install-service.sh conventions — product
-# `paneru-swift`, label/identifier com.github.karinushka.paneru.swift —
-# so a manual upstream install converges instead of forking identity.
-# Three deliberate divergences: the binaries go to pick_bindir (brew bin,
-# already on PATH, instead of ~/.local/bin), `pq` rides along (upstream
-# leaves it as an uninstalled diagnostics tool — the installer needs it
-# for the enable-services/repair health poll), and this step does NOT
-# bootstrap the agent (enable-services starts it after grants).
-# The daemon runs beside the Rust one under its own label; Lua is hosted
-# and full TOML options decode. Queries answer over XPC with `pq` as the
-# shell one-liner (state/active/virtual-workspaces/on-screen plus `run`,
-# script-state get/write and op apply). The plist also pins
-# PANERU_MACH_SERVICE to the .swift label: the daemon listens on
-# paneruServiceNameResolved() (base name unless the env overrides it)
-# while the plist advertises the suffixed Mach service, so without the
-# pin launchd never routes `pq` to the agent. Never export
-# PANERU_SWIFT_DAEMON here: upstream `1`/`shadow` hard-errors the Rust
-# daemon at launch.
-# ─────────────────────────────────────────────────────────────
-PANERU_SWIFT_LABEL="com.github.karinushka.paneru.swift"
-PANERU_SWIFT_ID="com.github.karinushka.paneru.swift"
-
-swift_bootstrapped() {
-	launchctl print "gui/$(id -u)/$PANERU_SWIFT_LABEL" >/dev/null 2>&1
-}
+# shellcheck disable=SC2034
+PANERU_SWIFT_ID="$PANERU_SWIFT_LABEL"
 
 fetch_swift_daemon() {
 	local bindir bin staged render pkg plist out_log err_log xdg_home
@@ -286,75 +305,17 @@ fetch_swift_daemon() {
 		return 1
 	fi
 	note "Building Swift daemon from sibling checkout ($pkg)..."
-	# Opt-in gate: every Swift checks runner plus the frame-parity
-	# corpus replay (same suite CI runs). Enumerated from the built
-	# products so new runners never rot a hardcoded list. The parity
-	# corpus is a Rust trace dump: when PANERU_TRACE_DIR is unset, dump
-	# it like CI does (PANERU_TRACE_OUT cargo test trace) into a temp
-	# dir instead of skipping, so --verify always means the full gate.
 	if [ -n "${PANERU_VERIFY:-}" ]; then
-		note "Running Swift checks suite..."
-		checks_bindir="$(cd "$pkg" && swift build -c release --show-bin-path)" || return 1
-		if ! (cd "$pkg" && swift build -c release); then
-			echo "  Swift build failed — fix ../paneru/swift-daemon, then re-run." >&2
+		bash "$SCRIPT_DIR/verify-swift" "$pkg" || return 1
+	fi
+	# In-place build (keeps .build/ cache, fully offline: local targets +
+	# vendored C). One product per invocation; bindir via --show-bin-path.
+	for product in paneru-swift RenderPlist pq; do
+		if ! (cd "$pkg" && swift build -c release --product "$product"); then
+			echo "  Swift $product build failed — aborting." >&2
 			return 1
 		fi
-		failed=0
-		for runner in "$checks_bindir"/*Checks; do
-			[ -x "$runner" ] || continue
-			case "$runner" in *.build|*.dSYM) continue ;; esac
-			if ! "$runner" >/dev/null 2>&1; then
-				echo "  $(basename "$runner") failed — fix ../paneru/swift-daemon, then re-run." >&2
-				failed=1
-			fi
-		done
-		if [ "$failed" -ne 0 ]; then return 1; fi
-		trace_dir="${PANERU_TRACE_DIR:-}"
-		trace_tmp=""
-		if [ -z "$trace_dir" ]; then
-			if command -v cargo >/dev/null 2>&1; then
-				trace_tmp="$(mktemp -d)"
-				note "Dumping Rust trace corpus ($trace_tmp)..."
-				if ! (cd "$REPO_ROOT/../paneru" && PANERU_TRACE_OUT="$trace_tmp" cargo test --all-targets trace >/dev/null 2>&1); then
-					echo "  Rust trace dump failed — fix ../paneru, then re-run (or set PANERU_TRACE_DIR to a pre-dumped corpus)." >&2
-					rm -rf "$trace_tmp"
-					return 1
-				fi
-				trace_dir="$trace_tmp"
-			else
-				note "No cargo and no PANERU_TRACE_DIR — skipping FrameParityChecks (needs a Rust trace corpus)"
-			fi
-		fi
-		if [ -n "$trace_dir" ]; then
-			if ! (cd "$pkg" && PANERU_TRACE_DIR="$trace_dir" swift run -c release FrameParityChecks); then
-				echo "  Swift FrameParityChecks failed — fix ../paneru/swift-daemon, then re-run." >&2
-				[ -n "$trace_tmp" ] && rm -rf "$trace_tmp"
-				return 1
-			fi
-		fi
-		[ -n "$trace_tmp" ] && rm -rf "$trace_tmp"
-		ok "Swift checks passed"
-	fi
-	# Builds in place (keeps .build/ cache). All dependencies are local
-	# targets plus vendored C (CLua, CTapShim) — fully offline. All three
-	# products: the daemon, the RenderPlist helper below, and pq (upstream
-	# leaves pq uninstalled; the installer ships it for `pq state` health
-	# checks). One product per invocation (swift build silently honors
-	# only the last --product flag), and the bin dir resolves via
-	# --show-bin-path so this tracks whatever layout the active toolchain
-	# uses.
-	if ! (cd "$pkg" && swift build -c release --product paneru-swift); then
-		echo "  Swift paneru-swift build failed — aborting." >&2
-		return 1
-	fi
-	if ! (cd "$pkg" && swift build -c release --product RenderPlist); then
-		echo "  Swift RenderPlist build failed — aborting." >&2
-		return 1
-	fi
-	if ! (cd "$pkg" && swift build -c release --product pq); then
-		echo "  Swift pq build failed — aborting." >&2
-		return 1
-	fi
+	done
 	bindir="$(cd "$pkg" && swift build -c release --show-bin-path)" || return 1
 	staged="$bindir/paneru-swift"
 	render="$bindir/RenderPlist"
@@ -380,9 +341,8 @@ fetch_swift_daemon() {
 		sleep 1
 	fi
 	mkdir -p "$(dirname "$bin")"
-	# Byte-identical: skip the copy and the re-sign (a fresh ad-hoc stamp
-	# would change the hash and void a live grant for nothing). The plist
-	# render below still runs (it lives outside this branch).
+	# Byte-identical: skip copy + re-sign (a fresh signature stamp would
+	# void a live grant for nothing). Stable identity keeps grants valid.
 	if [ -e "$bin" ] && cmp -s "$staged" "$bin"; then
 		ok "Swift daemon binary unchanged ($bin)"
 	else
@@ -390,20 +350,7 @@ fetch_swift_daemon() {
 		chmod +x "$bin"
 		hash -r 2>/dev/null || true
 		ok "Swift daemon installed to $bin (from local source build)"
-		if command -v codesign >/dev/null 2>&1; then
-			if codesign --force --sign - --identifier "$PANERU_SWIFT_ID" "$bin" >/dev/null 2>&1; then
-				ok "Code-signing identifier pinned ($PANERU_SWIFT_ID)"
-			else
-				warn "codesign failed — the Accessibility grant may not apply to this build"
-			fi
-			if codesign --verify --strict "$bin" >/dev/null 2>&1; then
-				ok "Code signature verifies (strict)"
-			else
-				warn "codesign --verify --strict failed — the binary may not launch cleanly"
-			fi
-		else
-			note "codesign not found (not macOS?) — skipping identifier pinning"
-		fi
+		sign_bin "$PANERU_SWIFT_ID" "$bin" || true
 	fi
 	# pq rides along unsigned: it needs no Accessibility grant (it only
 	# talks to the daemon over XPC), so no identifier pinning here.
@@ -416,14 +363,8 @@ fetch_swift_daemon() {
 		hash -r 2>/dev/null || true
 		ok "pq installed to $pq_bin (state queries + script-state CLI)"
 	fi
-	# Render the agent plist (same model as upstream RenderPlist): label,
-	# program, log paths, XDG home. enable-services bootstraps it after
-	# grants; uninstall removes it. Then pin PANERU_MACH_SERVICE to the
-	# .swift label: the daemon resolves its listener via
-	# paneruServiceNameResolved() (base name unless overridden) while the
-	# plist advertises the suffixed Mach service — without the pin,
-	# launchd never routes `pq` to a bootstrapped agent and the Rust/Swift
-	# daemons would share one Mach name instead of running side by side.
+	# Render the agent plist (upstream RenderPlist model). The
+	# PANERU_MACH_SERVICE pin is required — see swift-common.sh.
 	plist="$HOME/Library/LaunchAgents/$PANERU_SWIFT_LABEL.plist"
 	out_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log"
 	err_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log"
@@ -442,8 +383,9 @@ fetch_swift_daemon() {
 	fi
 	touch "$out_log" "$err_log" 2>/dev/null || true
 	ok "Swift agent plist rendered ($plist)"
-	note "Swift daemon (re)installed — grant-permissions (next) grants it"
-	note "Accessibility; enable-services bootstraps the agent when PANERU_SWIFT=1."
+	note "Swift daemon (re)installed with a stable signing identity — existing"
+	note "Accessibility grant stays valid; grant-permissions (next) grants only"
+	note "when missing; enable-services bootstraps the agent when PANERU_SWIFT=1."
 	return 0
 }
 
@@ -459,91 +401,9 @@ if ! fetch_swift_daemon; then
 	exit 1
 fi
 
-# ─────────────────────────────────────────────────────────────
-# Version floor: the fork's v0.1.0 is based on upstream 0.5.1, so the
-# event-tap watchdog (karinushka/paneru#350) is present, plus native
-# window/mouse previousdisplay commands. The Cmd+Alt cross-display drag
-# (mouse_drag_display_modifier) needs fork ≥ v0.2.2.
-# The shipped config also sets options.default_ratio,
-# options.center_single_column (need a fork build containing d8b5677),
-# and gaps = { horizontal = 8,
-# vertical = 8 } (needs 43d3644; per-window horizontal/vertical_padding
-# wins, including 0 to opt out),
-# options.ax_writer
-# (default-on since d1fb7dd; the experimental_ax_writer spelling still works
-# as a deprecated alias; window-id drain order since c148819, frame epochs +
-# stuck-writer watchdog since 113bd4e — worker supervision was reverted in
-# f5c1535, then restored in d67df09 with sync fallback; verify reads moved
-# to an off-main pool and driving resizes joined the writer lane in
-# d67df09) and options.maximize_tiled_windows
-# (needs e25b6f9). options.animations = true (ease-out-cubic fast attack
-# with decelerating landing, lockstep bursts with synced pacing via
-# join_duration, first-tick kick, distance-proportional duration around
-# the 250ms default bounded 80–320ms; needs 7496610 — the old
-# animation_speed knob is gone) plus options.animation_duration_ms = 250
-# (clamped 0–2000; animations = false still snaps; pre-knob binaries
-# silently ignore it and glide on their own default; ease-out-cubic
-# since 0a967df, join_duration pacing since 684b931, 250ms default +
-# duration knob since 21ed647), plus
-# options.virtual_workspace_animations =
-# false (no config needed on older binaries — false is the default).
-# Unarmed window drags move the grabbed column with the pointer and glide
-# home on release; only armed (mouse_drag_display_modifier) drags reorder
-# or transfer across displays. The removed keys left_drag_scrolls_strip
-# (gutter-scroll) and ffm_drag_suppress_ratio/ms (hover-focus sleep) are
-# NOT set here — current builds ignore them, so old configs still parse.
-# Held drags fold each HID burst into one drive per frame and track 1:1 with
-# friction only on the release glide (b4852e0 — the drag_friction_* keys are
-# removed upstream and no longer set here, but old configs still parse;
-# per-frame folding since 6793ee8; pace-sensitive release velocity,
-# click dead-zone, scroll-detach guard and held hover-defer since 0a967df;
-# reveal skipped on pure clicks and size frozen on click-focus since
-# 684b931). Vsync retrace pacing is always-on where
-# supported since e25b6f9 (the experimental_vsync flag is removed, no longer
-# set here). restore.missing_windows = "drop" (needs 42add2b; older binaries
-# reject the unknown value, unlike unknown keys) is also set. 416e418
-# (same-tick drags, most-visible reveal), 8bda31b (pump focus, overlay gate,
-# chase-ahead borders), c148819 (rigid strip riding), 8ed9e3d (driven
-# moves cancel live glides) and dd0f628 (single-flight keyboard focus:
-# strip-only centering, echo stand-down while the strip is mid-flight)
-# need no config. e803dd5 (keyboard focus recenters the cursor even when it
-# is already inside the window; clicks own their cursor and mid-drag focus
-# changes never warp) and 314ede8 (strips fill the viewport on focus, move
-# and drag so they never rest next to whitespace) need no config either.
-# 088fa45 (already-placed centering skips redundant markers, pure clicks
-# issue no reorder/homing/reshuffle, holders carry no timeout fuse) needs
-# no config either. 3c053fb (optional Swift overlay backend via dlopen
-# strangler, Rust fallback; non-default cargo feature, runtime opt-in) and
-# 6793ee8 (snappy easing, proportional glides, folded drag input) need no
-# config either. 837a6e4 (writer-degraded fallback ladder with fast resize
-# path and stall recovery) needs no config either. 30ff4d8 (owner-viewport
-# focus centering, warp-rebased drag anchor, deferred expose on transient
-# frames, per-frame fold bound) needs no config either. 04f9469/a9a2f83
-# (viewport-clamped tiles, new windows glide into view, click-focus
-# clamp-down, state v4 display UUIDs with active-display fallback) need no
-# config. 0a967df (ease-out-cubic, release-only pace friction, scroll
-# detach guard, close-up on removal) needs no config. 5bd61ae (app
-# termination cascades to windows so borders clear and strips re-tile)
-# needs no config. 684b931 (drift-loop kill, glide join pacing, frozen
-# click size, layout-gated borders) needs no config. 43d3644 (global gaps,
-# § above) is the only new table. d67df09 (no-crash Single/unwrap
-# removal, supervised workers with sync fallback, AX reads off-main, writer
-# resize lane, crash-flag + .bak + 30s saves, geometry tie-break, Lua
-# 10s-timeout with no-script fallback) needs no config.
-# Service note: upstream reverted the canonical-path convergence (0a29efc) —
-# `paneru install` is write-once (skips when the plist exists) and the plist
-# pins the invoking binary's path, so this script re-lays the plist from the
-# installed binary below and every byte change needs one fresh grant.
-# All still unreleased with no tag yet; --prefer-local-builds from a current
-# sibling checkout has them.
-# Older binaries silently ignore unknown keys/tables: new windows keep their
-# OS size, a lone column left-pins, AX work
-# stays on the main thread, tiled windows fill their slot,
-# gaps fall back to
-# zero (per-rule padding only), glides run the built-in length
-# and moves glide on
-# the built-in default. (restore.missing_windows = "drop" is the
-# exception: pin "ignore" if you run an older Paneru.)
+# Fork feature floor (watchdog, previousdisplay, animation/gaps keys):
+# see docs/version-floor.md — older binaries ignore unknown keys except
+# restore.missing_windows="drop" (pin "ignore" on old builds).
 # ─────────────────────────────────────────────────────────────
 version="$(paneru --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 case "${version:-0.0.0}" in
@@ -620,7 +480,18 @@ note "Installing Paneru launchd service ($INSTALLED_BIN)..."
 ok "Paneru service installed (plist pins the installed binary)"
 "$INSTALLED_BIN" install-app >/dev/null 2>&1 || true
 ok "Paneru app launcher refreshed"
+# Re-sign the app shim with the same persistent identity so the
+# Tahoe-era Accessibility picker (which prefers .app bundles over bare
+# Mach-O binaries) keeps a stable bundle entry across updates.
+if [ -d "$HOME/Applications/Paneru.app" ] && command -v codesign >/dev/null 2>&1; then
+	APP_SIGN_ID="$(resolve_sign_identity)"
+	if [ "$APP_SIGN_ID" != "-" ]; then
+		codesign --force --deep --sign "$APP_SIGN_ID" "$HOME/Applications/Paneru.app" >/dev/null 2>&1 \
+			&& ok "App launcher re-signed with stable identity ('$APP_SIGN_ID')" \
+			|| warn "App launcher re-sign failed — picker entry may not stick"
+	fi
+fi
 
 warn "Paneru will be started by enable-services after permissions are granted."
-echo "     (grant Accessibility to $INSTALLED_BIN to let it move windows)"
-echo "     (every binary update needs one fresh grant — ad-hoc signatures change per build)"
+echo "     (grant Accessibility once to $INSTALLED_BIN / Paneru.app — the stable"
+echo "      signing identity keeps it valid across updates; no remove/regrant needed)"

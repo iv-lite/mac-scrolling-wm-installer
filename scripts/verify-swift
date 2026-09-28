@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Verify the Swift daemon source: every *Checks runner plus the
+# FrameParityChecks corpus replay (same suite CI runs).
+# Usage: bash scripts/verify-swift <swift-daemon-pkg-dir>
+# Env: PANERU_TRACE_DIR (pre-dumped Rust trace corpus); when unset and
+# cargo exists, the corpus is dumped like CI does into a temp dir.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+
+pkg="${1:-$REPO_ROOT/../paneru/swift-daemon}"
+if [ ! -f "$pkg/Package.swift" ]; then
+	echo "  Swift package not found at $pkg/Package.swift" >&2
+	exit 1
+fi
+
+note "Running Swift checks suite..."
+checks_bindir="$(cd "$pkg" && swift build -c release --show-bin-path)" || exit 1
+if ! (cd "$pkg" && swift build -c release); then
+	echo "  Swift build failed — fix ../paneru/swift-daemon, then re-run." >&2
+	exit 1
+fi
+failed=0
+for runner in "$checks_bindir"/*Checks; do
+	[ -x "$runner" ] || continue
+	case "$runner" in *.build|*.dSYM) continue ;; esac
+	if ! "$runner" >/dev/null 2>&1; then
+		echo "  $(basename "$runner") failed — fix ../paneru/swift-daemon, then re-run." >&2
+		failed=1
+	fi
+done
+if [ "$failed" -ne 0 ]; then exit 1; fi
+
+trace_dir="${PANERU_TRACE_DIR:-}"
+trace_tmp=""
+if [ -z "$trace_dir" ]; then
+	if command -v cargo >/dev/null 2>&1; then
+		trace_tmp="$(mktemp -d)"
+		note "Dumping Rust trace corpus ($trace_tmp)..."
+		if ! (cd "$REPO_ROOT/../paneru" && PANERU_TRACE_OUT="$trace_tmp" cargo test --all-targets trace >/dev/null 2>&1); then
+			echo "  Rust trace dump failed — fix ../paneru, then re-run (or set PANERU_TRACE_DIR to a pre-dumped corpus)." >&2
+			rm -rf "$trace_tmp"
+			exit 1
+		fi
+		trace_dir="$trace_tmp"
+	else
+		note "No cargo and no PANERU_TRACE_DIR — skipping FrameParityChecks (needs a Rust trace corpus)"
+	fi
+fi
+if [ -n "$trace_dir" ]; then
+	if ! (cd "$pkg" && PANERU_TRACE_DIR="$trace_dir" swift run -c release FrameParityChecks); then
+		echo "  Swift FrameParityChecks failed — fix ../paneru/swift-daemon, then re-run." >&2
+		[ -n "$trace_tmp" ] && rm -rf "$trace_tmp"
+		exit 1
+	fi
+fi
+[ -n "$trace_tmp" ] && rm -rf "$trace_tmp"
+ok "Swift checks passed"

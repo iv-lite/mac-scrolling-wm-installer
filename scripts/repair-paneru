@@ -2,6 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/swift-common.sh
+source "$SCRIPT_DIR/lib/swift-common.sh"
 
 CYAN=$'\033[0;36m'
 GREEN=$'\033[0;32m'
@@ -13,80 +15,48 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
-# Self-repair an unhealthy Paneru: re-pin the ad-hoc signing identifier,
-# revoke + re-grant Accessibility, restart, re-check. Every binary update
-# needs one fresh grant (ad-hoc signature hash changes per build), so
-# reaching here usually means the grant is stale or missing.
+# Self-repair an unhealthy Paneru: re-sign with the persistent identity,
+# revoke + re-grant Accessibility, restart, re-check. With stable signing
+# this path runs only when the health poll actually fails (listed-but-dead
+# grant) — routine upgrades never land here.
 # Called by enable-services when the health poll fails; safe to run by
 # hand too: bash scripts/repair-paneru
 # ─────────────────────────────────────────────────────────────
-# The installed binary on PATH (install-paneru puts it in the brew bin
-# dir); fall back to known locations when it is not on PATH.
-PANERU_BIN="$(command -v paneru 2>/dev/null || true)"
-if [ -z "$PANERU_BIN" ]; then
-	for candidate in /opt/homebrew/bin/paneru /usr/local/bin/paneru "$HOME/.local/bin/paneru"; do
-		if [ -x "$candidate" ]; then
-			PANERU_BIN="$candidate"
-			break
-		fi
-	done
-fi
+# Repair is the sole revoke path: grant-permissions grants-if-missing by
+# default and only revokes when PANERU_GRANT_REVOKE=1 (set below).
+export PANERU_GRANT_REVOKE=1
+SIGN_IDENTITY="$(bash "$SCRIPT_DIR/ensure-signing-identity" 2>/dev/null || echo "-")"
+[ -n "$SIGN_IDENTITY" ] || SIGN_IDENTITY="-"
+# The installed binary (brew bin dir, already on PATH).
+PANERU_BIN="$(find_installed_bin paneru || true)"
 
+# Swift daemon branch (shared helpers in lib/swift-common.sh): when its
+# agent is bootstrapped, re-sign → re-grant → kickstart → pq poll.
+# Falls through to Rust when no Swift agent runs.
 # ─────────────────────────────────────────────────────────────
-# Swift daemon branch: when its agent is bootstrapped, repair it the
-# same way (re-sign swift identifier → grants → kickstart → pq poll).
-# Queries go through pq when installed; bare process liveness is the
-# fallback. Falls through to the Rust path when no Swift agent runs.
-# ─────────────────────────────────────────────────────────────
-SWIFT_LABEL="com.github.karinushka.paneru.swift"
-SWIFT_ID="com.github.karinushka.paneru.swift"
-SWIFT_BIN="$(command -v paneru-swift 2>/dev/null || true)"
-if [ -z "$SWIFT_BIN" ]; then
-	for candidate in /opt/homebrew/bin/paneru-swift /usr/local/bin/paneru-swift "$HOME/.local/bin/paneru-swift"; do
-		if [ -x "$candidate" ]; then
-			SWIFT_BIN="$candidate"
-			break
-		fi
-	done
-fi
+SWIFT_ID="$PANERU_SWIFT_LABEL"
+SWIFT_BIN="$(find_installed_bin paneru-swift || true)"
 PQ_BIN="$(command -v pq 2>/dev/null || true)"
 
-# `pq` reaches the daemon over its Mach XPC service. The installed plist
-# pins PANERU_MACH_SERVICE to the .swift label (see install-paneru), so
-# prefer that; fall back to bare `pq` for pre-pin installs whose daemon
-# still listens on the base name.
-swift_pq() {
-	if [ -n "$PQ_BIN" ]; then
-		PANERU_MACH_SERVICE="$SWIFT_LABEL" "$PQ_BIN" "$@" >/dev/null 2>&1 \
-			|| "$PQ_BIN" "$@" >/dev/null 2>&1
-	else
-		return 1
-	fi
-}
-
-swift_healthy() {
-	if [ -n "$PQ_BIN" ]; then
-		swift_pq state
-	else
-		launchctl print "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 && pgrep -qx paneru-swift >/dev/null 2>&1
-	fi
-}
-
-if launchctl print "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1; then
+if swift_bootstrapped; then
 	note "Swift agent bootstrapped — repairing the Swift daemon..."
 	round=0
 	while [ "$round" -lt 2 ]; do
 		round=$(( round + 1 ))
 		note "Swift repair round $round/2: re-sign → re-grant → kickstart..."
 		if [ -n "$SWIFT_BIN" ] && command -v codesign >/dev/null 2>&1 \
-			&& codesign --force --sign - --identifier "$SWIFT_ID" "$SWIFT_BIN" >/dev/null 2>&1 \
+			&& codesign --force --sign "$SIGN_IDENTITY" --identifier "$SWIFT_ID" "$SWIFT_BIN" >/dev/null 2>&1 \
 			&& codesign -dv "$SWIFT_BIN" 2>&1 | grep -q "Identifier=$SWIFT_ID"; then
-			ok "Code-signing identifier pinned ($SWIFT_ID)"
+			if [ "$SIGN_IDENTITY" = "-" ]; then
+				warn "Swift re-signed ad-hoc — grant will not survive the next rebuild"
+			else
+				ok "Swift re-signed with stable identity '$SIGN_IDENTITY' ($SWIFT_ID)"
+			fi
 		else
 			warn "Swift codesign pinning failed (binary missing or codesign refused)"
 		fi
 		bash "$SCRIPT_DIR/grant-permissions" || warn "grant-permissions reported failure"
-		if launchctl kickstart "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1; then
+		if swift_start_agent; then
 			note "Swift agent kickstarted — re-checking..."
 		else
 			warn "Swift agent kickstart failed"
@@ -97,12 +67,10 @@ if launchctl print "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1; then
 		fi
 		warn "Still unhealthy after round $round"
 	done
-	warn "Swift daemon is still not answering — check /tmp/${SWIFT_LABEL}_$(id -u).err.log (likely the Accessibility grant)."
+	warn "Swift daemon is still not answering — check /tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log (likely the Accessibility grant)."
 	warn "Live state without launchd: cat /tmp/paneru-swift-state.json; persistent state: ~/.local/state/paneru/state.json (plus .bak; state.crashed marks a dirty exit)."
 	warn "Falling through to the Rust path below; boot the Swift agent out first if tiling stays down."
-	launchctl bootout "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 \
-		|| launchctl kill SIGTERM "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
-	launchctl disable "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
+	swift_stop_agent
 fi
 
 if [ -z "$PANERU_BIN" ]; then
@@ -112,7 +80,7 @@ fi
 
 codesign_paneru() {
 	command -v codesign >/dev/null 2>&1 || return 1
-	codesign --force --sign - --identifier com.github.karinushka.paneru "$PANERU_BIN" >/dev/null 2>&1 || return 1
+	codesign --force --sign "$SIGN_IDENTITY" --identifier com.github.karinushka.paneru "$PANERU_BIN" >/dev/null 2>&1 || return 1
 	codesign -dv "$PANERU_BIN" 2>&1 | grep -q 'Identifier=com.github.karinushka.paneru'
 }
 
@@ -137,10 +105,11 @@ wait_healthy() {
 
 manual_steps() {
 	echo "     Fix, in order:"
-	echo "       1. codesign --force --sign - --identifier com.github.karinushka.paneru \"\$(command -v paneru)\""
-	echo "       2. bash scripts/grant-permissions  (terminal needs Full Disk Access for this to work)"
-	echo "       3. Or grant manually: System Settings → Privacy & Security → Accessibility → enable 'paneru'"
-	echo "       4. paneru restart"
+	echo "       1. bash scripts/ensure-signing-identity  (one-time stable cert)"
+	echo "       2. codesign --force --sign \"\$(bash scripts/ensure-signing-identity 2>/dev/null)\" --identifier com.github.karinushka.paneru \"\$(command -v paneru)\""
+	echo "       3. bash scripts/grant-permissions  (terminal needs Full Disk Access for this to work)"
+	echo "       4. Or grant manually: System Settings → Privacy & Security → Accessibility → enable 'paneru'"
+	echo "       5. paneru restart"
 }
 
 round=0
@@ -148,7 +117,11 @@ while [ "$round" -lt 2 ]; do
 	round=$(( round + 1 ))
 	note "Repair round $round/2: re-sign → re-grant → restart..."
 	if codesign_paneru; then
-		ok "Code-signing identifier pinned (com.github.karinushka.paneru)"
+		if [ "$SIGN_IDENTITY" = "-" ]; then
+			warn "Re-signed ad-hoc — grant will not survive the next rebuild"
+		else
+			ok "Re-signed with stable identity '$SIGN_IDENTITY' (com.github.karinushka.paneru)"
+		fi
 	else
 		warn "codesign pinning failed (codesign missing or refused)"
 	fi

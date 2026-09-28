@@ -12,18 +12,25 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 fail() { echo "  ${RED}✗ $*${RESET}"; }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/swift-common.sh
+source "$SCRIPT_DIR/lib/swift-common.sh"
+
 # ─────────────────────────────────────────────────────────────
 # Grant Accessibility to CLI binaries (invisible in System Settings)
 # -1. no-FDA handoff: without Full Disk Access no scripted TCC write can
 #     succeed, so skip them all and hand off to the daemon's native dialog
-# 1. revoke any stale row (ad-hoc signatures change hash per build, so every
-#     binary update needs one fresh grant)
+# 1. grant-if-missing: with the persistent signing identity from
+#     scripts/ensure-signing-identity (stable identifier+certificate DR),
+#     rebuilds keep the same TCC identity, so an existing row stays valid
+#     and must NOT be revoked. Only grant when neither the binary path nor
+#     the signing identifier is listed.
 # 2. user DB via tccutil-rs (no sudo, no SIP disable)
 # 3. system DB with sudo as fallback
 # 4. manual instructions as last resort
-# Revokes also happen reactively: enable-services health-polls the daemon
-# and repair-paneru revokes + re-grants when the poll fails (listed-but-dead
-# grant). revoke_stale() below serves both paths.
+# Revokes happen only reactively: repair-paneru sets PANERU_GRANT_REVOKE=1
+# when the enable-services health poll fails (listed-but-dead grant).
+# revoke_stale() below serves that path only.
 # ─────────────────────────────────────────────────────────────
 revoke_stale() {
 	local bin="$1" revoke_err before_list client
@@ -66,12 +73,23 @@ revoke_stale() {
 	done
 }
 
-# Signing identifier pinned onto the binary (same one install-paneru and
-# repair-paneru stamp). TCC rows may be keyed by path or by identifier.
+# Signing identifiers stamped onto the binaries (same ones install-paneru
+# signs with). TCC rows may be keyed by path or by identifier.
 PANERU_IDENTIFIER="com.github.karinushka.paneru"
+PANERU_SWIFT_IDENTIFIER="$PANERU_SWIFT_LABEL"
+
+grant_present() {
+	local bin="$1" identifier="${2:-}"
+	local list
+	if ! command -v tccutil-rs >/dev/null 2>&1; then return 1; fi
+	list="$(tccutil-rs list --service Accessibility 2>&1 || true)"
+	if [ -n "$bin" ] && printf '%s' "$list" | grep -qF "$bin"; then return 0; fi
+	if [ -n "$identifier" ] && printf '%s' "$list" | grep -qF "$identifier"; then return 0; fi
+	return 1
+}
 
 grant() {
-	local bin="$1"
+	local bin="$1" identifier="${2:-}"
 	if [ -z "$bin" ]; then return 0; fi
 	if [ ! -e "$bin" ]; then
 		warn "$bin not found — skipping"
@@ -94,14 +112,29 @@ grant() {
 		echo "     with '–' first, then toggle it back on."
 		return 0
 	fi
-	revoke_stale "$bin"
+	# Sticky grants: skip everything when a row already exists for this
+	# binary path or its signing identifier. Revokes happen only on the
+	# repair path (PANERU_GRANT_REVOKE=1 from repair-paneru).
+	if grant_present "$bin" "$identifier"; then
+		ok "Accessibility grant already present for $bin — keeping (no revoke)"
+		return 0
+	fi
+	if [ "${PANERU_GRANT_REVOKE:-0}" = "1" ]; then
+		revoke_stale "$bin"
+	fi
 	if command -v tccutil-rs >/dev/null 2>&1; then
 		if tccutil-rs grant --user Accessibility "$bin" >/dev/null 2>&1; then
 			ok "Accessibility granted to $bin (user db)"
+			if [ -n "$identifier" ]; then
+				tccutil-rs grant --user Accessibility "$identifier" >/dev/null 2>&1 || true
+			fi
 			return 0
 		fi
 		sudo -n tccutil-rs grant Accessibility "$bin" >/dev/null 2>&1 && {
 			ok "Accessibility granted to $bin (system db via sudo)"
+			if [ -n "$identifier" ]; then
+				sudo -n tccutil-rs grant Accessibility "$identifier" >/dev/null 2>&1 || true
+			fi
 			return 0
 		}
 	fi
@@ -113,27 +146,19 @@ grant() {
 note "Granting Accessibility permissions..."
 
 # The installed binary (on PATH — install-paneru puts it in the brew bin
-# dir). A leftover copy elsewhere is revoked too when it exists, so a PATH
-# shadow can never keep a stale identity alive. The Swift daemon slice
+# dir). A leftover copy elsewhere is granted too when it exists, so a PATH
+# shadow can never keep an ungranted identity alive. The Swift daemon slice
 # (paneru-swift, opt-in via --swift) holds its own grant when installed.
 PANERU_BIN="$(command -v paneru 2>/dev/null || true)"
-grant "$PANERU_BIN"
+grant "$PANERU_BIN" "$PANERU_IDENTIFIER"
 for extra in "$HOME/.local/bin/paneru" /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
 	if [ -n "$extra" ] && [ -e "$extra" ] && [ "$extra" != "$PANERU_BIN" ]; then
-		grant "$extra"
+		grant "$extra" "$PANERU_IDENTIFIER"
 	fi
 done
-SWIFT_BIN="$(command -v paneru-swift 2>/dev/null || true)"
-if [ -z "$SWIFT_BIN" ]; then
-	for candidate in /opt/homebrew/bin/paneru-swift /usr/local/bin/paneru-swift "$HOME/.local/bin/paneru-swift"; do
-		if [ -x "$candidate" ]; then
-			SWIFT_BIN="$candidate"
-			break
-		fi
-	done
-fi
+SWIFT_BIN="$(find_installed_bin paneru-swift || true)"
 if [ -n "$SWIFT_BIN" ]; then
-	grant "$SWIFT_BIN"
+	grant "$SWIFT_BIN" "$PANERU_SWIFT_IDENTIFIER"
 fi
 # Note: `pq` is deliberately never granted — it holds no event tap and
 # only talks to the daemon over XPC, so it needs no Accessibility row.
@@ -144,16 +169,22 @@ fi
 # ─────────────────────────────────────────────────────────────
 note "Verifying grants (requires Full Disk Access on the host terminal)..."
 verify_grant() {
-	local bin="$1"
+	local bin="$1" identifier="${2:-}"
 	if [ -z "$bin" ] || [ ! -e "$bin" ]; then
 		return 0
 	fi
 	# --service filters by TCC service; --user reads per-user DB first
 	# (covers the common grant path; system DB grants need sudo list).
+	# A row keyed by either the binary path or the signing identifier
+	# counts as present (stable-identity installs key on the latter).
 	if tccutil-rs list --user --service Accessibility 2>/dev/null | grep -qF "$bin"; then
 		ok "$bin found in Accessibility list (user db)"
+	elif [ -n "$identifier" ] && tccutil-rs list --user --service Accessibility 2>/dev/null | grep -qF "$identifier"; then
+		ok "$identifier found in Accessibility list (user db)"
 	elif tccutil-rs list --service Accessibility 2>/dev/null | grep -qF "$bin"; then
 		ok "$bin found in Accessibility list (system db)"
+	elif [ -n "$identifier" ] && tccutil-rs list --service Accessibility 2>/dev/null | grep -qF "$identifier"; then
+		ok "$identifier found in Accessibility list (system db)"
 	else
 		warn "$bin not visible in Accessibility list"
 		echo "     If the terminal app lacks Full Disk Access, verification is"
@@ -162,14 +193,14 @@ verify_grant() {
 }
 
 if command -v tccutil-rs >/dev/null 2>&1; then
-	verify_grant "$PANERU_BIN"
+	verify_grant "$PANERU_BIN" "$PANERU_IDENTIFIER"
 	for extra in "$HOME/.local/bin/paneru" /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
 		if [ -n "$extra" ] && [ -e "$extra" ] && [ "$extra" != "$PANERU_BIN" ]; then
-			verify_grant "$extra"
+			verify_grant "$extra" "$PANERU_IDENTIFIER"
 		fi
 	done
 	if [ -n "${SWIFT_BIN:-}" ]; then
-		verify_grant "$SWIFT_BIN"
+		verify_grant "$SWIFT_BIN" "$PANERU_SWIFT_IDENTIFIER"
 	fi
 else
 	warn "tccutil-rs not found — skipping verification"

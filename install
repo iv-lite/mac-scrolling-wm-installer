@@ -27,12 +27,12 @@ run_step() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Flags: --help, --prefer-local-builds, --verify, --swift
+# Flags: --help, --prefer-local-builds, --verify, --swift, --live
 # ─────────────────────────────────────────────────────────────
 for arg in "$@"; do
 	case "$arg" in
 		--help|-h)
-			echo "Usage: ./install [--prefer-local-builds] [--verify] [--swift]"
+			echo "Usage: ./install [--prefer-local-builds] [--verify] [--swift] [--live]"
 			echo ""
 			echo "  Installs Paneru + Ghostty with an niri-like sliding-strip"
 			echo "  layout."
@@ -51,6 +51,10 @@ for arg in "$@"; do
 			echo "                         paneru-swift + pq products) and run it"
 			echo "                         under its own launchd agent instead of"
 			echo "                         the Rust daemon. Same as PANERU_SWIFT=1."
+			echo "  --live                 With --swift, stay in a watch loop after"
+			echo "                         install: config copies live-reload in"
+			echo "                         place, source changes rebuild + kickstart"
+			echo "                         the agent. Same as PANERU_LIVE=1."
 			exit 0
 			;;
 		--prefer-local-builds)
@@ -62,12 +66,20 @@ for arg in "$@"; do
 		--swift)
 			export PANERU_SWIFT=1
 			;;
+		--live)
+			export PANERU_LIVE=1
+			;;
 		-*)
 			echo "Unknown option: $arg (run './install --help')" >&2
 			exit 1
 			;;
 	esac
 done
+
+if [ -n "${PANERU_LIVE:-}" ] && [ -z "${PANERU_SWIFT:-}" ]; then
+	echo "  --live needs --swift (live watch is Swift-daemon only)." >&2
+	exit 1
+fi
 
 if [ -n "${PREFER_LOCAL_BUILDS:-}" ]; then
 	echo ""
@@ -101,6 +113,14 @@ run_step install-paneru
 run_step install-helpers
 run_step grant-permissions
 run_step enable-services
+
+if [ -n "${PANERU_LIVE:-}" ]; then
+	echo ""
+	echo "  ${CYAN}▶ live watch${RESET} (config hot-reload + rebuild on save; Ctrl-C to stop)"
+	echo "──────────────────────────────────────────────"
+	bash "$REPO_ROOT/scripts/dev-swift-watch"
+	exit $?
+fi
 
 echo ""
 echo "  ${GREEN}══════════════════════════════════════════════${RESET}"
