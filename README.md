@@ -77,25 +77,40 @@ offline — all targets are local plus vendored C) and installs
 `paneru-swift` and `pq` next to `paneru`, the daemon signed with
 upstream's identifier (`com.github.karinushka.paneru.swift`) so the grant
 converges with a manual upstream install instead of forking identity
-(`pq` needs no grant — it only talks to the daemon over XPC).
-`enable-services` then stops the Rust daemon and bootstraps the Swift
-agent (`com.github.karinushka.paneru.swift`, same model as upstream
+(`pq` needs no grant — it only talks to the daemon over XPC, and is
+otherwise uninstalled upstream; the installer ships it for health
+checks). `enable-services` then stops the Rust daemon and bootstraps the
+Swift agent (`com.github.karinushka.paneru.swift`, same model as upstream
 `swift-daemon/install-service.sh`), falling back to Rust if it fails so
 tiling stays up. The Swift daemon runs under its own label beside Rust's;
 quit Rust first (done automatically) so both never fight over the same
-windows. Lua handlers and full TOML options are hosted; queries answer
-over XPC with `pq` as the shell one-liner (`pq state`, `pq active`,
-`pq state-get/set`, `pq apply`) — `enable-services` and `repair-paneru`
-use `pq state` as the Swift health check, same as `paneru query state`
-for Rust. Session restore persists across restarts (`~/.local/state`),
-pointer drags (modifier-armed cross-display), hover/edge warps, and
-SLS strip-per-Space layouts are live. Release installs are unaffected
-(no Swift binary ships in release tarballs). With `--verify`, every
-Swift checks runner plus `FrameParityChecks` runs before installing.
-Never set `PANERU_SWIFT_DAEMON` yourself: upstream `1`/`shadow`
-hard-errors the Rust daemon at launch. One path still needs a real
-login to verify: the launchd-held Mach port (`pq` against a hand-run
-daemon gets no reply — expected, use the state file instead).
+windows. The installed plist also pins `PANERU_MACH_SERVICE` to the
+`.swift` label: the daemon resolves its listener via
+`paneruServiceNameResolved()` (base name unless overridden) while the
+plist advertises the suffixed Mach service, so without the pin launchd
+never routes `pq` to the agent — and `pq` is invoked with the same env
+(falling back to bare `pq` for pre-pin installs). Lua handlers and full
+TOML options are hosted (`swift.toml` fallback exists upstream, but this
+installer ships Lua-only `init.lua`, which replaces TOML rather than
+layering); queries answer over XPC with `pq` as the shell one-liner
+(`pq state`, `pq active`, `pq virtual-workspaces`, `pq on-screen`,
+`pq run`, `pq state-get`/`state-write`, `pq apply`) — `enable-services`
+and `repair-paneru` use `pq state` as the Swift health check, same as
+`paneru query state` for Rust. Session restore persists across restarts
+(XDG state dir, 30s dirty cadence + `.bak`, crash marker; display UUIDs
+consulted first), every controlled shutdown saves (menubar/XPC
+quit+restart, SIGTERM/SIGINT). Stacks split viewport height, per-window
+SLS corner radii, epoch-clocked eased glides, async AX writes with ack
+mailbox + stall watchdog, focus-heal, SLS strip-per-Space layouts, and
+modifier-armed cross-display pointer drags are live. Release installs are
+unaffected (no Swift binary ships in release tarballs). With `--verify`,
+every Swift checks runner runs, then the Rust trace corpus is dumped
+like CI (`PANERU_TRACE_OUT cargo test trace`, or your `PANERU_TRACE_DIR`)
+and `FrameParityChecks` diffs the replay. Never set
+`PANERU_SWIFT_DAEMON` yourself: upstream `1`/`shadow` hard-errors the Rust
+daemon at launch. One path still needs a real login to verify: the
+launchd-held Mach port (`pq` against a hand-run daemon gets no reply —
+expected, use `cat /tmp/paneru-swift-state.json` instead).
 
 The installer runs these steps from `scripts/`:
 
@@ -458,11 +473,13 @@ paneru query state --json                   # must print a JSON snapshot (servic
 ./uninstall
 ```
 
-Stops and removes Paneru (release binary, launchd service, app launcher),
+Stops and removes Paneru (release binary, launchd service, app launcher;
+plus `paneru-swift`/`pq` and the Swift agent when `--swift` was used),
 revokes its Accessibility grant, moves configs (from `~/.config/paneru`,
 `~/.config/ghostty`, `~/.config/mac-scrolling-wm`, `~/.config/zsh/antigen.zsh`,
 plus `~/.paneru*` and
-Paneru's state dir) to `~/.config/backups/uninstall-<timestamp>/`, removes
+Paneru's state dir incl. the XDG variant, the Swift live state and
+launchd log pair) to `~/.config/backups/uninstall-<timestamp>/`, removes
 `~/antigen.zsh`, the Antigen caches and the marked `~/.zshrc` block, removes
 the `tccutil-rs` release binary, then asks
 you which formulae to **keep** (interactive numbered menu), and restores the

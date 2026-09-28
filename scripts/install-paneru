@@ -248,14 +248,21 @@ fetch_paneru() {
 # Mirrors upstream swift-daemon/install-service.sh conventions — product
 # `paneru-swift`, label/identifier com.github.karinushka.paneru.swift —
 # so a manual upstream install converges instead of forking identity.
-# Two deliberate divergences: the binary goes to pick_bindir (brew bin,
-# already on PATH, instead of ~/.local/bin), and this step does NOT
+# Three deliberate divergences: the binaries go to pick_bindir (brew bin,
+# already on PATH, instead of ~/.local/bin), `pq` rides along (upstream
+# leaves it as an uninstalled diagnostics tool — the installer needs it
+# for the enable-services/repair health poll), and this step does NOT
 # bootstrap the agent (enable-services starts it after grants).
 # The daemon runs beside the Rust one under its own label; Lua is hosted
 # and full TOML options decode. Queries answer over XPC with `pq` as the
-# shell one-liner (state/active/virtual-workspaces/on-screen plus
-# script-state get/write and op apply). Never export PANERU_SWIFT_DAEMON
-# here: upstream `1`/`shadow` hard-errors the Rust daemon at launch.
+# shell one-liner (state/active/virtual-workspaces/on-screen plus `run`,
+# script-state get/write and op apply). The plist also pins
+# PANERU_MACH_SERVICE to the .swift label: the daemon listens on
+# paneruServiceNameResolved() (base name unless the env overrides it)
+# while the plist advertises the suffixed Mach service, so without the
+# pin launchd never routes `pq` to the agent. Never export
+# PANERU_SWIFT_DAEMON here: upstream `1`/`shadow` hard-errors the Rust
+# daemon at launch.
 # ─────────────────────────────────────────────────────────────
 PANERU_SWIFT_LABEL="com.github.karinushka.paneru.swift"
 PANERU_SWIFT_ID="com.github.karinushka.paneru.swift"
@@ -281,9 +288,10 @@ fetch_swift_daemon() {
 	note "Building Swift daemon from sibling checkout ($pkg)..."
 	# Opt-in gate: every Swift checks runner plus the frame-parity
 	# corpus replay (same suite CI runs). Enumerated from the built
-	# products so new runners never rot a hardcoded list; the parity
-	# corpus needs a Rust trace dump, so its absence skips with a note
-	# instead of failing.
+	# products so new runners never rot a hardcoded list. The parity
+	# corpus is a Rust trace dump: when PANERU_TRACE_DIR is unset, dump
+	# it like CI does (PANERU_TRACE_OUT cargo test trace) into a temp
+	# dir instead of skipping, so --verify always means the full gate.
 	if [ -n "${PANERU_VERIFY:-}" ]; then
 		note "Running Swift checks suite..."
 		checks_bindir="$(cd "$pkg" && swift build -c release --show-bin-path)" || return 1
@@ -301,22 +309,40 @@ fetch_swift_daemon() {
 			fi
 		done
 		if [ "$failed" -ne 0 ]; then return 1; fi
-		if [ -n "${PANERU_TRACE_DIR:-}" ]; then
-			if ! (cd "$pkg" && PANERU_TRACE_DIR="$PANERU_TRACE_DIR" swift run -c release FrameParityChecks); then
+		trace_dir="${PANERU_TRACE_DIR:-}"
+		trace_tmp=""
+		if [ -z "$trace_dir" ]; then
+			if command -v cargo >/dev/null 2>&1; then
+				trace_tmp="$(mktemp -d)"
+				note "Dumping Rust trace corpus ($trace_tmp)..."
+				if ! (cd "$REPO_ROOT/../paneru" && PANERU_TRACE_OUT="$trace_tmp" cargo test --all-targets trace >/dev/null 2>&1); then
+					echo "  Rust trace dump failed — fix ../paneru, then re-run (or set PANERU_TRACE_DIR to a pre-dumped corpus)." >&2
+					rm -rf "$trace_tmp"
+					return 1
+				fi
+				trace_dir="$trace_tmp"
+			else
+				note "No cargo and no PANERU_TRACE_DIR — skipping FrameParityChecks (needs a Rust trace corpus)"
+			fi
+		fi
+		if [ -n "$trace_dir" ]; then
+			if ! (cd "$pkg" && PANERU_TRACE_DIR="$trace_dir" swift run -c release FrameParityChecks); then
 				echo "  Swift FrameParityChecks failed — fix ../paneru/swift-daemon, then re-run." >&2
+				[ -n "$trace_tmp" ] && rm -rf "$trace_tmp"
 				return 1
 			fi
-		else
-			note "No PANERU_TRACE_DIR — skipping FrameParityChecks (needs a Rust trace corpus)"
 		fi
+		[ -n "$trace_tmp" ] && rm -rf "$trace_tmp"
 		ok "Swift checks passed"
 	fi
 	# Builds in place (keeps .build/ cache). All dependencies are local
-	# targets plus vendored C (CLua, CTapShim) — fully offline. Both
-	# products: the daemon and the RenderPlist helper below. One product
-	# per invocation (swift build silently honors only the last --product
-	# flag), and the bin dir resolves via --show-bin-path so this tracks
-	# whatever layout the active toolchain uses.
+	# targets plus vendored C (CLua, CTapShim) — fully offline. All three
+	# products: the daemon, the RenderPlist helper below, and pq (upstream
+	# leaves pq uninstalled; the installer ships it for `pq state` health
+	# checks). One product per invocation (swift build silently honors
+	# only the last --product flag), and the bin dir resolves via
+	# --show-bin-path so this tracks whatever layout the active toolchain
+	# uses.
 	if ! (cd "$pkg" && swift build -c release --product paneru-swift); then
 		echo "  Swift paneru-swift build failed — aborting." >&2
 		return 1
@@ -392,7 +418,12 @@ fetch_swift_daemon() {
 	fi
 	# Render the agent plist (same model as upstream RenderPlist): label,
 	# program, log paths, XDG home. enable-services bootstraps it after
-	# grants; uninstall removes it.
+	# grants; uninstall removes it. Then pin PANERU_MACH_SERVICE to the
+	# .swift label: the daemon resolves its listener via
+	# paneruServiceNameResolved() (base name unless overridden) while the
+	# plist advertises the suffixed Mach service — without the pin,
+	# launchd never routes `pq` to a bootstrapped agent and the Rust/Swift
+	# daemons would share one Mach name instead of running side by side.
 	plist="$HOME/Library/LaunchAgents/$PANERU_SWIFT_LABEL.plist"
 	out_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log"
 	err_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log"
@@ -401,6 +432,13 @@ fetch_swift_daemon() {
 	if ! "$render" "$PANERU_SWIFT_LABEL" "$bin" "$out_log" "$err_log" "$xdg_home" > "$plist"; then
 		note "RenderPlist failed — skipping agent plist"
 		return 1
+	fi
+	if command -v /usr/libexec/PlistBuddy >/dev/null 2>&1; then
+		/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:PANERU_MACH_SERVICE string $PANERU_SWIFT_LABEL" "$plist" >/dev/null 2>&1 \
+			|| /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:PANERU_MACH_SERVICE $PANERU_SWIFT_LABEL" "$plist" >/dev/null 2>&1 \
+			|| warn "Could not pin PANERU_MACH_SERVICE in $plist — pq may not reach a bootstrapped agent"
+	else
+		warn "PlistBuddy not found — skipping PANERU_MACH_SERVICE pin (pq may not reach a bootstrapped agent)"
 	fi
 	touch "$out_log" "$err_log" 2>/dev/null || true
 	ok "Swift agent plist rendered ($plist)"

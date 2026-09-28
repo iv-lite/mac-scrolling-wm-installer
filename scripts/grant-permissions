@@ -135,6 +135,8 @@ fi
 if [ -n "$SWIFT_BIN" ]; then
 	grant "$SWIFT_BIN"
 fi
+# Note: `pq` is deliberately never granted — it holds no event tap and
+# only talks to the daemon over XPC, so it needs no Accessibility row.
 
 # ─────────────────────────────────────────────────────────────
 # Post-grant verification: check the TCC database via tccutil-rs

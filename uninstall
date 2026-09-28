@@ -45,10 +45,11 @@ note "Stopping services..."
 
 # The binary lives in the brew bin dir (already on PATH).
 # Swift agent first (same stop semantics as upstream install-service.sh):
-# boot out the service, then drop its plist.
+# boot out the service (else SIGTERM the job), then drop its plist.
 SWIFT_LABEL="com.github.karinushka.paneru.swift"
 if [ -f "$HOME/Library/LaunchAgents/$SWIFT_LABEL.plist" ]; then
-	launchctl bootout "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
+	launchctl bootout "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 \
+		|| launchctl kill SIGTERM "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
 	rm -f "$HOME/Library/LaunchAgents/$SWIFT_LABEL.plist"
 	ok "Swift daemon agent stopped + removed"
 elif pgrep -qx paneru-swift >/dev/null 2>&1; then
@@ -137,6 +138,19 @@ done
 
 # Paneru single-file/state locations outside ~/.config
 for f in ~/.paneru ~/.paneru.toml "$HOME/.local/state/paneru"; do
+	if [ -e "$f" ]; then
+		mv "$f" "$BACKUP_DIR/" 2>/dev/null && ok "Moved $f → $BACKUP_DIR/"
+	fi
+done
+# XDG state home variant (Swift daemon honors $XDG_STATE_HOME, else
+# ~/.local/state): move it too when it differs from the default above.
+if [ -n "${XDG_STATE_HOME:-}" ] && [ "${XDG_STATE_HOME}/paneru" != "$HOME/.local/state/paneru" ]; then
+	if [ -e "${XDG_STATE_HOME}/paneru" ]; then
+		mv "${XDG_STATE_HOME}/paneru" "$BACKUP_DIR/" 2>/dev/null && ok "Moved ${XDG_STATE_HOME}/paneru → $BACKUP_DIR/"
+	fi
+fi
+# Swift daemon live state + launchd logs (recreated on next install).
+for f in /tmp/paneru-swift-state.json "/tmp/${SWIFT_LABEL}_$(id -u).out.log" "/tmp/${SWIFT_LABEL}_$(id -u).err.log"; do
 	if [ -e "$f" ]; then
 		mv "$f" "$BACKUP_DIR/" 2>/dev/null && ok "Moved $f → $BACKUP_DIR/"
 	fi

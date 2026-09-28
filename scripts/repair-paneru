@@ -51,9 +51,22 @@ if [ -z "$SWIFT_BIN" ]; then
 fi
 PQ_BIN="$(command -v pq 2>/dev/null || true)"
 
+# `pq` reaches the daemon over its Mach XPC service. The installed plist
+# pins PANERU_MACH_SERVICE to the .swift label (see install-paneru), so
+# prefer that; fall back to bare `pq` for pre-pin installs whose daemon
+# still listens on the base name.
+swift_pq() {
+	if [ -n "$PQ_BIN" ]; then
+		PANERU_MACH_SERVICE="$SWIFT_LABEL" "$PQ_BIN" "$@" >/dev/null 2>&1 \
+			|| "$PQ_BIN" "$@" >/dev/null 2>&1
+	else
+		return 1
+	fi
+}
+
 swift_healthy() {
 	if [ -n "$PQ_BIN" ]; then
-		"$PQ_BIN" state >/dev/null 2>&1
+		swift_pq state
 	else
 		launchctl print "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 && pgrep -qx paneru-swift >/dev/null 2>&1
 	fi
@@ -85,8 +98,10 @@ if launchctl print "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1; then
 		warn "Still unhealthy after round $round"
 	done
 	warn "Swift daemon is still not answering — check /tmp/${SWIFT_LABEL}_$(id -u).err.log (likely the Accessibility grant)."
+	warn "Live state without launchd: cat /tmp/paneru-swift-state.json; persistent state: ~/.local/state/paneru/state.json (plus .bak; state.crashed marks a dirty exit)."
 	warn "Falling through to the Rust path below; boot the Swift agent out first if tiling stays down."
-	launchctl bootout "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
+	launchctl bootout "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 \
+		|| launchctl kill SIGTERM "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
 	launchctl disable "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
 fi
 

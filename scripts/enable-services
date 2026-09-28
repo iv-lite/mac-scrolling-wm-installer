@@ -45,6 +45,19 @@ swift_bootstrapped() {
 	launchctl print "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1
 }
 
+# `pq` talks to the daemon over its Mach XPC service. The installed plist
+# pins PANERU_MACH_SERVICE to the .swift label (see install-paneru), so
+# prefer that; fall back to the bare invocation for pre-pin installs
+# whose daemon still listens on the base name.
+swift_pq() {
+	if [ -n "${PQ_BIN:-}" ]; then
+		PANERU_MACH_SERVICE="$SWIFT_LABEL" "$PQ_BIN" "$@" >/dev/null 2>&1 \
+			|| "$PQ_BIN" "$@" >/dev/null 2>&1
+	else
+		return 1
+	fi
+}
+
 if [ -n "$SWIFT_BIN" ]; then
 	if command -v paneru >/dev/null 2>&1; then
 		note "Stopping Rust daemon (Swift daemon takes over)..."
@@ -65,12 +78,14 @@ if [ -n "$SWIFT_BIN" ]; then
 		sleep 3
 		# Health is a real query when pq is installed (same shape as the
 		# Rust `paneru query state` poll below); process liveness alone
-		# can't tell a parked daemon from a tiling one.
+		# can't tell a parked daemon from a tiling one. `pq` also speaks
+		# `run`/`apply`/`state-get`/`state-write`, but `state` is the
+		# health probe — the rest are interactive/diagnostic only.
 		PQ_BIN="$(command -v pq 2>/dev/null || true)"
 		swift_healthy=0
 		if [ -n "$PQ_BIN" ]; then
 			for i in $(seq 1 10); do
-				if "$PQ_BIN" state >/dev/null 2>&1; then
+				if swift_pq state; then
 					swift_healthy=1
 					break
 				fi
@@ -84,11 +99,14 @@ if [ -n "$SWIFT_BIN" ]; then
 			note "Prove it live: grant Accessibility if it parks, then drive windows from its menubar."
 		else
 			warn "Swift agent is not running — check /tmp/${SWIFT_LABEL}_$(id -u).err.log (likely the Accessibility grant)."
+			warn "Live state without launchd: cat /tmp/paneru-swift-state.json. Persistent state: ~/.local/state/paneru/state.json."
 			warn "Falling back to the Rust daemon so tiling stays up..."
 			# Boot the Swift agent out before starting Rust: a bootstrapped
 			# (respawning) Swift agent plus the Rust daemon would both fight
-			# over the same windows and event taps.
-			launchctl bootout "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
+			# over the same windows and event taps. Same stop semantics as
+			# upstream install-service.sh: bootout, else SIGTERM the job.
+			launchctl bootout "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 \
+				|| launchctl kill SIGTERM "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
 			launchctl disable "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
 			SWIFT_BIN=""
 		fi
