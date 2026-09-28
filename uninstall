@@ -24,7 +24,7 @@ echo "   • Stop/remove Paneru (service + app launcher)"
 echo "   • Revoke its Accessibility permission"
 echo "   • Move configs to ~/.config/backups (not deleted, incl. shortcut helpers)"
 echo "   • Remove Antigen shell setup (~/antigen.zsh, bundling, ~/.zshrc block)"
-echo "   • Remove the Paneru release binary"
+echo "   • Remove the Paneru release binary (plus paneru-swift when --swift was used)"
 echo "   • Remove the tccutil-rs release binary"
 echo "   • Uninstall brew packages (you'll choose which to keep)"
 echo "     ghostty"
@@ -44,6 +44,17 @@ echo ""
 note "Stopping services..."
 
 # The binary lives in the brew bin dir (already on PATH).
+# Swift agent first (same stop semantics as upstream install-service.sh):
+# boot out the service, then drop its plist.
+SWIFT_LABEL="com.github.karinushka.paneru.swift"
+if [ -f "$HOME/Library/LaunchAgents/$SWIFT_LABEL.plist" ]; then
+	launchctl bootout "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
+	rm -f "$HOME/Library/LaunchAgents/$SWIFT_LABEL.plist"
+	ok "Swift daemon agent stopped + removed"
+elif pgrep -qx paneru-swift >/dev/null 2>&1; then
+	pkill -x paneru-swift >/dev/null 2>&1 || true
+	ok "Swift daemon stopped"
+fi
 if command -v paneru >/dev/null 2>&1; then
 	if paneru stop >/dev/null 2>&1; then
 		ok "Paneru stopped"
@@ -76,7 +87,7 @@ echo ""
 note "Revoking Accessibility permissions..."
 if command -v tccutil-rs >/dev/null 2>&1; then
 	revoked=0
-	for paneru_bin in "$HOME/.local/bin/paneru" "$(command -v paneru 2>/dev/null || true)"; do
+	for paneru_bin in "$HOME/.local/bin/paneru" "$(command -v paneru 2>/dev/null || true)" "$HOME/.local/bin/paneru-swift" "$(command -v paneru-swift 2>/dev/null || true)"; do
 		if [ -n "$paneru_bin" ] && [ -e "$paneru_bin" ]; then
 			tccutil-rs revoke --user Accessibility "$paneru_bin" >/dev/null 2>&1 || true
 			revoked=1
@@ -142,7 +153,7 @@ fi
 # Paneru itself is a direct binary in the brew bin dir (with
 # ~/.local/bin/paneru as a fallback location), so remove the binary files
 # themselves.
-for paneru_bin_rm in "$(command -v paneru 2>/dev/null || true)" /opt/homebrew/bin/paneru /usr/local/bin/paneru "$HOME/.local/bin/paneru"; do
+for paneru_bin_rm in "$(command -v paneru 2>/dev/null || true)" /opt/homebrew/bin/paneru /usr/local/bin/paneru "$HOME/.local/bin/paneru" "$(command -v paneru-swift 2>/dev/null || true)" /opt/homebrew/bin/paneru-swift /usr/local/bin/paneru-swift "$HOME/.local/bin/paneru-swift" "$(command -v pq 2>/dev/null || true)" /opt/homebrew/bin/pq /usr/local/bin/pq "$HOME/.local/bin/pq"; do
 	if [ -n "$paneru_bin_rm" ] && [ -f "$paneru_bin_rm" ]; then
 		rm -f "$paneru_bin_rm"
 		ok "Removed Paneru binary $paneru_bin_rm"

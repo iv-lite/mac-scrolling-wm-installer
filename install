@@ -27,12 +27,12 @@ run_step() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Flags: --help, --prefer-local-builds, --verify
+# Flags: --help, --prefer-local-builds, --verify, --swift
 # ─────────────────────────────────────────────────────────────
 for arg in "$@"; do
 	case "$arg" in
 		--help|-h)
-			echo "Usage: ./install [--prefer-local-builds] [--verify]"
+			echo "Usage: ./install [--prefer-local-builds] [--verify] [--swift]"
 			echo ""
 			echo "  Installs Paneru + Ghostty with an niri-like sliding-strip"
 			echo "  layout."
@@ -46,6 +46,11 @@ for arg in "$@"; do
 			echo "                         ../paneru first (fmt, clippy, tests —"
 			echo "                         same suite CI runs); aborts on failure."
 			echo "                         Same as PANERU_VERIFY=1."
+			echo "  --swift                With --prefer-local-builds, also build"
+			echo "                         the Swift daemon (../paneru/swift-daemon,"
+			echo "                         paneru-swift + pq products) and run it"
+			echo "                         under its own launchd agent instead of"
+			echo "                         the Rust daemon. Same as PANERU_SWIFT=1."
 			exit 0
 			;;
 		--prefer-local-builds)
@@ -53,6 +58,9 @@ for arg in "$@"; do
 			;;
 		--verify)
 			export PANERU_VERIFY=1
+			;;
+		--swift)
+			export PANERU_SWIFT=1
 			;;
 		-*)
 			echo "Unknown option: $arg (run './install --help')" >&2

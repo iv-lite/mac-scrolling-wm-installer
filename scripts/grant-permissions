@@ -114,7 +114,8 @@ note "Granting Accessibility permissions..."
 
 # The installed binary (on PATH — install-paneru puts it in the brew bin
 # dir). A leftover copy elsewhere is revoked too when it exists, so a PATH
-# shadow can never keep a stale identity alive.
+# shadow can never keep a stale identity alive. The Swift daemon slice
+# (paneru-swift, opt-in via --swift) holds its own grant when installed.
 PANERU_BIN="$(command -v paneru 2>/dev/null || true)"
 grant "$PANERU_BIN"
 for extra in "$HOME/.local/bin/paneru" /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
@@ -122,6 +123,18 @@ for extra in "$HOME/.local/bin/paneru" /opt/homebrew/bin/paneru /usr/local/bin/p
 		grant "$extra"
 	fi
 done
+SWIFT_BIN="$(command -v paneru-swift 2>/dev/null || true)"
+if [ -z "$SWIFT_BIN" ]; then
+	for candidate in /opt/homebrew/bin/paneru-swift /usr/local/bin/paneru-swift "$HOME/.local/bin/paneru-swift"; do
+		if [ -x "$candidate" ]; then
+			SWIFT_BIN="$candidate"
+			break
+		fi
+	done
+fi
+if [ -n "$SWIFT_BIN" ]; then
+	grant "$SWIFT_BIN"
+fi
 
 # ─────────────────────────────────────────────────────────────
 # Post-grant verification: check the TCC database via tccutil-rs
@@ -153,6 +166,9 @@ if command -v tccutil-rs >/dev/null 2>&1; then
 			verify_grant "$extra"
 		fi
 	done
+	if [ -n "${SWIFT_BIN:-}" ]; then
+		verify_grant "$SWIFT_BIN"
+	fi
 else
 	warn "tccutil-rs not found — skipping verification"
 fi

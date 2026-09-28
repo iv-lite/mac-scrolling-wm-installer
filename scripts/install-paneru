@@ -242,9 +242,182 @@ fetch_paneru() {
 	return 0
 }
 
+# ─────────────────────────────────────────────────────────────
+# Swift daemon (opt-in via PANERU_SWIFT=1 / --swift, only with
+# --prefer-local-builds from a sibling checkout containing swift-daemon).
+# Mirrors upstream swift-daemon/install-service.sh conventions — product
+# `paneru-swift`, label/identifier com.github.karinushka.paneru.swift —
+# so a manual upstream install converges instead of forking identity.
+# Two deliberate divergences: the binary goes to pick_bindir (brew bin,
+# already on PATH, instead of ~/.local/bin), and this step does NOT
+# bootstrap the agent (enable-services starts it after grants).
+# The daemon runs beside the Rust one under its own label; Lua is hosted
+# and full TOML options decode. Queries answer over XPC with `pq` as the
+# shell one-liner (state/active/virtual-workspaces/on-screen plus
+# script-state get/write and op apply). Never export PANERU_SWIFT_DAEMON
+# here: upstream `1`/`shadow` hard-errors the Rust daemon at launch.
+# ─────────────────────────────────────────────────────────────
+PANERU_SWIFT_LABEL="com.github.karinushka.paneru.swift"
+PANERU_SWIFT_ID="com.github.karinushka.paneru.swift"
+
+swift_bootstrapped() {
+	launchctl print "gui/$(id -u)/$PANERU_SWIFT_LABEL" >/dev/null 2>&1
+}
+
+fetch_swift_daemon() {
+	local bindir bin staged render pkg plist out_log err_log xdg_home
+	if [ -z "${PANERU_SWIFT:-}" ]; then
+		return 0
+	fi
+	pkg="$REPO_ROOT/../paneru/swift-daemon"
+	if [ ! -f "$REPO_ROOT/../paneru/Cargo.toml" ] || [ ! -f "$pkg/Package.swift" ]; then
+		echo "  --swift needs a sibling checkout with swift-daemon ($pkg/Package.swift missing) — aborting." >&2
+		return 1
+	fi
+	if ! command -v swift >/dev/null 2>&1; then
+		echo "  'swift' not found — install the Xcode command-line tools ('xcode-select --install'), then re-run." >&2
+		return 1
+	fi
+	note "Building Swift daemon from sibling checkout ($pkg)..."
+	# Opt-in gate: every Swift checks runner plus the frame-parity
+	# corpus replay (same suite CI runs). Enumerated from the built
+	# products so new runners never rot a hardcoded list; the parity
+	# corpus needs a Rust trace dump, so its absence skips with a note
+	# instead of failing.
+	if [ -n "${PANERU_VERIFY:-}" ]; then
+		note "Running Swift checks suite..."
+		checks_bindir="$(cd "$pkg" && swift build -c release --show-bin-path)" || return 1
+		if ! (cd "$pkg" && swift build -c release); then
+			echo "  Swift build failed — fix ../paneru/swift-daemon, then re-run." >&2
+			return 1
+		fi
+		failed=0
+		for runner in "$checks_bindir"/*Checks; do
+			[ -x "$runner" ] || continue
+			case "$runner" in *.build|*.dSYM) continue ;; esac
+			if ! "$runner" >/dev/null 2>&1; then
+				echo "  $(basename "$runner") failed — fix ../paneru/swift-daemon, then re-run." >&2
+				failed=1
+			fi
+		done
+		if [ "$failed" -ne 0 ]; then return 1; fi
+		if [ -n "${PANERU_TRACE_DIR:-}" ]; then
+			if ! (cd "$pkg" && PANERU_TRACE_DIR="$PANERU_TRACE_DIR" swift run -c release FrameParityChecks); then
+				echo "  Swift FrameParityChecks failed — fix ../paneru/swift-daemon, then re-run." >&2
+				return 1
+			fi
+		else
+			note "No PANERU_TRACE_DIR — skipping FrameParityChecks (needs a Rust trace corpus)"
+		fi
+		ok "Swift checks passed"
+	fi
+	# Builds in place (keeps .build/ cache). All dependencies are local
+	# targets plus vendored C (CLua, CTapShim) — fully offline. Both
+	# products: the daemon and the RenderPlist helper below. One product
+	# per invocation (swift build silently honors only the last --product
+	# flag), and the bin dir resolves via --show-bin-path so this tracks
+	# whatever layout the active toolchain uses.
+	if ! (cd "$pkg" && swift build -c release --product paneru-swift); then
+		echo "  Swift paneru-swift build failed — aborting." >&2
+		return 1
+	fi
+	if ! (cd "$pkg" && swift build -c release --product RenderPlist); then
+		echo "  Swift RenderPlist build failed — aborting." >&2
+		return 1
+	fi
+	if ! (cd "$pkg" && swift build -c release --product pq); then
+		echo "  Swift pq build failed — aborting." >&2
+		return 1
+	fi
+	bindir="$(cd "$pkg" && swift build -c release --show-bin-path)" || return 1
+	staged="$bindir/paneru-swift"
+	render="$bindir/RenderPlist"
+	pq_staged="$bindir/pq"
+	if [ ! -x "$staged" ]; then
+		note "Swift build finished but $staged is missing or not executable"
+		return 1
+	fi
+	if [ ! -x "$render" ]; then
+		note "Swift build finished but $render is missing or not executable"
+		return 1
+	fi
+	if [ ! -x "$pq_staged" ]; then
+		note "Swift build finished but $pq_staged is missing or not executable"
+		return 1
+	fi
+	ok "Swift daemon built from local source"
+	bindir="$(pick_bindir)" || return 1
+	bin="$bindir/paneru-swift"
+	# Boot out a running Swift agent before overwriting its binary.
+	if swift_bootstrapped; then
+		launchctl bootout "gui/$(id -u)/$PANERU_SWIFT_LABEL" >/dev/null 2>&1 || true
+		sleep 1
+	fi
+	mkdir -p "$(dirname "$bin")"
+	# Byte-identical: skip the copy and the re-sign (a fresh ad-hoc stamp
+	# would change the hash and void a live grant for nothing). The plist
+	# render below still runs (it lives outside this branch).
+	if [ -e "$bin" ] && cmp -s "$staged" "$bin"; then
+		ok "Swift daemon binary unchanged ($bin)"
+	else
+		cp "$staged" "$bin"
+		chmod +x "$bin"
+		hash -r 2>/dev/null || true
+		ok "Swift daemon installed to $bin (from local source build)"
+		if command -v codesign >/dev/null 2>&1; then
+			if codesign --force --sign - --identifier "$PANERU_SWIFT_ID" "$bin" >/dev/null 2>&1; then
+				ok "Code-signing identifier pinned ($PANERU_SWIFT_ID)"
+			else
+				warn "codesign failed — the Accessibility grant may not apply to this build"
+			fi
+			if codesign --verify --strict "$bin" >/dev/null 2>&1; then
+				ok "Code signature verifies (strict)"
+			else
+				warn "codesign --verify --strict failed — the binary may not launch cleanly"
+			fi
+		else
+			note "codesign not found (not macOS?) — skipping identifier pinning"
+		fi
+	fi
+	# pq rides along unsigned: it needs no Accessibility grant (it only
+	# talks to the daemon over XPC), so no identifier pinning here.
+	pq_bin="$bindir/pq"
+	if [ -e "$pq_bin" ] && cmp -s "$pq_staged" "$pq_bin"; then
+		ok "pq unchanged ($pq_bin)"
+	else
+		cp "$pq_staged" "$pq_bin"
+		chmod +x "$pq_bin"
+		hash -r 2>/dev/null || true
+		ok "pq installed to $pq_bin (state queries + script-state CLI)"
+	fi
+	# Render the agent plist (same model as upstream RenderPlist): label,
+	# program, log paths, XDG home. enable-services bootstraps it after
+	# grants; uninstall removes it.
+	plist="$HOME/Library/LaunchAgents/$PANERU_SWIFT_LABEL.plist"
+	out_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log"
+	err_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log"
+	xdg_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+	mkdir -p "$(dirname "$plist")"
+	if ! "$render" "$PANERU_SWIFT_LABEL" "$bin" "$out_log" "$err_log" "$xdg_home" > "$plist"; then
+		note "RenderPlist failed — skipping agent plist"
+		return 1
+	fi
+	touch "$out_log" "$err_log" 2>/dev/null || true
+	ok "Swift agent plist rendered ($plist)"
+	note "Swift daemon (re)installed — grant-permissions (next) grants it"
+	note "Accessibility; enable-services bootstraps the agent when PANERU_SWIFT=1."
+	return 0
+}
+
 if ! fetch_paneru; then
 	warn "Paneru release fetch failed for $PANERU_LABEL."
 	warn "Check your network or set PANERU_TAG to a known tag, then re-run."
+	exit 1
+fi
+
+if ! fetch_swift_daemon; then
+	warn "Swift daemon build failed."
+	warn "Fix ../paneru/swift-daemon (or drop --swift for a Rust-only install), then re-run."
 	exit 1
 fi
 

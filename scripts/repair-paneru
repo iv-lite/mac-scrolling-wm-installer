@@ -31,6 +31,65 @@ if [ -z "$PANERU_BIN" ]; then
 		fi
 	done
 fi
+
+# ─────────────────────────────────────────────────────────────
+# Swift daemon branch: when its agent is bootstrapped, repair it the
+# same way (re-sign swift identifier → grants → kickstart → pq poll).
+# Queries go through pq when installed; bare process liveness is the
+# fallback. Falls through to the Rust path when no Swift agent runs.
+# ─────────────────────────────────────────────────────────────
+SWIFT_LABEL="com.github.karinushka.paneru.swift"
+SWIFT_ID="com.github.karinushka.paneru.swift"
+SWIFT_BIN="$(command -v paneru-swift 2>/dev/null || true)"
+if [ -z "$SWIFT_BIN" ]; then
+	for candidate in /opt/homebrew/bin/paneru-swift /usr/local/bin/paneru-swift "$HOME/.local/bin/paneru-swift"; do
+		if [ -x "$candidate" ]; then
+			SWIFT_BIN="$candidate"
+			break
+		fi
+	done
+fi
+PQ_BIN="$(command -v pq 2>/dev/null || true)"
+
+swift_healthy() {
+	if [ -n "$PQ_BIN" ]; then
+		"$PQ_BIN" state >/dev/null 2>&1
+	else
+		launchctl print "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 && pgrep -qx paneru-swift >/dev/null 2>&1
+	fi
+}
+
+if launchctl print "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1; then
+	note "Swift agent bootstrapped — repairing the Swift daemon..."
+	round=0
+	while [ "$round" -lt 2 ]; do
+		round=$(( round + 1 ))
+		note "Swift repair round $round/2: re-sign → re-grant → kickstart..."
+		if [ -n "$SWIFT_BIN" ] && command -v codesign >/dev/null 2>&1 \
+			&& codesign --force --sign - --identifier "$SWIFT_ID" "$SWIFT_BIN" >/dev/null 2>&1 \
+			&& codesign -dv "$SWIFT_BIN" 2>&1 | grep -q "Identifier=$SWIFT_ID"; then
+			ok "Code-signing identifier pinned ($SWIFT_ID)"
+		else
+			warn "Swift codesign pinning failed (binary missing or codesign refused)"
+		fi
+		bash "$SCRIPT_DIR/grant-permissions" || warn "grant-permissions reported failure"
+		if launchctl kickstart "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1; then
+			note "Swift agent kickstarted — re-checking..."
+		else
+			warn "Swift agent kickstart failed"
+		fi
+		if swift_healthy; then
+			ok "Swift daemon answering (repaired)"
+			exit 0
+		fi
+		warn "Still unhealthy after round $round"
+	done
+	warn "Swift daemon is still not answering — check /tmp/${SWIFT_LABEL}_$(id -u).err.log (likely the Accessibility grant)."
+	warn "Falling through to the Rust path below; boot the Swift agent out first if tiling stays down."
+	launchctl bootout "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
+	launchctl disable "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
+fi
+
 if [ -z "$PANERU_BIN" ]; then
 	warn "paneru not on PATH — nothing to repair"
 	exit 0

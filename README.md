@@ -64,6 +64,39 @@ same gate CI runs before installing (fmt, clippy, tests):
 ./install --prefer-local-builds --verify   # or PANERU_VERIFY=1
 ```
 
+### Swift daemon (`--swift`)
+
+```sh
+./install --prefer-local-builds --swift   # or PANERU_SWIFT=1
+```
+
+With a sibling `../paneru` checkout containing `swift-daemon/`, this also
+builds the upstream `paneru-swift` + `RenderPlist` + `pq` products
+(`swift build -c release`, in place keeping `.build/` cache; fully
+offline — all targets are local plus vendored C) and installs
+`paneru-swift` and `pq` next to `paneru`, the daemon signed with
+upstream's identifier (`com.github.karinushka.paneru.swift`) so the grant
+converges with a manual upstream install instead of forking identity
+(`pq` needs no grant — it only talks to the daemon over XPC).
+`enable-services` then stops the Rust daemon and bootstraps the Swift
+agent (`com.github.karinushka.paneru.swift`, same model as upstream
+`swift-daemon/install-service.sh`), falling back to Rust if it fails so
+tiling stays up. The Swift daemon runs under its own label beside Rust's;
+quit Rust first (done automatically) so both never fight over the same
+windows. Lua handlers and full TOML options are hosted; queries answer
+over XPC with `pq` as the shell one-liner (`pq state`, `pq active`,
+`pq state-get/set`, `pq apply`) — `enable-services` and `repair-paneru`
+use `pq state` as the Swift health check, same as `paneru query state`
+for Rust. Session restore persists across restarts (`~/.local/state`),
+pointer drags (modifier-armed cross-display), hover/edge warps, and
+SLS strip-per-Space layouts are live. Release installs are unaffected
+(no Swift binary ships in release tarballs). With `--verify`, every
+Swift checks runner plus `FrameParityChecks` runs before installing.
+Never set `PANERU_SWIFT_DAEMON` yourself: upstream `1`/`shadow`
+hard-errors the Rust daemon at launch. One path still needs a real
+login to verify: the launchd-held Mach port (`pq` against a hand-run
+daemon gets no reply — expected, use the state file instead).
+
 The installer runs these steps from `scripts/`:
 
 | Script | Purpose |

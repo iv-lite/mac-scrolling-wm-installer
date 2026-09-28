@@ -242,6 +242,14 @@ paneru.setup {
   -- ─── Window rules ───
   windows = {
     calculator = { title = ".*", bundle_id = "com.apple.calculator", floating = true },
+    -- Declarative form of the window_spawned Firefox fix below (which
+    -- needs the full windowset API): pin main Firefox windows to 0.5 at
+    -- spawn so a restored size hint can't overlap the neighbour.
+    -- Popups/dialogs (< 800x600) keep their OS size.
+    firefox = {
+      title = ".*", bundle_id = "org.mozilla.firefox",
+      spawn_width = 0.5, spawn_min_width = 800, spawn_min_height = 600,
+    },
   },
 
   -- ─── Session restore (startup-only) ───
