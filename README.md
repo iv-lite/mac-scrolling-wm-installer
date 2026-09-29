@@ -77,23 +77,28 @@ offline — all targets are local plus vendored C; Swift 6 toolchain
 required, i.e. Xcode 16+ — the installer aborts otherwise with a clear
 message) and installs
 `paneru-swift` and `pq` next to `paneru`, the daemon signed with
-upstream's identifier (`com.github.karinushka.paneru.swift`) under the
+upstream's Swift identifier (`com.github.iv-lite.paneru-swift`, renamed in
+upstream `d04db61`) under the
 persistent `Paneru Local` signing identity (`scripts/ensure-signing-identity`,
 `PANERU_SIGN_IDENTITY` overrides for a paid Developer ID) so the grant
 converges with a manual upstream install instead of forking identity —
-and stays valid across rebuilds with no remove/regrant (one final manual
-remove + toggle-on migrates old ad-hoc rows; `PANERU_SIGN_CERT` renames the
+and stays valid across rebuilds with no remove/regrant (the rename itself
+re-prompts once: remove the stale old-Swift Accessibility row
+`com.github.karinushka.paneru.swift`, toggle the new `paneru-swift` row on;
+`PANERU_SIGN_CERT` renames the
 cert before first use only)
 (`pq` needs no grant — it only talks to the daemon over XPC, and is
 otherwise uninstalled upstream; the installer ships it for health
 checks). `enable-services` then stops the Rust daemon and bootstraps the
-Swift agent (`com.github.karinushka.paneru.swift`, same model as upstream
-`swift-daemon/install-service.sh`), falling back to Rust if it fails so
+Swift agent (`com.github.iv-lite.paneru-swift`, same model as upstream
+`swift-daemon/install-service.sh`, which migrates the previous
+`...karinushka.paneru.swift` agent away — this installer does the same on
+every `--swift` install, Rust untouched), falling back to Rust if it fails so
 tiling stays up. The Swift daemon runs under its own label beside Rust's;
 quit Rust first (done automatically) so both never fight over the same
 windows. The installed plist also pins `PANERU_MACH_SERVICE` to the
-`.swift` label (belt-and-braces since upstream `0d3c2ab` made suffixed
-the daemon default; still load-bearing for pre-fix binaries): the daemon
+Swift label (the daemon default since upstream `0d3c2ab`, renamed in
+`d04db61`): the daemon
 resolves its listener via `paneruServiceNameResolved()` (suffixed unless
 overridden) while the plist advertises the suffixed Mach service, so
 launchd always routes `pq` to the agent — and `pq` is invoked with the
@@ -116,11 +121,27 @@ epoch-clocked eased glides, async AX writes with ack
 mailbox + stall watchdog, focus-heal, SLS strip-per-Space layouts, and
 modifier-armed cross-display pointer drags are live. Model focus actuates
 the OS without stealing key (hover/ambient arrivals claim only, close
-heals to the nearest survivor); programmatic moves (reveal/center/snap)
+heals to the nearest survivor); focus arrivals always land fully in view
+(fully- and partially-hidden alike, re-evaluated when the focused window's
+width changes, settled clicks still rest quiet —
+`window_hidden_ratio` governs unfocused windows only; hover echoes never
+warp the mouse); programmatic moves (reveal/center/snap)
 glide burst-joined while swipe/scroll stay immediate; short singles/tabs
-vertically center; unarmed drags keep native text selection (zero AX
+vertically center; cross-display drops resolve by full-point containment so
+stairs-arranged monitors land correctly; unarmed drags keep native text selection (zero AX
 traffic, ghost + glide-home only) and lone fullWidth-marked columns
-(e.g. the Firefox spawn pin below) center absolutely. Release installs are
+(e.g. the Firefox spawn pin below) center absolutely; borders hug the glass
+with a padding-aware cutout for dimming. A 5s audit re-homes
+drifted windows even when the writer is degraded, a rest-state overlap watch
+reports unexplained glass overlaps, and the agent log triages
+itself: `drift:` lines name diverged windows (model vs slot vs live frame
+plus `leg/homing/held/unacked/streak/degraded` flags, silent when converged),
+`overlap:` lines name rest-state overlaps with slot verdicts, and
+`focus: reveal/center/skipped` lines explain arrival decisions —
+`grep -E '^(drift|focus|overlap): ' /tmp/com.github.iv-lite.paneru-swift_$(id -u).out.log | tail`.
+Opt-in slow-tick timing for jank triage: `PANERU_PERF=1` in the agent env
+(restart to toggle) logs `perf:` phase breakdowns past 8ms.
+Release installs are
 unaffected (no Swift binary ships in release tarballs). With `--verify`,
 every Swift checks runner runs, then the Rust trace corpus is dumped
 like CI (`PANERU_TRACE_OUT cargo test trace`, or your `PANERU_TRACE_DIR`)
@@ -463,14 +484,18 @@ the event-tap watchdog (karinushka/paneru#350) is present.
 **Paneru runs but doesn't tile after an upgrade.** Upgrades keep the existing
 Accessibility grant: the installer signs every binary with the persistent
 `Paneru Local` identity (`scripts/ensure-signing-identity`, identifier
-`com.github.karinushka.paneru` / `.swift`), so the TCC row stays valid across
+`com.github.karinushka.paneru` for Rust / `com.github.iv-lite.paneru-swift`
+for Swift), so the TCC row stays valid across
 rebuilds. Re-run `./install` — it re-lays the plist from the installed binary
 (`paneru uninstall` + `paneru install`, since upstream `install` is write-once)
 and grants only when missing — no remove/regrant, no fresh manual grant.
 One-time migration from old ad-hoc installs: remove the stale `paneru` /
 `paneru-swift` entries with `–` in System Settings → Privacy & Security →
 Accessibility, re-run `./install`, then toggle them back on once; all later
-updates stay sticky.
+updates stay sticky. The upstream `d04db61` Swift rename is the same one-time
+shape: delete the stale `com.github.karinushka.paneru.swift` row and toggle
+the new `paneru-swift` row on once (the `--swift` install already migrates
+the old agent's plist/logs away; Rust is untouched).
 If it is still dead, the grant is stale-but-listed: `enable-services`
 runs a self-repair on an unhealthy daemon (`scripts/repair-paneru`: re-sign
 with the stable identity → revoke + re-grant → restart → re-check, twice,

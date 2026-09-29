@@ -130,14 +130,14 @@ paneru.setup {
     -- (slots derive from member sizes, positions stay managed). Needs a
     -- fork build containing e25b6f9; older binaries silently ignore it.
     maximize_tiled_windows = true,
-    -- Lazy expose for unfocused windows: at 0.0 any hidden fraction forces
-    -- a window into view on focus change, which can re-fire mid-arrival as
-    -- strips reflow (extra corrective scrolls on top of the animated
-    -- flight). 1.0 only exposes fully-hidden windows; arrival rests looser
-    -- but quieter. The focused window itself is always brought fully into
-    -- view regardless (upstream visible-focus guarantee, deferred until the
-    -- strip is at rest so it never fights an in-flight motion) — this ratio
-    -- governs unfocused windows only.
+    -- Arrival reveal vs lazy expose: focused arrivals always land fully
+    -- in view (full and partial cover alike, deferred until the strip is
+    -- at rest so it never fights an in-flight motion) — this ratio governs
+    -- unfocused windows only. At 0.0 any hidden fraction forces a window
+    -- into view, which can re-fire mid-arrival as strips reflow (extra
+    -- corrective scrolls on top of the animated flight). 1.0 keeps settled
+    -- clicks quiet (fully visible arrivals rest with no scroll) while
+    -- keyboard focus into hidden windows still reveals.
     window_hidden_ratio = 1.0,
     -- Off: no auto-centering scroll on focus changes. Display moves then
     -- play as the daemon's single native motion instead of arrival scroll

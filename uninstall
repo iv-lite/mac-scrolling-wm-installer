@@ -46,13 +46,19 @@ note "Stopping services..."
 # The binary lives in the brew bin dir (already on PATH).
 # Swift agent first (same stop semantics as upstream install-service.sh):
 # boot out the service (else SIGTERM the job), then drop its plist.
-SWIFT_LABEL="com.github.karinushka.paneru.swift"
-if [ -f "$HOME/Library/LaunchAgents/$SWIFT_LABEL.plist" ]; then
-	launchctl bootout "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 \
-		|| launchctl kill SIGTERM "gui/$(id -u)/$SWIFT_LABEL" >/dev/null 2>&1 || true
-	rm -f "$HOME/Library/LaunchAgents/$SWIFT_LABEL.plist"
-	ok "Swift daemon agent stopped + removed"
-elif pgrep -qx paneru-swift >/dev/null 2>&1; then
+# Both the current (iv-lite, upstream d04db61) and previous (karinushka)
+# Swift labels are stopped/removed; the Rust agent is handled below.
+SWIFT_LABEL="com.github.iv-lite.paneru-swift"
+SWIFT_OLD_LABEL="com.github.karinushka.paneru.swift"
+for _swift_label in "$SWIFT_LABEL" "$SWIFT_OLD_LABEL"; do
+	if [ -f "$HOME/Library/LaunchAgents/$_swift_label.plist" ]; then
+		launchctl bootout "gui/$(id -u)/$_swift_label" >/dev/null 2>&1 \
+			|| launchctl kill SIGTERM "gui/$(id -u)/$_swift_label" >/dev/null 2>&1 || true
+		rm -f "$HOME/Library/LaunchAgents/$_swift_label.plist"
+		ok "Swift daemon agent stopped + removed ($_swift_label)"
+	fi
+done
+if pgrep -qx paneru-swift >/dev/null 2>&1; then
 	pkill -x paneru-swift >/dev/null 2>&1 || true
 	ok "Swift daemon stopped"
 fi
@@ -94,7 +100,7 @@ if command -v tccutil-rs >/dev/null 2>&1; then
 	# reuse it so the next grant stays sticky.
 	for client in "$HOME/.local/bin/paneru" "$(command -v paneru 2>/dev/null || true)" \
 		"$HOME/.local/bin/paneru-swift" "$(command -v paneru-swift 2>/dev/null || true)" \
-		com.github.karinushka.paneru com.github.karinushka.paneru.swift; do
+		com.github.karinushka.paneru com.github.karinushka.paneru.swift com.github.iv-lite.paneru-swift; do
 		if [ -n "$client" ]; then
 			if [ -e "$client" ] || [[ "$client" == com.github.* ]]; then
 				tccutil-rs revoke --user Accessibility "$client" >/dev/null 2>&1 || true
@@ -158,8 +164,9 @@ if [ -n "${XDG_STATE_HOME:-}" ] && [ "${XDG_STATE_HOME}/paneru" != "$HOME/.local
 	fi
 fi
 # Swift daemon live state + launchd logs (recreated on next install).
-# Includes the --shadow observer rest state when that mode was used.
-for f in /tmp/paneru-swift-state.json /tmp/paneru-swift-shadow.json "/tmp/${SWIFT_LABEL}_$(id -u).out.log" "/tmp/${SWIFT_LABEL}_$(id -u).err.log"; do
+# Includes the --shadow observer rest state when that mode was used, and
+# both the current (iv-lite) and previous (karinushka) Swift log names.
+for f in /tmp/paneru-swift-state.json /tmp/paneru-swift-shadow.json "/tmp/${SWIFT_LABEL}_$(id -u).out.log" "/tmp/${SWIFT_LABEL}_$(id -u).err.log" "/tmp/${SWIFT_OLD_LABEL}_$(id -u).out.log" "/tmp/${SWIFT_OLD_LABEL}_$(id -u).err.log"; do
 	if [ -e "$f" ]; then
 		mv "$f" "$BACKUP_DIR/" 2>/dev/null && ok "Moved $f → $BACKUP_DIR/"
 	fi

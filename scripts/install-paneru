@@ -345,6 +345,10 @@ fetch_swift_daemon() {
 	ok "Swift daemon built from local source"
 	bindir="$(pick_bindir)" || return 1
 	bin="$bindir/paneru-swift"
+	# Migrate the previous Swift label once (upstream d04db61 renamed the
+	# Swift identity; the Rust agent is untouched): stop the old agent and
+	# drop its plist/logs so two Swift agents never overlap.
+	swift_migrate_old_agent
 	# Boot out a running Swift agent before overwriting its binary.
 	if swift_bootstrapped; then
 		launchctl bootout "gui/$(id -u)/$PANERU_SWIFT_LABEL" >/dev/null 2>&1 || true
@@ -374,9 +378,8 @@ fetch_swift_daemon() {
 		ok "pq installed to $pq_bin (state queries + script-state CLI)"
 	fi
 	# Render the agent plist (upstream RenderPlist model). The
-	# PANERU_MACH_SERVICE pin is belt-and-braces since upstream 0d3c2ab
-	# (suffixed default) but still covers pre-fix binaries — see
-	# swift-common.sh.
+	# PANERU_MACH_SERVICE pin tracks the Swift label (renamed to the
+	# iv-lite identity in upstream d04db61) — see swift-common.sh.
 	plist="$HOME/Library/LaunchAgents/$PANERU_SWIFT_LABEL.plist"
 	out_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log"
 	err_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log"
@@ -395,9 +398,11 @@ fetch_swift_daemon() {
 	fi
 	touch "$out_log" "$err_log" 2>/dev/null || true
 	ok "Swift agent plist rendered ($plist)"
-	note "Swift daemon (re)installed with a stable signing identity — existing"
-	note "Accessibility grant stays valid; grant-permissions (next) grants only"
-	note "when missing; enable-services bootstraps the agent when PANERU_SWIFT=1."
+	note "Swift daemon (re)installed with a stable signing identity — the"
+	note "renamed identifier (upstream d04db61) re-prompts once: remove the"
+	note "stale old Swift Accessibility row, toggle the new paneru-swift row"
+	note "on; later rebuilds keep the grant. grant-permissions (next) grants"
+	note "only when missing; enable-services bootstraps the agent when PANERU_SWIFT=1."
 	return 0
 }
 

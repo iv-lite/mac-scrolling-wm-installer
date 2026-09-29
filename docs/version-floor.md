@@ -2,7 +2,20 @@
 
 Fork v0.1.0 is based on upstream 0.5.1. Details moved out of scripts/install-paneru to keep it focused.
 
-Parity verified against upstream `0d3c2ab` (prev. `6688825`): the Swift
+Parity verified against upstream `d04db61` (prev. `4e0fc64`): the Swift
+identity is renamed to `com.github.iv-lite.paneru-swift` (label, signing
+identifier, Mach default, log paths — install migrates the previous
+`...karinushka.paneru.swift` agent away, Rust untouched; the rename
+re-prompts the Accessibility grant once), plus the rest-state `overlap:`
+watch with slot verdicts, opt-in `PANERU_PERF=1` slow-tick `perf:` timing,
+width-change reveal re-evaluation, hover-echo warp suppression,
+padding-aware glass borders, full-point-containment stairs drops,
+viewport-sized maximized model, and SLS double-vote hardening. Before that
+(from `4e0fc64`): focus
+arrivals always reveal fully (`203b295` — the `window_hidden_ratio`
+threshold now governs unfocused windows only, so partially-hidden focus
+reveals too), plus the 5s audit drift re-home with `drift:` diagnostics
+and `focus:` reveal/center logs (`4e0fc64`). Before that (from `0d3c2ab`): the Swift
 Mach default is now the suffixed label (our `PANERU_MACH_SERVICE` pin is
 belt-and-braces for new binaries, still load-bearing for pre-fix ones),
 plus the Rust→Swift cold-flip cutover (`paneru handoff` →

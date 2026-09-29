@@ -6,13 +6,16 @@
 # Single source of truth for: label + identifier, bindir lookup, pq wrapper
 # (PANERU_MACH_SERVICE pin), health polls, and launchd start/stop.
 # `pq` reaches the daemon over its Mach XPC service. The installed plist
-# pins PANERU_MACH_SERVICE to the .swift label (redundant since upstream
-# 0d3c2ab made suffixed the default, but still load-bearing for pre-fix
-# binaries whose daemon listens on the base name), so prefer the pin;
-# fall back to the bare invocation for daemons without it.
+# pins PANERU_MACH_SERVICE to the Swift label (the daemon default since
+# upstream 0d3c2ab; renamed to the iv-lite identity in d04db61), so prefer
+# the pin; fall back to the bare invocation for daemons without it.
 
-PANERU_SWIFT_LABEL="${PANERU_SWIFT_LABEL:-com.github.karinushka.paneru.swift}"
-PANERU_SWIFT_ID="${PANERU_SWIFT_ID:-com.github.karinushka.paneru.swift}"
+PANERU_SWIFT_LABEL="${PANERU_SWIFT_LABEL:-com.github.iv-lite.paneru-swift}"
+PANERU_SWIFT_ID="${PANERU_SWIFT_ID:-com.github.iv-lite.paneru-swift}"
+# Previous Swift label (pre-d04db61): one-time migration stops it and
+# removes its plist/logs on install. The Rust label
+# (com.github.karinushka.paneru, no suffix) is never matched.
+PANERU_SWIFT_OLD_LABEL="${PANERU_SWIFT_OLD_LABEL:-com.github.karinushka.paneru.swift}"
 
 # Find an installed binary by name: PATH first, then known bindirs.
 # Usage: find_installed_bin paneru-swift  -> prints path or nothing.
@@ -37,7 +40,8 @@ swift_bootstrapped() {
 }
 
 # pq wrapper with Mach-service pin + bare fallback (covers pre-0d3c2ab
-# binaries defaulting to the base name). Needs PQ_BIN set.
+# binaries defaulting to the base name, and pre-d04db61 binaries on the
+# old karinushka.suffixed name). Needs PQ_BIN set.
 swift_pq() {
 	if [ -n "${PQ_BIN:-}" ]; then
 		PANERU_MACH_SERVICE="$PANERU_SWIFT_LABEL" "$PQ_BIN" "$@" >/dev/null 2>&1 \
@@ -67,6 +71,21 @@ swift_wait_healthy() {
 		sleep 1
 	done
 	return 1
+}
+
+# Stop and remove the previous Swift agent (pre-d04db61 label) so two
+# Swift agents never overlap. Mirrors upstream install-service.sh: only
+# the old Swift label is matched — the Rust agent is never touched.
+swift_migrate_old_agent() {
+	[ -n "${PANERU_SWIFT_OLD_LABEL:-}" ] || return 0
+	[ "$PANERU_SWIFT_OLD_LABEL" != "$PANERU_SWIFT_LABEL" ] || return 0
+	if launchctl print "gui/$(id -u)/$PANERU_SWIFT_OLD_LABEL" >/dev/null 2>&1; then
+		launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/$PANERU_SWIFT_OLD_LABEL.plist" >/dev/null 2>&1 \
+			|| launchctl kill SIGTERM "gui/$(id -u)/$PANERU_SWIFT_OLD_LABEL" >/dev/null 2>&1 || true
+		launchctl disable "gui/$(id -u)/$PANERU_SWIFT_OLD_LABEL" >/dev/null 2>&1 || true
+	fi
+	rm -f "$HOME/Library/LaunchAgents/$PANERU_SWIFT_OLD_LABEL.plist"
+	rm -f "/tmp/${PANERU_SWIFT_OLD_LABEL}_$(id -u).out.log" "/tmp/${PANERU_SWIFT_OLD_LABEL}_$(id -u).err.log"
 }
 
 # Start (or restart) the Swift agent from its plist: enable + kickstart
