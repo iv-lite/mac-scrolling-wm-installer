@@ -304,6 +304,16 @@ fetch_swift_daemon() {
 		echo "  'swift' not found — install the Xcode command-line tools ('xcode-select --install'), then re-run." >&2
 		return 1
 	fi
+	# swift-daemon is Swift 6 language mode (swift-tools-version 6.0):
+	# older toolchains fail deep in the build, so gate here with a clear
+	# message. Unparseable output only warns — future toolchains must
+	# never hard-block on this check.
+	swift_major="$(swift --version 2>&1 | grep -oE 'Swift version [0-9]+' | grep -oE '[0-9]+' | head -1 || true)"
+	if [ -n "$swift_major" ] && [ "$swift_major" -lt 6 ]; then
+		echo "  Swift $swift_major detected — swift-daemon needs the Swift 6 toolchain (Xcode 16+)." >&2
+		echo "  Update Xcode (App Store) or the command-line tools ('xcode-select --install'), then re-run." >&2
+		return 1
+	fi
 	note "Building Swift daemon from sibling checkout ($pkg)..."
 	if [ -n "${PANERU_VERIFY:-}" ]; then
 		bash "$SCRIPT_DIR/verify-swift" "$pkg" || return 1

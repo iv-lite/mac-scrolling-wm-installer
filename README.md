@@ -73,7 +73,9 @@ same gate CI runs before installing (fmt, clippy, tests):
 With a sibling `../paneru` checkout containing `swift-daemon/`, this also
 builds the upstream `paneru-swift` + `RenderPlist` + `pq` products
 (`swift build -c release`, in place keeping `.build/` cache; fully
-offline — all targets are local plus vendored C) and installs
+offline — all targets are local plus vendored C; Swift 6 toolchain
+required, i.e. Xcode 16+ — the installer aborts otherwise with a clear
+message) and installs
 `paneru-swift` and `pq` next to `paneru`, the daemon signed with
 upstream's identifier (`com.github.karinushka.paneru.swift`) under the
 persistent `Paneru Local` signing identity (`scripts/ensure-signing-identity`,
@@ -99,7 +101,10 @@ TOML options are hosted (`swift.toml` fallback exists upstream, but this
 installer ships Lua-only `init.lua`, which replaces TOML rather than
 layering); queries answer over XPC with `pq` as the shell one-liner
 (`pq state`, `pq active`, `pq virtual-workspaces`, `pq on-screen`,
-`pq run`, `pq state-get`/`state-write`, `pq apply`) — `enable-services`
+`pq run`, `pq state-get`/`state-write`, `pq state-remove`, `pq apply`,
+`pq subscribe` — the last two mirror Rust `paneru state remove` and
+`paneru subscribe`, the latter streaming daemon events as JSON lines
+until interrupted) — `enable-services`
 and `repair-paneru` use `pq state` as the Swift health check, same as
 `paneru query state` for Rust. Session restore persists across restarts
 (XDG state dir, 30s dirty cadence + `.bak`, crash marker; display UUIDs

@@ -42,6 +42,13 @@ if ! command -v swift >/dev/null 2>&1; then
 	echo "  'swift' not found — run 'xcode-select --install' first." >&2
 	exit 1
 fi
+# Same Swift 6 floor as install-paneru (swift-tools-version 6.0):
+# unparseable output only warns, never blocks.
+swift_major="$(swift --version 2>&1 | grep -oE 'Swift version [0-9]+' | grep -oE '[0-9]+' | head -1 || true)"
+if [ -n "$swift_major" ] && [ "$swift_major" -lt 6 ]; then
+	echo "  Swift $swift_major detected — swift-daemon needs the Swift 6 toolchain (Xcode 16+)." >&2
+	exit 1
+fi
 
 pick_bindir() {
 	if [ -n "${PANERU_BINDIR:-}" ]; then
