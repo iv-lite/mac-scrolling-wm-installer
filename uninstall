@@ -158,7 +158,8 @@ if [ -n "${XDG_STATE_HOME:-}" ] && [ "${XDG_STATE_HOME}/paneru" != "$HOME/.local
 	fi
 fi
 # Swift daemon live state + launchd logs (recreated on next install).
-for f in /tmp/paneru-swift-state.json "/tmp/${SWIFT_LABEL}_$(id -u).out.log" "/tmp/${SWIFT_LABEL}_$(id -u).err.log"; do
+# Includes the --shadow observer rest state when that mode was used.
+for f in /tmp/paneru-swift-state.json /tmp/paneru-swift-shadow.json "/tmp/${SWIFT_LABEL}_$(id -u).out.log" "/tmp/${SWIFT_LABEL}_$(id -u).err.log"; do
 	if [ -e "$f" ]; then
 		mv "$f" "$BACKUP_DIR/" 2>/dev/null && ok "Moved $f → $BACKUP_DIR/"
 	fi

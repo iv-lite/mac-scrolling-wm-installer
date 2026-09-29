@@ -242,6 +242,9 @@ paneru.setup {
   -- ─── Window rules ───
   windows = {
     calculator = { title = ".*", bundle_id = "com.apple.calculator", floating = true },
+    -- Per-window corner-radius override (live since upstream 08bdaf9;
+    -- older binaries ignore it). Example, disabled by default:
+    -- preview = { title = ".*", bundle_id = "com.apple.Preview", border_radius = 0 },
     -- Declarative form of the window_spawned Firefox fix below (which
     -- needs the full windowset API): pin main Firefox windows to 0.5 at
     -- spawn so a restored size hint can't overlap the neighbour.

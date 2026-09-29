@@ -124,6 +124,15 @@ daemon at launch. One path still needs a real login to verify: the
 launchd-held Mach port (`pq` against a hand-run daemon gets no reply —
 expected, use `cat /tmp/paneru-swift-state.json` instead).
 
+Observer mode: `paneru-swift --shadow` runs the Swift daemon as a dry-run
+observer beside live Rust — no AX writes, no cursor warps, no overlay
+paint, no menubar, no XPC serve, no session saves. It polls the running
+Rust daemon (`paneru query state --json`, so `paneru` must be on `PATH`)
+and logs rest-state diffs (`shadow: DIFF…`, capped per poll); rest state
+lands at `/tmp/paneru-swift-shadow.json` instead of
+`/tmp/paneru-swift-state.json`. Hand-run only (never bootstrapped);
+`uninstall` cleans up both state files.
+
 Live reload during development (config hot-reloads in place, source
 changes rebuild + kickstart the agent):
 
@@ -336,7 +345,9 @@ moves. Two things make it feel native:
   `vertical = 8`): the per-window inset every tiled window gets. The
   visual gap between neighbours is the sum (`8 + 8 = 16px` between
   columns); values clamp `0–50`, a per-window rule wins including `0` to
-  opt out, outer screen edges stay in `padding`.
+  opt out, outer screen edges stay in `padding`. (Implementation: slots
+  abut and gaps apply as per-window AX padding, retargeted live on
+  reload — same user-visible values.)
 - A lone column narrower than the viewport is centered
   (`options.center_single_column = true`); multi-column strips stay
   left-pinned. `auto_center` remains `false`, so focus changes never
@@ -392,7 +403,9 @@ moves. Two things make it feel native:
   blue, 2px at full opacity) replaces JankyBorders — no extra bar process needed.
   Inactive borders stay off (`decorations.inactive.border`) since they re-sync
   every tiled window on each animating tick; inactive-window
-  dimming uses native macOS (`decorations.inactive.dim`).
+  dimming uses native macOS (`decorations.inactive.dim`). Individual apps
+  can override the corner radius with a per-window `border_radius` rule
+  (commented example in `config/paneru/init.lua`; older binaries ignore it).
 - **Top gap:** `padding.top` is 8px in the config (all sides 8px, menu bar kept visible).
   Between-window gutters are separate: `gaps = { horizontal = 8, vertical = 8 }`.
 
