@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Cold-flip cutover between the Rust and Swift Paneru daemons
+# (upstream runbook: ARCHITECTURE.md "Cold flip runbook (cutover day)").
+#
+#   bash scripts/cutover-flip [flip|rollback|status]
+#
+# flip (default): capture the live Rust layout (`paneru handoff` →
+#   /tmp/paneru-handoff.json, ephemeral — never the session file), stop
+#   Rust, then hand-run the Swift binary with --flip-from so it adopts
+#   the same strips/offsets/focus. The Swift launchd agent cannot take
+#   --flip-from (no ProgramArguments plumbing), so the flip runs detached
+#   via nohup and the agent is left disabled until the next
+#   ./install --swift. On failed health poll the flip is undone
+#   automatically (Swift killed, Rust restarted) so tiling stays up.
+# rollback: kill a hand-run Swift daemon and restart Rust.
+# status: report Rust / Swift-agent / hand-run Swift liveness.
+#
+# Grants are untouched: the same installed binary path keeps its stable
+# signing identity, so no remove/regrant is involved either way.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/swift-common.sh
+source "$SCRIPT_DIR/lib/swift-common.sh"
+
+CYAN=$'\033[0;36m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RESET=$'\033[0m'
+
+note() { echo "  ${CYAN}→ $*${RESET}"; }
+ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
+
+HANDOFF_DOC="/tmp/paneru-handoff.json"
+# PID of the hand-run Swift daemon started by `flip`. Rollback kills only
+# this PID (verified by process name) — never a blind pkill, so an
+# agent-managed or foreign paneru-swift can never be caught by mistake.
+FLIP_PID_FILE="/tmp/paneru-swift-flip.pid"
+
+usage() {
+	echo "Usage: bash scripts/cutover-flip [flip|rollback|status]"
+	echo ""
+	echo "  flip       Migrate live Rust layout to a hand-run Swift daemon (default)"
+	echo "  rollback   Stop the flipped Swift daemon and restart Rust"
+	echo "  status     Report Rust / Swift-agent / hand-run Swift liveness"
+}
+
+rust_healthy() {
+	[ -n "${PANERU_BIN:-}" ] && "$PANERU_BIN" query state --json >/dev/null 2>&1
+}
+
+hand_pids() {
+	pgrep -x paneru-swift 2>/dev/null || true
+}
+
+# True when $1 is a live process named paneru-swift.
+is_swift_pid() {
+	[ -n "${1:-}" ] && [ "$(ps -p "$1" -o comm= 2>/dev/null || true)" = "paneru-swift" ]
+}
+
+recorded_flip_pid() {
+	[ -f "$FLIP_PID_FILE" ] && cat "$FLIP_PID_FILE" 2>/dev/null || true
+}
+
+do_status() {
+	if [ -n "${PANERU_BIN:-}" ] && rust_healthy; then
+		ok "Rust daemon answering ($PANERU_BIN)"
+	else
+		note "Rust daemon not answering"
+	fi
+	if swift_bootstrapped; then
+		note "Swift launchd agent bootstrapped"
+		if [ -n "$(hand_pids)" ]; then
+			note "paneru-swift PIDs (agent-managed): $(hand_pids | tr '\n' ' ')"
+		fi
+	else
+		note "Swift launchd agent not bootstrapped"
+		flip_pid="$(recorded_flip_pid)"
+		if is_swift_pid "$flip_pid"; then
+			note "Flipped paneru-swift PID: $flip_pid"
+		elif [ -n "$(hand_pids)" ]; then
+			note "Unrecorded paneru-swift PIDs: $(hand_pids | tr '\n' ' ')"
+		else
+			note "No hand-run paneru-swift process"
+		fi
+	fi
+	PQ_BIN="$(command -v pq 2>/dev/null || true)"
+	if swift_healthy; then
+		ok "Swift daemon answering (pq state)"
+	else
+		note "Swift daemon not answering (pq state)"
+	fi
+}
+
+do_flip() {
+	if [ -z "${PANERU_BIN:-}" ]; then
+		warn "paneru not found — nothing to migrate (install Rust first, or use ./install --swift)"
+		return 1
+	fi
+	if [ -z "${SWIFT_BIN:-}" ]; then
+		warn "paneru-swift not found — run ./install --prefer-local-builds --swift first"
+		return 1
+	fi
+	if ! rust_healthy; then
+		warn "Rust daemon is not answering — start it (paneru start) so there is a live layout to migrate"
+		return 1
+	fi
+	note "Capturing live Rust layout ($PANERU_BIN handoff)..."
+	if ! "$PANERU_BIN" handoff > "$HANDOFF_DOC" 2>/dev/null; then
+		warn "paneru handoff failed — is the Rust daemon current enough to know 'handoff'?"
+		return 1
+	fi
+	if [ ! -s "$HANDOFF_DOC" ] || ! grep -qE '"v": ?1' "$HANDOFF_DOC" 2>/dev/null; then
+		warn "$HANDOFF_DOC is missing or has an unexpected version — aborting (Rust left running)"
+		return 1
+	fi
+	ok "Handoff document captured ($HANDOFF_DOC, $(wc -c < "$HANDOFF_DOC" | tr -d ' ') bytes)"
+	note "Stopping Rust daemon (windows freeze until Swift adopts them)..."
+	"$PANERU_BIN" stop >/dev/null 2>&1 || true
+	if swift_bootstrapped; then
+		note "Booting out the Swift launchd agent (--flip-from is hand-run only)..."
+		swift_stop_agent
+		note "Swift agent disabled — the next ./install --swift re-enables it"
+	fi
+	out_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log"
+	err_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log"
+	note "Starting hand-run Swift daemon with --flip-from (10s adoption window)..."
+	# shellcheck disable=SC2086
+	nohup "$SWIFT_BIN" --flip-from "$HANDOFF_DOC" >>"$out_log" 2>>"$err_log" &
+	flip_pid=$!
+	disown "$flip_pid" 2>/dev/null || true
+	echo "$flip_pid" > "$FLIP_PID_FILE"
+	sleep 2
+	if ! kill -0 "$flip_pid" 2>/dev/null; then
+		warn "Swift daemon exited immediately — tail $err_log; restarting Rust..."
+		"$PANERU_BIN" start >/dev/null 2>&1 || true
+		return 1
+	fi
+	PQ_BIN="$(command -v pq 2>/dev/null || true)"
+	if swift_wait_healthy 10; then
+		ok "Swift daemon adopted the layout and answers (PID $flip_pid, logs: $out_log)"
+		note "Hand-run only: it survives terminal exit (nohup) but is NOT launchd-managed."
+		note "Rollback any time: bash scripts/cutover-flip rollback"
+	else
+		warn "Swift daemon is not answering — undoing the flip (kill Swift, restart Rust)..."
+		kill "$flip_pid" >/dev/null 2>&1 || true
+		rm -f "$FLIP_PID_FILE"
+		"$PANERU_BIN" start >/dev/null 2>&1 || true
+		if rust_healthy; then
+			ok "Rust restarted and answering"
+		else
+			warn "Rust did not come back — run: paneru start (check Accessibility grant)"
+		fi
+		return 1
+	fi
+}
+
+do_rollback() {
+	if swift_bootstrapped; then
+		warn "Swift launchd agent is bootstrapped — this looks agent-managed, not a flip."
+		warn "Use enable-services / repair-paneru for agent issues; rollback only stops hand-run daemons."
+		return 1
+	fi
+	flip_pid="$(recorded_flip_pid)"
+	if is_swift_pid "$flip_pid"; then
+		note "Stopping flipped Swift daemon (PID $flip_pid)..."
+		kill "$flip_pid" >/dev/null 2>&1 || true
+		sleep 1
+		if is_swift_pid "$flip_pid"; then
+			kill -9 "$flip_pid" >/dev/null 2>&1 || true
+		fi
+		rm -f "$FLIP_PID_FILE"
+		ok "Flipped Swift daemon stopped"
+	elif [ -n "$flip_pid" ] && kill -0 "$flip_pid" 2>/dev/null; then
+		warn "Recorded PID $flip_pid is alive but not paneru-swift — leaving it alone; clearing the record."
+		warn "State is unclear: if Rust is still stopped, restart by hand: paneru start."
+		warn "If a flipped daemon is stuck, stop it by hand (see status)."
+		rm -f "$FLIP_PID_FILE"
+		return 1
+	elif [ -n "$flip_pid" ]; then
+		note "Recorded flip PID $flip_pid is already gone — clearing"
+		rm -f "$FLIP_PID_FILE"
+	else
+		warn "No recorded flip (no $FLIP_PID_FILE) — refusing blind pkill."
+		warn "If a hand-run daemon is stuck, stop it by hand: kill $(hand_pids | tr '\n' ' ' || true)"
+		return 1
+	fi
+	if [ -z "${PANERU_BIN:-}" ]; then
+		warn "paneru not found — cannot restart Rust"
+		return 1
+	fi
+	note "Restarting Rust daemon..."
+	"$PANERU_BIN" start >/dev/null 2>&1 || true
+	if rust_healthy; then
+		ok "Rust daemon answering"
+	else
+		warn "Rust did not answer — run: paneru start (check Accessibility grant)"
+		return 1
+	fi
+}
+
+PANERU_BIN="$(find_installed_bin paneru || true)"
+SWIFT_BIN="$(find_installed_bin paneru-swift || true)"
+PQ_BIN="$(command -v pq 2>/dev/null || true)"
+
+verb="${1:-flip}"
+case "$verb" in
+	flip) do_flip ;;
+	rollback) do_rollback ;;
+	status) do_status ;;
+	--help|-h|help) usage ;;
+	*)
+		echo "Unknown verb: $verb (run 'bash scripts/cutover-flip --help')" >&2
+		exit 1
+		;;
+esac

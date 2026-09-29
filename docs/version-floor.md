@@ -2,13 +2,15 @@
 
 Fork v0.1.0 is based on upstream 0.5.1. Details moved out of scripts/install-paneru to keep it focused.
 
-Parity verified against upstream `6688825` (prev. `08bdaf9`): no new
-products, CLI commands (Rust side), env vars, plist keys, or `setup{}`
-config keys — only `pq subscribe` / `pq state-remove` parity commands
-and the Swift 6 language floor (Xcode 16+, see README `--swift`
-section). Earlier delta (from `e33c52c`): behavior fixes plus the
-`--shadow` observer flag and the now-live per-window `border_radius`
-rule.
+Parity verified against upstream `0d3c2ab` (prev. `6688825`): the Swift
+Mach default is now the suffixed label (our `PANERU_MACH_SERVICE` pin is
+belt-and-braces for new binaries, still load-bearing for pre-fix ones),
+plus the Rust→Swift cold-flip cutover (`paneru handoff` →
+`paneru-swift --flip-from`, see README cutover section). Earlier delta
+(from `6688825`): `pq subscribe` / `pq state-remove` parity commands and
+the Swift 6 language floor (Xcode 16+). Before that (from `e33c52c`):
+behavior fixes plus the `--shadow` observer flag and the now-live
+per-window `border_radius` rule.
 
 ```sh
 # ─────────────────────────────────────────────────────────────

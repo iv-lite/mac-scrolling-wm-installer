@@ -374,7 +374,9 @@ fetch_swift_daemon() {
 		ok "pq installed to $pq_bin (state queries + script-state CLI)"
 	fi
 	# Render the agent plist (upstream RenderPlist model). The
-	# PANERU_MACH_SERVICE pin is required — see swift-common.sh.
+	# PANERU_MACH_SERVICE pin is belt-and-braces since upstream 0d3c2ab
+	# (suffixed default) but still covers pre-fix binaries — see
+	# swift-common.sh.
 	plist="$HOME/Library/LaunchAgents/$PANERU_SWIFT_LABEL.plist"
 	out_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log"
 	err_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log"

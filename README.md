@@ -92,11 +92,12 @@ Swift agent (`com.github.karinushka.paneru.swift`, same model as upstream
 tiling stays up. The Swift daemon runs under its own label beside Rust's;
 quit Rust first (done automatically) so both never fight over the same
 windows. The installed plist also pins `PANERU_MACH_SERVICE` to the
-`.swift` label: the daemon resolves its listener via
-`paneruServiceNameResolved()` (base name unless overridden) while the
-plist advertises the suffixed Mach service, so without the pin launchd
-never routes `pq` to the agent — and `pq` is invoked with the same env
-(falling back to bare `pq` for pre-pin installs). Lua handlers and full
+`.swift` label (belt-and-braces since upstream `0d3c2ab` made suffixed
+the daemon default; still load-bearing for pre-fix binaries): the daemon
+resolves its listener via `paneruServiceNameResolved()` (suffixed unless
+overridden) while the plist advertises the suffixed Mach service, so
+launchd always routes `pq` to the agent — and `pq` is invoked with the
+same env (falling back to bare `pq` for daemons without the pin). Lua handlers and full
 TOML options are hosted (`swift.toml` fallback exists upstream, but this
 installer ships Lua-only `init.lua`, which replaces TOML rather than
 layering); queries answer over XPC with `pq` as the shell one-liner
@@ -137,6 +138,18 @@ and logs rest-state diffs (`shadow: DIFF…`, capped per poll); rest state
 lands at `/tmp/paneru-swift-shadow.json` instead of
 `/tmp/paneru-swift-state.json`. Hand-run only (never bootstrapped);
 `uninstall` cleans up both state files.
+
+Cutover (Rust→Swift cold flip): `bash scripts/cutover-flip` migrates the
+live Rust layout to Swift without losing window placement — `paneru
+handoff` captures strips/offsets/focus to ephemeral
+`/tmp/paneru-handoff.json` (never the session file), Rust stops, and the
+Swift binary hand-runs with `--flip-from` (the launchd agent cannot take
+flags, so the flipped daemon is `nohup`-detached, not launchd-managed,
+and the agent stays disabled until the next `./install --swift`). A
+failed health poll undoes the flip automatically (Swift killed, Rust
+restarted). `rollback` returns to Rust (it only ever stops the recorded
+flip PID, never the launchd agent); `status` reports both sides.
+Grants are untouched (same binary path, stable identity).
 
 Live reload during development (config hot-reloads in place, source
 changes rebuild + kickstart the agent):

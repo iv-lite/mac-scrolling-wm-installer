@@ -6,9 +6,10 @@
 # Single source of truth for: label + identifier, bindir lookup, pq wrapper
 # (PANERU_MACH_SERVICE pin), health polls, and launchd start/stop.
 # `pq` reaches the daemon over its Mach XPC service. The installed plist
-# pins PANERU_MACH_SERVICE to the .swift label, so prefer that; fall back
-# to the bare invocation for pre-pin installs whose daemon still listens
-# on the base name.
+# pins PANERU_MACH_SERVICE to the .swift label (redundant since upstream
+# 0d3c2ab made suffixed the default, but still load-bearing for pre-fix
+# binaries whose daemon listens on the base name), so prefer the pin;
+# fall back to the bare invocation for daemons without it.
 
 PANERU_SWIFT_LABEL="${PANERU_SWIFT_LABEL:-com.github.karinushka.paneru.swift}"
 PANERU_SWIFT_ID="${PANERU_SWIFT_ID:-com.github.karinushka.paneru.swift}"
@@ -35,7 +36,8 @@ swift_bootstrapped() {
 	launchctl print "gui/$(id -u)/$PANERU_SWIFT_LABEL" >/dev/null 2>&1
 }
 
-# pq wrapper with Mach-service pin + bare fallback. Needs PQ_BIN set.
+# pq wrapper with Mach-service pin + bare fallback (covers pre-0d3c2ab
+# binaries defaulting to the base name). Needs PQ_BIN set.
 swift_pq() {
 	if [ -n "${PQ_BIN:-}" ]; then
 		PANERU_MACH_SERVICE="$PANERU_SWIFT_LABEL" "$PQ_BIN" "$@" >/dev/null 2>&1 \
