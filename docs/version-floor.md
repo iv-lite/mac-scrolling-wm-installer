@@ -2,7 +2,15 @@
 
 Fork v0.1.0 is based on upstream 0.5.1. Details moved out of scripts/install-paneru to keep it focused.
 
-Parity verified against upstream `d04db61` (prev. `4e0fc64`): the Swift
+Parity verified against upstream `7d726d1` (prev. `d04db61`): the shipped
+`swipe.gesture.direction = "Natural"` is now honored (was parsed but ignored —
+`Reversed` mirrors strip travel), focus stranded on hidden windows heals to
+the nearest visible neighbor (`focus: healed/cleared` lines, same prefix as
+the existing triage grep), fast/diagonal flings warp via edge-crossing eval
+(`mouse:` misses gain `cross` coordinates), focused-window frame reads keep
+borders on live glass, and steady-state AX reads are halved with per-window
+state leaks closed. Before that
+(from `d04db61`): the Swift
 identity is renamed to `com.github.iv-lite.paneru-swift` (label, signing
 identifier, Mach default, log paths — install migrates the previous
 `...karinushka.paneru.swift` agent away, Rust untouched; the rename

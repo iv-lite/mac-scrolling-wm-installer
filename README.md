@@ -121,17 +121,23 @@ epoch-clocked eased glides, async AX writes with ack
 mailbox + stall watchdog, focus-heal, SLS strip-per-Space layouts, and
 modifier-armed cross-display pointer drags are live. Model focus actuates
 the OS without stealing key (hover/ambient arrivals claim only, close
-heals to the nearest survivor); focus arrivals always land fully in view
+heals to the nearest survivor, and focus stranded on a hidden window (minimized
+or stashed on an inactive Space) heals to the nearest visible neighbor, clearing
+when none is visible); focus arrivals always land fully in view
 (fully- and partially-hidden alike, re-evaluated when the focused window's
 width changes, settled clicks still rest quiet —
 `window_hidden_ratio` governs unfocused windows only; hover echoes never
 warp the mouse); programmatic moves (reveal/center/snap)
-glide burst-joined while swipe/scroll stay immediate; short singles/tabs
+glide burst-joined while swipe/scroll stay immediate (the shipped
+`swipe.gesture.direction = "Natural"` is honored — `Reversed` mirrors strip
+travel); fast and diagonal flings warp via edge-crossing eval instead of
+missing the edge band; short singles/tabs
 vertically center; cross-display drops resolve by full-point containment so
 stairs-arranged monitors land correctly; unarmed drags keep native text selection (zero AX
 traffic, ghost + glide-home only) and lone fullWidth-marked columns
 (e.g. the Firefox spawn pin below) center absolutely; borders hug the glass
-with a padding-aware cutout for dimming. A 5s audit re-homes
+with a padding-aware cutout for dimming and track live glass via boosted
+focused-window reads. A 5s audit re-homes
 drifted windows even when the writer is degraded, a rest-state overlap watch
 reports unexplained glass overlaps, and the agent log triages
 itself: `drift:` lines name diverged windows (model vs slot vs live frame
