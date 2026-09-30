@@ -91,10 +91,11 @@ do_status() {
 	else
 		note "Swift daemon not answering (pq state)"
 	fi
-	# Drift/arrival/overlap triage (upstream d04db61): the agent log names
-	# diverged windows itself — silent when converged. perf: lines appear
-	# only with PANERU_PERF=1 in the agent env (restart to toggle).
-	note "Triage: grep -E '^(drift|focus|overlap|perf): ' /tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log | tail"
+	# Log triage (upstream 829b93a): the agent log names diverged windows
+	# itself — drift/stuck silent when converged. perf: lines appear only
+	# with PANERU_PERF=1 in the agent env (restart to toggle); move: logs
+	# transfers, ax:/display: lifecycle notes.
+	note "Triage: grep -E '^(drift|focus|overlap|perf|move|stuck|ax|display): ' /tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log | tail"
 }
 
 do_flip() {

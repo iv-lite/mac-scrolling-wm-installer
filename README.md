@@ -137,14 +137,20 @@ stairs-arranged monitors land correctly; unarmed drags keep native text selectio
 traffic, ghost + glide-home only) and lone fullWidth-marked columns
 (e.g. the Firefox spawn pin below) center absolutely; borders hug the glass
 with a padding-aware cutout for dimming and track live glass via boosted
-focused-window reads. A 5s audit re-homes
+focused-window reads; mouse-follow warps land on the full-frame center,
+native-fullscreen windows stay rostered instead of vanishing, and display
+mapping is UUID-stable so monitors never shuffle windows. A 5s audit re-homes
 drifted windows even when the writer is degraded, a rest-state overlap watch
 reports unexplained glass overlaps, and the agent log triages
 itself: `drift:` lines name diverged windows (model vs slot vs live frame
 plus `leg/homing/held/unacked/streak/degraded` flags, silent when converged),
-`overlap:` lines name rest-state overlaps with slot verdicts, and
-`focus: reveal/center/skipped` lines explain arrival decisions —
-`grep -E '^(drift|focus|overlap): ' /tmp/com.github.iv-lite.paneru-swift_$(id -u).out.log | tail`.
+`overlap:` lines name rest-state overlaps with slot verdicts,
+`focus: reveal/center/skipped/healed/cleared` lines explain arrival decisions
+and focus-stranding repairs, `move:` lines log
+cross-display transfers with source/target/members, and `stuck:` lines list
+windows the audit repaired three times running (retile watchlist) alongside
+`ax:` lane-retirement and `display:` refresh notes —
+`grep -E '^(drift|focus|overlap|perf|move|stuck|ax|display): ' /tmp/com.github.iv-lite.paneru-swift_$(id -u).out.log | tail`.
 Opt-in slow-tick timing for jank triage: `PANERU_PERF=1` in the agent env
 (restart to toggle) logs `perf:` phase breakdowns past 8ms.
 Release installs are
@@ -416,9 +422,11 @@ moves. Two things make it feel native:
   at launch snap and on every layout change).
 - Driven moves glide with an ease-out-cubic curve (`options.animations = true`: fast
   attack, decelerating landing, lockstep bursts with synced join pacing, 2px first-tick kick,
-  distance-proportional duration around the 250ms default (bounded 80–320ms,
-  tunable via `options.animation_duration_ms = 250`, clamped 0–2000);
-  `false` snaps instantly — one switch since fork
+  distance-proportional duration around the 180ms default (bounded 80–260ms
+  against a viewport-scaled travel reference, tunable via
+  `options.animation_duration_ms = 180` clamped 0–2000 with
+  `options.animation_min_duration_ms = 80` / `options.animation_max_duration_ms = 260`
+  bounds); `false` snaps instantly — one switch since fork
   `7496610`, older binaries ignore the new keys and glide on their default);
   virtual-row switches snap (`options.virtual_workspace_animations = false`).
 - Session restore remembers each window's display UUID/frame (state v4, active-display
@@ -485,7 +493,13 @@ swipes too) silently stop working. This repo works around it by shipping
 `workspace_menu_status = false` (workspace switches are still announced by the
 popup). Immediate recourse: `paneru restart`. Re-enable the indicator once a
 Paneru release includes the #390 fix; concurrently, keep Paneru at ≥ 0.5.0 so
-the event-tap watchdog (karinushka/paneru#350) is present.
+the event-tap watchdog (karinushka/paneru#350) is present. The Swift daemon
+additionally re-arms a macOS-disabled tap on its own within ~5s (during the
+gap native gestures win outright), so a brief dead spell resolves without a
+restart. Swipe-gesture note: the tap consumes exactly the configured finger
+count (`swipe.gesture.fingers_count = 3` here) — keep macOS Trackpad system
+swipes (Mission Control / spaces) on a different count or off, or the native
+gesture wins whenever the counts match.
 
 **Paneru runs but doesn't tile after an upgrade.** Upgrades keep the existing
 Accessibility grant: the installer signs every binary with the persistent

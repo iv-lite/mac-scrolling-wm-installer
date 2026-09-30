@@ -97,17 +97,23 @@ paneru.setup {
     preset_column_widths = { 0.3, 0.5, 1.0 },
     -- On: driven moves glide (ease-out-cubic fast attack with decelerating
     -- landing — lockstep bursts with synced pacing via join_duration, 2px
-    -- first-tick kick, distance-proportional duration around the 250ms
-    -- default, bounded 80–320ms); false snaps instantly. Glide length is
-    -- animation_duration_ms below. One switch since fork 7496610
-    -- (replaces the old animation_speed knob). Older binaries silently
-    -- ignore unknown keys and glide on their own default, so new keys are
-    -- safe on every build.
+    -- first-tick kick, distance-proportional duration around the 180ms
+    -- default, bounded 80–260ms against a viewport-scaled travel
+    -- reference); false snaps instantly. Glide pacing is
+    -- animation_duration_ms with the min/max bounds below. One switch
+    -- since fork 7496610 (replaces the old animation_speed knob). Older
+    -- binaries silently ignore unknown keys and glide on their own
+    -- default, so new keys are safe on every build.
     animations = true,
     -- Tween length for driven moves in milliseconds, clamped 0–2000.
     -- Longer reads as a visible strip glide; shorter as snappier.
-    -- animations = false still snaps instantly regardless. Default 250.
-    animation_duration_ms = 250,
+    -- animations = false still snaps instantly regardless. Default 180.
+    animation_duration_ms = 180,
+    -- Glide pacing bounds in milliseconds: distance-proportional durations
+    -- clamp into [min, max] (max floored at min; min clamped 0–1000, max
+    -- 0–2000). Defaults 80/260. Older binaries silently ignore them.
+    animation_min_duration_ms = 80,
+    animation_max_duration_ms = 260,
     -- AX writer thread (default-on upstream since d1fb7dd): AX position
     -- commits (moves plus driving resizes, since d67df09) go to a
     -- dedicated thread with per-window coalescing instead of blocking the

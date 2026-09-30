@@ -2,7 +2,14 @@
 
 Fork v0.1.0 is based on upstream 0.5.1. Details moved out of scripts/install-paneru to keep it focused.
 
-Parity verified against upstream `7d726d1` (prev. `d04db61`): the shipped
+Parity verified against upstream `829b93a` (prev. `7d726d1`): tunable glide
+pacing bounds (`animation_min/max_duration_ms`, stock 180/80/260 with a
+viewport-scaled travel reference), dead event taps re-arm in ~5s plus
+finger-count alignment guidance, `move:` transfer logs and the `stuck:`
+retile watchlist with `ax:` lane retirement, full-frame mouse-follow center,
+rostered native-fullscreen windows, suppressed fullscreen rings, UUID-stable
+display mapping, 120Hz tick, and wall-clock tweens. Before that
+(from `7d726d1`): the shipped
 `swipe.gesture.direction = "Natural"` is now honored (was parsed but ignored —
 `Reversed` mirrors strip travel), focus stranded on hidden windows heals to
 the nearest visible neighbor (`focus: healed/cleared` lines, same prefix as
@@ -54,12 +61,16 @@ per-window `border_radius` rule.
 # (needs e25b6f9). options.animations = true (ease-out-cubic fast attack
 # with decelerating landing, lockstep bursts with synced pacing via
 # join_duration, first-tick kick, distance-proportional duration around
-# the 250ms default bounded 80–320ms; needs 7496610 — the old
-# animation_speed knob is gone) plus options.animation_duration_ms = 250
+# the 180ms default bounded 80–260ms against a viewport-scaled travel
+# reference; needs 7496610 — the old
+# animation_speed knob is gone) plus options.animation_duration_ms = 180
 # (clamped 0–2000; animations = false still snaps; pre-knob binaries
 # silently ignore it and glide on their own default; ease-out-cubic
 # since 0a967df, join_duration pacing since 684b931, 250ms default +
-# duration knob since 21ed647), plus
+# duration knob since 21ed647, 180ms default + min/max bounds since
+# 4c29f48) plus options.animation_min_duration_ms = 80 (clamped 0–1000)
+# and options.animation_max_duration_ms = 260 (clamped 0–2000, floored at
+# the min; older binaries silently ignore both), plus
 # options.virtual_workspace_animations =
 # false (no config needed on older binaries — false is the default).
 # Unarmed window drags move the grabbed column with the pointer and glide
