@@ -32,7 +32,8 @@ PANERU_BIN="$(find_installed_bin paneru || true)"
 
 # Swift daemon branch (shared helpers in lib/swift-common.sh): when its
 # agent is bootstrapped, re-sign → re-grant → kickstart → pq poll.
-# Falls through to Rust when no Swift agent runs.
+# Swift-only (PANERU_SWIFT=1): fail fast, never fall through to Rust.
+# Otherwise falls through to Rust when no Swift agent runs.
 # ─────────────────────────────────────────────────────────────
 SWIFT_ID="$PANERU_SWIFT_LABEL"
 SWIFT_BIN="$(find_installed_bin paneru-swift || true)"
@@ -61,16 +62,27 @@ if swift_bootstrapped; then
 		else
 			warn "Swift agent kickstart failed"
 		fi
-		if swift_healthy; then
-			ok "Swift daemon answering (repaired)"
+		# Verdict is the AX write path, not query liveness: a grant-less
+		# daemon answers `pq state` while tiling nothing.
+		if verdict="$(swift_ax_proven 15)"; then
+			ok "Swift daemon repaired: $verdict"
 			exit 0
 		fi
 		warn "Still unhealthy after round $round"
 	done
 	warn "Swift daemon is still not answering — check /tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log (likely the Accessibility grant)."
 	warn "Live state without launchd: cat /tmp/paneru-swift-state.json; persistent state: ~/.local/state/paneru/state.json (plus .bak; state.crashed marks a dirty exit)."
+	if [ -n "${PANERU_SWIFT:-}" ]; then
+		warn "Swift-only mode: not falling through to Rust."
+		exit 1
+	fi
 	warn "Falling through to the Rust path below; boot the Swift agent out first if tiling stays down."
 	swift_stop_agent
+fi
+
+if [ -n "${PANERU_SWIFT:-}" ] && ! swift_bootstrapped; then
+	warn "Swift-only mode: Swift agent not bootstrapped — nothing to repair (re-run ./install --swift)."
+	exit 1
 fi
 
 if [ -z "$PANERU_BIN" ]; then

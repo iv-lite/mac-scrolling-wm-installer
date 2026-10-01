@@ -2,7 +2,15 @@
 
 Fork v0.1.0 is based on upstream 0.5.1. Details moved out of scripts/install-paneru to keep it focused.
 
-Parity verified against upstream `829b93a` (prev. `7d726d1`): tunable glide
+Provisional (uncommitted upstream WIP, not yet a commit): proportional
+stairs warp (diagonally-offset displays with no shared Y band map the
+cursor's fractional height onto the target instead of sticking at the
+edge; `lastWarpKind` gains `proportional:primary` / `proportional:fallback`
+stages) and fullWidth top-align (full-viewport members top-align instead
+of centering by live height), both with `DaemonChecks` coverage.
+Parity verified against upstream `f214e1d` (prev. `829b93a`, build-only:
+CLua builds with `LUA_USE_POSIX`, `Presentation` declares its `Geometry`
+dependency — no daemon, CLI, config, or plist surface change): tunable glide
 pacing bounds (`animation_min/max_duration_ms`, stock 180/80/260 with a
 viewport-scaled travel reference), dead event taps re-arm in ~5s plus
 finger-count alignment guidance, `move:` transfer logs and the `stuck:`

@@ -114,7 +114,11 @@ build_viewer_local() {
 
 	if [ -d "$VIEWER_SRC/.git" ]; then
 		note "Updating mac-cheatsheet-viewer source (git pull --ff-only)..."
-		git -C "$VIEWER_SRC" pull --ff-only
+		if ! git -C "$VIEWER_SRC" pull --ff-only; then
+			warn "Could not fast-forward $VIEWER_SRC (diverged or dirty) —"
+			warn "stash/commit your changes there or remove it, then re-run."
+			return 1
+		fi
 	else
 		note "Cloning mac-cheatsheet-viewer source ($LOCAL_VIEWER_SRC)..."
 		rm -rf "$VIEWER_SRC"
@@ -123,6 +127,10 @@ build_viewer_local() {
 	ok "mac-cheatsheet-viewer source ready in $VIEWER_SRC"
 
 	note "Building mac-cheatsheet-viewer.app..."
+	# Unlike ../paneru (pinned toolchain via rust-toolchain.toml + rustup
+	# in install-paneru), the viewer has no pinned toolchain, so whatever
+	# cargo is available builds it; only when cargo is missing entirely is
+	# a bare Homebrew rust installed.
 	if ! command -v cargo >/dev/null 2>&1; then
 		note "Installing Rust toolchain via Homebrew..."
 		brew install rust
@@ -150,9 +158,8 @@ build_viewer_local() {
 	(cd "$VIEWER_SRC" && $TAURI build --bundles app)
 	APP_BUILT="$(ls -d "$VIEWER_SRC"/target/release/bundle/macos/*.app 2>/dev/null | head -1 || true)"
 	if [ -z "$APP_BUILT" ]; then
-		warn "Build finished but no .app was found under $VIEWER_SRC/target/release/bundle/macos/"
-		warn "Copy the bundle into $HELPERS_DIR manually once it exists."
-		return 0
+		warn "Build finished but no .app was found under $VIEWER_SRC/target/release/bundle/macos/ — aborting."
+		return 1
 	fi
 	rm -rf "$APP_DIR"
 	cp -R "$APP_BUILT" "$APP_DIR"
@@ -166,7 +173,7 @@ build_viewer_local() {
 # Failures abort the install (no release fallback).
 if [ -n "${PREFER_LOCAL_BUILDS:-}" ] && [ -d "$LOCAL_VIEWER_SRC/.git" ]; then
 	note "Building mac-cheatsheet-viewer from sibling checkout ($LOCAL_VIEWER_SRC)..."
-	build_viewer_local
+	build_viewer_local || exit 1
 	exit 0
 fi
 

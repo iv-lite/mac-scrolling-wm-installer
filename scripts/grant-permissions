@@ -33,7 +33,7 @@ source "$SCRIPT_DIR/lib/swift-common.sh"
 # revoke_stale() below serves that path only.
 # ─────────────────────────────────────────────────────────────
 revoke_stale() {
-	local bin="$1" revoke_err before_list client
+	local bin="$1" revoke_err before_list client idclient="${2:-$PANERU_IDENTIFIER}"
 	if [ -z "$bin" ]; then return 0; fi
 	if [ ! -e "$bin" ]; then return 0; fi
 	if ! command -v tccutil-rs >/dev/null 2>&1; then return 0; fi
@@ -44,7 +44,7 @@ revoke_stale() {
 	# reopen the terminal after granting it). Clients cover both TCC key
 	# forms: the binary path and the signing identifier.
 	before_list="$(tccutil-rs list --service Accessibility 2>&1 || true)"
-	for client in "$bin" "$PANERU_IDENTIFIER"; do
+	for client in "$bin" "$idclient"; do
 		if revoke_err="$(tccutil-rs revoke --user Accessibility "$client" 2>&1)"; then
 			if printf '%s' "$before_list" | grep -qF "$client"; then
 				note "Revoked stale Accessibility grant for $client (user db)"
@@ -89,7 +89,7 @@ grant_present() {
 }
 
 grant() {
-	local bin="$1" identifier="${2:-}"
+	local bin="$1" identifier="${2:-}" force="${3:-0}"
 	if [ -z "$bin" ]; then return 0; fi
 	if [ ! -e "$bin" ]; then
 		warn "$bin not found — skipping"
@@ -114,8 +114,10 @@ grant() {
 	fi
 	# Sticky grants: skip everything when a row already exists for this
 	# binary path or its signing identifier. Revokes happen only on the
-	# repair path (PANERU_GRANT_REVOKE=1 from repair-paneru).
-	if grant_present "$bin" "$identifier"; then
+	# repair path (PANERU_GRANT_REVOKE=1 from repair-paneru). Forced
+	# grants (unstamped legacy installs) always run the commands once
+	# so a dead-but-string-matched row can't bless a broken binary.
+	if [ "$force" != 1 ] && grant_present "$bin" "$identifier"; then
 		ok "Accessibility grant already present for $bin — keeping (no revoke)"
 		return 0
 	fi
@@ -158,7 +160,32 @@ for extra in "$HOME/.local/bin/paneru" /opt/homebrew/bin/paneru /usr/local/bin/p
 done
 SWIFT_BIN="$(find_installed_bin paneru-swift || true)"
 if [ -n "$SWIFT_BIN" ]; then
-	grant "$SWIFT_BIN" "$PANERU_SWIFT_IDENTIFIER"
+	# Install-identity drift (rebuild, rename, move, cert rotation):
+	# existing TCC rows were cut for a different binary identity and a
+	# string match below would bless them falsely. Revoke the stale
+	# identifier row when we know it; never revoke blind (a failed
+	# re-grant must not destroy a working grant). Missing stamp =
+	# legacy install: full grant flow, no revokes.
+	force=0
+	if swift_stamp_drifted "$SWIFT_BIN"; then
+		old_id="$(swift_stamp_field 1 || true)"
+		if [ -s "$PANERU_SWIFT_STAMP" ] && [ -n "$old_id" ] && [ "$old_id" != "$PANERU_SWIFT_IDENTIFIER" ]; then
+			note "Swift install identity changed ($old_id → $PANERU_SWIFT_IDENTIFIER) — revoking the stale identifier row"
+			revoke_stale "$SWIFT_BIN" "$old_id"
+		elif [ ! -s "$PANERU_SWIFT_STAMP" ]; then
+			note "No Swift install stamp (legacy install) — forcing one full grant, no revokes"
+			force=1
+		else
+			note "Swift binary drifted since install (rebuild/move/cert) — existing TCC rows can't be trusted; forcing grant flow"
+		fi
+	else
+		force=0
+	fi
+	grant "$SWIFT_BIN" "$PANERU_SWIFT_IDENTIFIER" "$force"
+	# Record the granted identity so the next run detects drift. (A
+	# forced grant that actually failed stays visible: the AX gate in
+	# enable-services proves the write path at runtime.)
+	swift_write_stamp "$SWIFT_BIN"
 fi
 # Note: `pq` is deliberately never granted — it holds no event tap and
 # only talks to the daemon over XPC, so it needs no Accessibility row.

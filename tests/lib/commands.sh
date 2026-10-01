@@ -79,16 +79,16 @@ cmd_check() {
   echo "── Separate Spaces (must be mode 1) ──"
   guest "\"${GUEST_DIR}/scripts/ensure-separate-spaces\" check" 2>&1 || true
   echo ""
-  echo "── Paneru service + state ──"
-  guest "paneru query state --json" 2>&1 || true
+  echo "── Paneru service + state (Rust; absent in Swift-only installs) ──"
+  guest "if test -f ~/Library/LaunchAgents/com.github.iv-lite.paneru-swift.plist; then command -v paneru >/dev/null 2>&1 && echo '(UNEXPECTED: Rust binary still present in Swift-only install)' || echo '(Rust absent — expected with --swift)'; else paneru query state --json; fi" 2>&1 || true
   echo ""
-  echo "── Paneru binary + native display commands ──"
-  guest "command -v paneru && paneru --version" 2>&1 || true
-  guest "paneru send-cmd mouse previousdisplay" 2>&1 || true
+  echo "── Paneru binary + native display commands (Rust; skipped with --swift) ──"
+  guest "if test -f ~/Library/LaunchAgents/com.github.iv-lite.paneru-swift.plist; then echo '(skipped — Swift-only install)'; else command -v paneru && paneru --version; fi" 2>&1 || true
+  guest "if test -f ~/Library/LaunchAgents/com.github.iv-lite.paneru-swift.plist; then echo '(skipped — Swift-only install)'; else paneru send-cmd mouse previousdisplay; fi" 2>&1 || true
   echo ""
-  echo "── Paneru service (plist must pin the installed binary) ──"
-  guest "bin=\"\$(command -v paneru)\" && grep -qF \"\$bin\" ~/Library/LaunchAgents/com.github.karinushka.paneru.plist && echo \"(plist pins \$bin)\" || echo '(plist drift or missing)'"
-  guest "test -f ~/Applications/Paneru.app/Contents/MacOS/Paneru && echo '(shim present)' || echo '(shim missing)'"
+  echo "── Paneru service (plist must pin the installed binary; Rust absent with --swift) ──"
+  guest "if test -f ~/Library/LaunchAgents/com.github.iv-lite.paneru-swift.plist; then test ! -f ~/Library/LaunchAgents/com.github.karinushka.paneru.plist && echo '(rust plist absent — expected with --swift)' || echo '(UNEXPECTED: Rust plist still present)'; else bin=\"\$(command -v paneru)\" && grep -qF \"\$bin\" ~/Library/LaunchAgents/com.github.karinushka.paneru.plist && echo \"(plist pins \$bin)\" || echo '(plist drift or missing)'; fi"
+  guest "if test -f ~/Library/LaunchAgents/com.github.iv-lite.paneru-swift.plist; then test ! -d ~/Applications/Paneru.app && echo '(rust shim absent — expected with --swift)' || echo '(UNEXPECTED: Rust shim still present)'; else test -f ~/Applications/Paneru.app/Contents/MacOS/Paneru && echo '(shim present)' || echo '(shim missing)'; fi"
   echo "── Swift daemon agent (only with --swift) ──"
   guest "test -f ~/Library/LaunchAgents/com.github.iv-lite.paneru-swift.plist && echo '(swift plist present)' || echo '(swift plist absent — expected without --swift)'"
   guest "test ! -f ~/Library/LaunchAgents/com.github.karinushka.paneru.swift.plist && echo '(old swift plist migrated)' || echo '(OLD SWIFT PLIST STILL PRESENT)'"
@@ -98,6 +98,7 @@ cmd_check() {
   guest "command -v pq >/dev/null 2>&1 && { PANERU_MACH_SERVICE=com.github.iv-lite.paneru-swift pq state >/dev/null 2>&1 || pq state >/dev/null 2>&1; } && echo '(pq answers state)' || echo '(pq silent — expected without a running Swift agent)'"
   guest "command -v pq >/dev/null 2>&1 && pq 2>&1 | grep -q 'state-write' && echo '(pq full CLI present)' || echo '(pq full CLI unchecked — expected without --swift)'"
   guest "ls ~/.local/state/paneru/state.json 2>/dev/null || ls /tmp/paneru-swift-state.json 2>/dev/null || echo '(no swift state file — expected without a running Swift agent)'"
+  guest "logf=\"/tmp/com.github.iv-lite.paneru-swift_\$(id -u).out.log\"; if test -f \"\$logf\"; then tail -n 3000 \"\$logf\" | grep -qE 'reposition denied|resize denied|GRANT LOST|SYSTEMIC denial' && echo '(AX WRITE DENIALS IN LOG — grant broken)' || echo '(no AX denials in recent log)'; else echo '(no swift out.log — expected without a running Swift agent)'; fi"
   echo ""
   echo "── Installed formulae + release binaries ──"
   guest "brew list | grep -Ei 'rift|aerospace|aerospacebar|borders|ghostty' || echo '(none found)'"

@@ -17,6 +17,97 @@ PANERU_SWIFT_ID="${PANERU_SWIFT_ID:-com.github.iv-lite.paneru-swift}"
 # (com.github.karinushka.paneru, no suffix) is never matched.
 PANERU_SWIFT_OLD_LABEL="${PANERU_SWIFT_OLD_LABEL:-com.github.karinushka.paneru.swift}"
 
+# Identity stamp for the installed Swift daemon (identifier + cdhash +
+# path). A drift since the last install means the TCC identity changed
+# (ad-hoc rebuild, renamed identifier, moved path) and any
+# string-matched TCC row can no longer be trusted — grant-permissions
+# forces the grant flow instead of reporting "already present".
+PANERU_SWIFT_STAMP="${XDG_STATE_HOME:-$HOME/.local/state}/paneru/swift-install-identity"
+
+# CDHash of a binary (empty when codesign is missing/refuses). Needs
+# -dvvv: plain -dv omits the hash on current toolchains.
+swift_cdhash() {
+	local bin="$1"
+	codesign -dvvv "$bin" 2>&1 | grep -oE '^CDHash=[0-9a-f]+' | cut -d= -f2 | head -1 || true
+}
+
+# Designated-requirement identifier of a binary (empty when unavailable).
+swift_designated_id() {
+	local bin="$1"
+	codesign -dv "$bin" 2>&1 | grep -oE 'Identifier=[^ ]+' | cut -d= -f2 | head -1 || true
+}
+
+# Signing authority of a binary (self-signed cert name, Developer ID,
+# or empty when ad-hoc/unsigned): cert rotation keeps cdhash but voids
+# the grant, so the stamp tracks this too.
+swift_cert() {
+	local bin="$1"
+	codesign -dvvv "$bin" 2>&1 | grep -oE '^Authority=.*' | head -1 | cut -d= -f2- || true
+}
+
+# Record the installed identity (called by install-paneru after sign+copy).
+swift_write_stamp() {
+	local bin="$1"
+	mkdir -p "$(dirname "$PANERU_SWIFT_STAMP")" 2>/dev/null || true
+	printf '%s\n%s\n%s\n%s\n' "$PANERU_SWIFT_ID" "$(swift_cdhash "$bin")" "$bin" "$(swift_cert "$bin")" > "$PANERU_SWIFT_STAMP"
+}
+
+# Stamp field N (1-based): 1 identifier, 2 cdhash, 3 path, 4 authority.
+# Empty when missing.
+swift_stamp_field() {
+	local n="$1"
+	[ -f "$PANERU_SWIFT_STAMP" ] || return 1
+	sed -n "${n}p" "$PANERU_SWIFT_STAMP" | head -1 || true
+}
+
+# 0 when the installed binary drifted from the stamp (or no stamp
+# exists yet): identifier, cdhash, path, or signing authority changed —
+# existing TCC rows cannot be trusted and the grant flow must run
+# unconditionally.
+swift_stamp_drifted() {
+	local bin="$1"
+	[ -f "$PANERU_SWIFT_STAMP" ] || return 0
+	[ "$(swift_stamp_field 1)" = "$PANERU_SWIFT_ID" ] || return 0
+	[ -n "$(swift_cdhash "$bin")" ] || return 0
+	[ "$(swift_stamp_field 2)" = "$(swift_cdhash "$bin")" ] || return 0
+	[ "$(swift_stamp_field 3)" = "$bin" ] || return 0
+	[ "$(swift_stamp_field 4)" = "$(swift_cert "$bin")" ] || return 0
+	return 1
+}
+
+# Prove the Swift daemon's AX write path: answers queries AND shows no
+# write denial since the check started. Prints one verdict line.
+# Usage: swift_ax_proven [wait_secs]  ->  0 proven, 1 broken.
+# A healthy-but-idle daemon (no managed windows, nothing written) proves
+# by silence + stable identity; a stale ad-hoc rebuild can never reach
+# here (install-paneru refuses it, grant-permissions forces re-grant).
+swift_ax_proven() {
+	local wait_secs="${1:-15}" log start_size i
+	log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log"
+	if [ ! -f "$log" ]; then
+		echo "no daemon log yet ($log)"
+		return 1
+	fi
+	if command -v stat >/dev/null 2>&1; then
+		start_size=$(stat -f%z "$log" 2>/dev/null || stat -c%s "$log" 2>/dev/null || echo 0)
+	else
+		start_size=0
+	fi
+	for i in $(seq 1 "$wait_secs"); do
+		if tail -c "+$((start_size + 1))" "$log" 2>/dev/null | grep -qE "reposition denied|resize denied|GRANT LOST|SYSTEMIC denial"; then
+			echo "daemon log shows denied AX writes (grant doesn't apply to this binary)"
+			return 1
+		fi
+		if swift_healthy; then
+			echo "daemon answers queries with no denied AX writes in the window"
+			return 0
+		fi
+		sleep 1
+	done
+	echo "daemon not answering queries"
+	return 1
+}
+
 # Find an installed binary by name: PATH first, then known bindirs.
 # Usage: find_installed_bin paneru-swift  -> prints path or nothing.
 find_installed_bin() {

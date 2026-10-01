@@ -43,12 +43,17 @@ source instead of downloading releases — no release needed to test a change:
 
 | Sibling repo | Built with | Used for |
 |---|---|---|
-| `../paneru` | `cargo build --release --bin paneru` (in place, keeps `target/` cache) | the installed binary |
+| `../paneru` | `cargo build --release --bin paneru` (in place, keeps `target/` cache) | the installed Rust binary (Rust installs only) |
+| `../paneru/swift-daemon` | `swift build -c release` (`paneru-swift` + `RenderPlist` + `pq`, in place keeping `.build/` cache) | the Swift daemon (always from source — `--swift` implies a local build, no release exists) |
 | `../mac-cheatsheet-viewer` | local Tauri build (same as the release-fetch fallback) | the cheat-sheet app |
 
-A missing sibling falls back to its release download; a failed local build
-aborts the install (fail fast, so errors surface). Brew/curl dependencies
-(Ghostty, tccutil-rs, Antigen) are unaffected by the flag. In VM tests,
+A missing sibling falls back to its release download (except Swift, which
+has no release artifact and aborts when the checkout is missing); a failed
+local build aborts the install (fail fast, so errors surface).
+`--prefer-local-builds` alone builds the Rust daemon; adding `--swift`
+switches to a Swift-only install (the Rust daemon is neither built nor
+kept). Brew/curl dependencies (Ghostty, tccutil-rs, Antigen) are
+unaffected by the flag. In VM tests,
 forward it via `PREVIEW_INSTALL_ARGS=--prefer-local-builds ./tests/preview install`.
 
 The Paneru build follows the upstream-suggested process: the pinned toolchain
@@ -58,7 +63,9 @@ build the vendored LuaJIT — no system Lua needed), and the repo's rustc
 wrapper signs the binary with the stable identifier at compile time. The
 installer preflights the Xcode command-line tools (needed for the macOS SDKs)
 and re-pins the identifier on the installed binary unconditionally. To run the
-same gate CI runs before installing (fmt, clippy, tests):
+same gate CI runs before installing (fmt, clippy, tests — Rust local builds
+only; on release installs `--verify` is a no-op for Rust but still gates
+the Swift checks when `--swift` is set):
 
 ```sh
 ./install --prefer-local-builds --verify   # or PANERU_VERIFY=1
@@ -70,13 +77,13 @@ same gate CI runs before installing (fmt, clippy, tests):
 ./install --prefer-local-builds --swift   # or PANERU_SWIFT=1
 ```
 
-With a sibling `../paneru` checkout containing `swift-daemon/`, this also
-builds the upstream `paneru-swift` + `RenderPlist` + `pq` products
+With a sibling `../paneru` checkout containing `swift-daemon/`, this builds
+the upstream `paneru-swift` + `RenderPlist` + `pq` products
 (`swift build -c release`, in place keeping `.build/` cache; fully
 offline — all targets are local plus vendored C; Swift 6 toolchain
 required, i.e. Xcode 16+ — the installer aborts otherwise with a clear
 message) and installs
-`paneru-swift` and `pq` next to `paneru`, the daemon signed with
+`paneru-swift` and `pq`, the daemon signed with
 upstream's Swift identifier (`com.github.iv-lite.paneru-swift`, renamed in
 upstream `d04db61`) under the
 persistent `Paneru Local` signing identity (`scripts/ensure-signing-identity`,
@@ -89,14 +96,15 @@ re-prompts once: remove the stale old-Swift Accessibility row
 cert before first use only)
 (`pq` needs no grant — it only talks to the daemon over XPC, and is
 otherwise uninstalled upstream; the installer ships it for health
-checks). `enable-services` then stops the Rust daemon and bootstraps the
+checks). `enable-services` then bootstraps the
 Swift agent (`com.github.iv-lite.paneru-swift`, same model as upstream
 `swift-daemon/install-service.sh`, which migrates the previous
 `...karinushka.paneru.swift` agent away — this installer does the same on
-every `--swift` install, Rust untouched), falling back to Rust if it fails so
-tiling stays up. The Swift daemon runs under its own label beside Rust's;
-quit Rust first (done automatically) so both never fight over the same
-windows. The installed plist also pins `PANERU_MACH_SERVICE` to the
+every `--swift` install). Swift-only: the Rust daemon is neither built
+nor kept — an existing Rust service/binary/shim is removed so two tilers
+never fight, and a missing/unhealthy Swift agent is a hard error (no Rust
+fallback). Downgrading back is plain `./install` (re-fetches Rust and parks
+the Swift agent). The installed plist also pins `PANERU_MACH_SERVICE` to the
 Swift label (the daemon default since upstream `0d3c2ab`, renamed in
 `d04db61`): the daemon
 resolves its listener via `paneruServiceNameResolved()` (suffixed unless
@@ -170,7 +178,8 @@ Rust daemon (`paneru query state --json`, so `paneru` must be on `PATH`)
 and logs rest-state diffs (`shadow: DIFF…`, capped per poll); rest state
 lands at `/tmp/paneru-swift-shadow.json` instead of
 `/tmp/paneru-swift-state.json`. Hand-run only (never bootstrapped);
-`uninstall` cleans up both state files.
+`uninstall` cleans up both state files. Unavailable after a Swift-only
+install (no Rust binary is kept) — use a Rust install for shadow runs.
 
 Cutover (Rust→Swift cold flip): `bash scripts/cutover-flip` migrates the
 live Rust layout to Swift without losing window placement — `paneru
@@ -183,6 +192,8 @@ failed health poll undoes the flip automatically (Swift killed, Rust
 restarted). `rollback` returns to Rust (it only ever stops the recorded
 flip PID, never the launchd agent); `status` reports both sides.
 Grants are untouched (same binary path, stable identity).
+Requires both binaries present — not usable after a Swift-only install
+removed Rust (re-install Rust first, or just `./install --swift`).
 
 Live reload during development (config hot-reloads in place, source
 changes rebuild + kickstart the agent):
@@ -570,7 +581,11 @@ paneru query state --json                   # must print a JSON snapshot (servic
   vertical display traversal intact.
 - If one display physically sits higher or lower than the other (e.g. a
   portrait monitor on a stand), adjust `horizontal_mouse_warp_offset` (px) to
-  line the warp landing up with the desk positions.
+  line the warp landing up with the desk positions. Diagonally-offset
+  ("stairs") pairs with no shared Y band map the cursor's fractional height
+  proportionally onto the target instead of sticking at the edge (a large
+  configured offset can still push the mapping off-target, in which case the
+  clamped landing applies).
 - A window can be sent to another display with `Cmd+Ctrl+Shift+→` (follow) or
   `Cmd+Ctrl+Alt+→` (stay), `Cmd+Ctrl+←/→` focuses the other display, and
   `Cmd+Ctrl+↑/↓` warps the mouse there.

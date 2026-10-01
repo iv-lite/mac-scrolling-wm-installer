@@ -16,14 +16,21 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # With PANERU_SWIFT=1 (--swift) the Swift daemon runs instead of Rust
 # under its own agent (see swift-common.sh; same model as upstream
-# swift-daemon/install-service.sh). Never export PANERU_SWIFT_DAEMON here:
-# upstream `1`/`shadow` hard-errors the Rust daemon at launch.
+# swift-daemon/install-service.sh). Swift-only: no Rust fallback — a
+# missing/unhealthy Swift agent is a hard error. Never export
+# PANERU_SWIFT_DAEMON here: upstream `1`/`shadow` hard-errors the Rust
+# daemon at launch.
 # ─────────────────────────────────────────────────────────────
-SWIFT_BIN=""
+SWIFT_ONLY=0
 if [ -n "${PANERU_SWIFT:-}" ]; then
+	SWIFT_ONLY=1
+fi
+SWIFT_BIN=""
+if [ "$SWIFT_ONLY" -eq 1 ]; then
 	SWIFT_BIN="$(find_installed_bin paneru-swift || true)"
 	if [ -z "$SWIFT_BIN" ]; then
-		warn "PANERU_SWIFT=1 but no paneru-swift installed — falling back to the Rust daemon"
+		warn "PANERU_SWIFT=1 but no paneru-swift installed — failing (Swift-only mode, no Rust fallback)."
+		exit 1
 	fi
 fi
 
@@ -34,21 +41,49 @@ if [ -n "$SWIFT_BIN" ]; then
 	fi
 	plist="$HOME/Library/LaunchAgents/$PANERU_SWIFT_LABEL.plist"
 	if [ ! -f "$plist" ]; then
-		warn "Swift agent plist missing ($plist) — re-run ./install to render it; falling back to the Rust daemon"
+		warn "Swift agent plist missing ($plist) — re-run ./install --swift to render it."
+		if [ "$SWIFT_ONLY" -eq 1 ]; then
+			exit 1
+		fi
 		SWIFT_BIN=""
 	else
 		note "Starting Swift daemon agent ($PANERU_SWIFT_LABEL)..."
 		swift_start_agent || true
 		sleep 3
 		# Health is a real `pq state` query when pq is installed; process
-		# liveness alone can't tell a parked daemon from a tiling one.
+		# liveness alone can't tell a parked daemon from a tiling one —
+		# and neither can query-answers: a grant-less daemon still talks
+		# XPC. swift_ax_proven additionally requires zero denied AX
+		# writes in the fresh log window (the grant actually applies).
 		PQ_BIN="$(command -v pq 2>/dev/null || true)"
+		export PQ_BIN
 		if swift_wait_healthy 10; then
-			ok "Swift daemon agent running and answering queries (logs: /tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log)"
-			note "Prove it live: grant Accessibility if it parks, then drive windows from its menubar."
+			if verdict="$(swift_ax_proven 15)"; then
+				ok "Swift daemon answering queries with a proven AX write path (logs: /tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log)"
+			else
+				warn "Swift answers queries but its AX write path is denied: $verdict"
+				warn "Routing to repair-paneru (re-sign → re-grant → re-verify)..."
+				if bash "$SCRIPT_DIR/repair-paneru" && verdict="$(swift_ax_proven 15)"; then
+					ok "Swift daemon repaired: $verdict"
+				else
+					warn "Swift AX write path still denied after repair."
+					warn "Grant manually: System Settings → Privacy & Security → Accessibility → enable 'paneru-swift' (remove stale rows with '–' first), then re-run."
+					if [ "$SWIFT_ONLY" -eq 1 ]; then
+						warn "Swift-only mode: not falling back to Rust. Fix the grant, then re-run."
+						exit 1
+					fi
+					warn "Falling back to the Rust daemon so tiling stays up..."
+					swift_stop_agent
+					SWIFT_BIN=""
+				fi
+			fi
 		else
 			warn "Swift agent is not running — check /tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log (likely the Accessibility grant)."
 			warn "Live state without launchd: cat /tmp/paneru-swift-state.json. Persistent state: ~/.local/state/paneru/state.json."
+			if [ "$SWIFT_ONLY" -eq 1 ]; then
+				warn "Swift-only mode: not falling back to Rust. Fix the grant, then re-run."
+				exit 1
+			fi
 			warn "Falling back to the Rust daemon so tiling stays up..."
 			# Boot out before starting Rust: both would fight over windows/taps.
 			swift_stop_agent

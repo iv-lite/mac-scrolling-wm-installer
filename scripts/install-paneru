@@ -355,6 +355,19 @@ fetch_swift_daemon() {
 		sleep 1
 	fi
 	mkdir -p "$(dirname "$bin")"
+	# No stable signing identity, no install: ad-hoc signatures embed a
+	# cdhash-only designated requirement, so every rebuild looks like a
+	# new app to TCC and voids the Accessibility grant — the next boot
+	# then tiles nothing, silently. Byte-identical reinstalls are exempt
+	# (same bytes ⇒ same cdhash ⇒ the live grant still applies).
+	if [ ! -e "$bin" ] || ! cmp -s "$staged" "$bin"; then
+		if [ "$(resolve_sign_identity)" = "-" ] && [ -z "${PANERU_ALLOW_ADHOC:-}" ]; then
+			echo "  Refusing Swift install: no stable signing identity (ad-hoc fallback)." >&2
+			echo "  An ad-hoc paneru-swift loses its Accessibility grant on the next rebuild." >&2
+			echo "  Run 'bash scripts/ensure-signing-identity', then re-run — or override once with PANERU_ALLOW_ADHOC=1." >&2
+			return 1
+		fi
+	fi
 	# Byte-identical: skip copy + re-sign (a fresh signature stamp would
 	# void a live grant for nothing). Stable identity keeps grants valid.
 	if [ -e "$bin" ] && cmp -s "$staged" "$bin"; then
@@ -366,6 +379,10 @@ fetch_swift_daemon() {
 		ok "Swift daemon installed to $bin (from local source build)"
 		sign_bin "$PANERU_SWIFT_ID" "$bin" || true
 	fi
+	# Identity stamp: identifier + cdhash + path. grant-permissions
+	# compares it on the next run — any drift (rebuild, rename, move)
+	# forces the grant flow instead of trusting stale TCC rows.
+	swift_write_stamp "$bin"
 	# pq rides along unsigned: it needs no Accessibility grant (it only
 	# talks to the daemon over XPC), so no identifier pinning here.
 	pq_bin="$bindir/pq"
@@ -406,41 +423,89 @@ fetch_swift_daemon() {
 	return 0
 }
 
-if ! fetch_paneru; then
-	warn "Paneru release fetch failed for $PANERU_LABEL."
-	warn "Check your network or set PANERU_TAG to a known tag, then re-run."
-	exit 1
-fi
-
 if ! fetch_swift_daemon; then
 	warn "Swift daemon build failed."
 	warn "Fix ../paneru/swift-daemon (or drop --swift for a Rust-only install), then re-run."
 	exit 1
 fi
 
+# Swift-only mode (--swift): the Rust daemon is neither built nor kept.
+# Remove its service/binary/shim so two tilers never fight, then skip
+# every Rust-only step below (version floor, probe, plist re-lay).
+# TCC rows are left alone (revokes need FDA and fail noisily without it).
+remove_rust_for_swift() {
+	local rust_bin candidate plist
+	if command -v paneru >/dev/null 2>&1; then
+		note "Stopping Rust daemon (Swift-only install)..."
+		paneru stop >/dev/null 2>&1 || true
+	fi
+	rust_bin="$(command -v paneru 2>/dev/null || true)"
+	if [ -n "$rust_bin" ] && [ -x "$rust_bin" ]; then
+		"$rust_bin" uninstall >/dev/null 2>&1 || true
+	fi
+	plist="$HOME/Library/LaunchAgents/com.github.karinushka.paneru.plist"
+	if [ -f "$plist" ]; then
+		launchctl bootout "gui/$(id -u)/com.github.karinushka.paneru" >/dev/null 2>&1 || true
+		rm -f "$plist"
+		ok "Rust launchd service removed"
+	fi
+	for candidate in /opt/homebrew/bin/paneru /usr/local/bin/paneru "$HOME/.local/bin/paneru"; do
+		if [ -f "$candidate" ]; then
+			rm -f "$candidate" && ok "Removed Rust binary $candidate"
+		fi
+	done
+	if [ -n "${PANERU_BINDIR:-}" ] && [ -f "$PANERU_BINDIR/paneru" ]; then
+		rm -f "$PANERU_BINDIR/paneru" && ok "Removed Rust binary $PANERU_BINDIR/paneru"
+	fi
+	if [ -d "$HOME/Applications/Paneru.app" ]; then
+		rm -rf "$HOME/Applications/Paneru.app"
+		ok "Removed ~/Applications/Paneru.app (Rust shim; Swift uses no shim)"
+	fi
+	hash -r 2>/dev/null || true
+}
+
+if [ -n "${PANERU_SWIFT:-}" ]; then
+	remove_rust_for_swift
+else
+	if ! fetch_paneru; then
+		warn "Paneru release fetch failed for $PANERU_LABEL."
+		warn "Check your network or set PANERU_TAG to a known tag, then re-run."
+		exit 1
+	fi
+	# Downgrade path (Swift-only -> Rust): a bootstrapped Swift agent
+	# would fight the Rust daemon over windows/taps, so park it.
+	if swift_bootstrapped; then
+		note "Stopping Swift agent (Rust install takes over)..."
+		swift_stop_agent
+	fi
+fi
+
 # Fork feature floor (watchdog, previousdisplay, animation/gaps keys):
 # see docs/version-floor.md — older binaries ignore unknown keys except
 # restore.missing_windows="drop" (pin "ignore" on old builds).
+# Rust-only: skipped in Swift-only mode (no Rust binary installed).
 # ─────────────────────────────────────────────────────────────
-version="$(paneru --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-case "${version:-0.0.0}" in
-	0.1*|0.2*|0.3*|0.4*|0.5*|0.6*|0.7*|0.8*|0.9*|[1-9]*)
-		ok "Paneru ${version} (fork with previous-display support)"
-		case "${version:-0.0.0}" in
-			0.1*)
-				warn "Paneru ${version} predates v0.2.2 — the Cmd+Alt cross-display drag is inactive until you upgrade"
-				;;
-		esac
-		;;
-	*)
-		warn "Paneru ${version:-unknown} looks older than the fork's v0.1.0 —"
-		warn "previous-display commands may be missing. Re-run to retry the fetch."
-		;;
-esac
+if [ -z "${PANERU_SWIFT:-}" ]; then
+	version="$(paneru --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+	case "${version:-0.0.0}" in
+		0.1*|0.2*|0.3*|0.4*|0.5*|0.6*|0.7*|0.8*|0.9*|[1-9]*)
+			ok "Paneru ${version} (fork with previous-display support)"
+			case "${version:-0.0.0}" in
+				0.1*)
+					warn "Paneru ${version} predates v0.2.2 — the Cmd+Alt cross-display drag is inactive until you upgrade"
+					;;
+			esac
+			;;
+		*)
+			warn "Paneru ${version:-unknown} looks older than the fork's v0.1.0 —"
+			warn "previous-display commands may be missing. Re-run to retry the fetch."
+			;;
+	esac
 
-if ! paneru send-cmd mouse previousdisplay >/dev/null 2>&1; then
-	note "Native previous-display check did not succeed (expected with no second display)"
-	note "or the daemon is not running yet — enable-services starts it below."
+	if ! paneru send-cmd mouse previousdisplay >/dev/null 2>&1; then
+		note "Native previous-display check did not succeed (expected with no second display)"
+		note "or the daemon is not running yet — enable-services starts it below."
+	fi
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -463,8 +528,16 @@ note "the popup still shows the active workspace. Re-enable after a Paneru relea
 note "Cmd+Shift+? opens the shortcut cheat sheet via the helper above."
 
 # ─────────────────────────────────────────────────────────────
-# launchd service + app shim (applies Accessibility before start)
+# launchd service + app shim (Rust-only; skipped in Swift-only mode —
+# fetch_swift_daemon already rendered the Swift agent plist above).
 # ─────────────────────────────────────────────────────────────
+if [ -n "${PANERU_SWIFT:-}" ]; then
+	SWIFT_BIN_DONE="$(command -v paneru-swift 2>/dev/null || true)"
+	warn "Swift daemon will be started by enable-services after permissions are granted."
+	echo "     (grant Accessibility once to ${SWIFT_BIN_DONE:-paneru-swift} — the stable"
+	echo "      signing identity keeps it valid across updates; no remove/regrant needed)"
+	exit 0
+fi
 # Upstream `paneru install` is write-once: it writes the plist pointing at
 # the invoking binary and skips when the plist already exists (no drift
 # heal). So re-lay the plist from the just-installed binary on every run
