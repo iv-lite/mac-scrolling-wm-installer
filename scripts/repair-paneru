@@ -44,17 +44,27 @@ if swift_bootstrapped; then
 	round=0
 	while [ "$round" -lt 2 ]; do
 		round=$(( round + 1 ))
+		sign_err=""
+		if [ -n "$SWIFT_BIN" ] && command -v codesign >/dev/null 2>&1; then
+			# Stop the agent first: signing a running binary can be refused,
+			# and the new signature only takes effect on the next exec.
+			swift_stop_agent >/dev/null 2>&1 || true
+		fi
 		note "Swift repair round $round/2: re-sign → re-grant → kickstart..."
 		if [ -n "$SWIFT_BIN" ] && command -v codesign >/dev/null 2>&1 \
-			&& codesign --force --sign "$SIGN_IDENTITY" --identifier "$SWIFT_ID" "$SWIFT_BIN" >/dev/null 2>&1 \
+			&& sign_err="$(codesign --force --sign "$SIGN_IDENTITY" --identifier "$SWIFT_ID" "$SWIFT_BIN" 2>&1)" \
 			&& codesign -dv "$SWIFT_BIN" 2>&1 | grep -q "Identifier=$SWIFT_ID"; then
-			if [ "$SIGN_IDENTITY" = "-" ]; then
+			if ! swift_signature_trusted "$SWIFT_BIN"; then
+				warn "Swift re-signed but the signature does not verify — the '$SIGN_IDENTITY' cert is missing/untrusted"
+				warn "  Recreate it manually: bash scripts/ensure-signing-identity, then re-run this repair"
+			elif [ "$SIGN_IDENTITY" = "-" ]; then
 				warn "Swift re-signed ad-hoc — grant will not survive the next rebuild"
 			else
 				ok "Swift re-signed with stable identity '$SIGN_IDENTITY' ($SWIFT_ID)"
 			fi
 		else
 			warn "Swift codesign pinning failed (binary missing or codesign refused)"
+			[ -n "$sign_err" ] && warn "  codesign: $sign_err"
 		fi
 		bash "$SCRIPT_DIR/grant-permissions" || warn "grant-permissions reported failure"
 		if swift_start_agent; then

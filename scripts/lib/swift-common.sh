@@ -37,6 +37,23 @@ swift_designated_id() {
 	codesign -dv "$bin" 2>&1 | grep -oE 'Identifier=[^ ]+' | cut -d= -f2 | head -1 || true
 }
 
+# 0 when the binary's code signature verifies (ad-hoc included — it
+# satisfies its own designated requirement); 1 when codesign reports a
+# trust/format failure such as CSSMERR_TP_NOT_TRUSTED. That failure means
+# the signing certificate is gone/untrusted, so the TCC identity the
+# grant was cut for no longer resolves and the grant is dead even though
+# a string-matched row still lists the binary.
+swift_signature_trusted() {
+	local bin="$1" out
+	[ -n "$bin" ] && [ -e "$bin" ] || return 1
+	command -v codesign >/dev/null 2>&1 || return 1
+	if ! out="$(codesign --verify --verbose=2 "$bin" 2>&1)"; then
+		return 1
+	fi
+	printf '%s' "$out" | grep -qE "CSSMERR|not signed|invalid signature" && return 1
+	return 0
+}
+
 # Signing authority of a binary (self-signed cert name, Developer ID,
 # or empty when ad-hoc/unsigned): cert rotation keeps cdhash but voids
 # the grant, so the stamp tracks this too.

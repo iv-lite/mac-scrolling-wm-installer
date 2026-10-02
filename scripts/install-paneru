@@ -85,14 +85,15 @@ resolve_sign_identity() {
 # designated requirement carries identifier+certificate (not cdhash-only)
 # and that `codesign --verify --strict` passes. Returns 0 on success.
 sign_bin() {
-	local identifier="$1" bin="$2" identity
+	local identifier="$1" bin="$2" identity sign_err=""
 	identity="$(resolve_sign_identity)"
 	if ! command -v codesign >/dev/null 2>&1; then
 		note "codesign not found (not macOS?) — skipping identifier pinning"
 		return 1
 	fi
-	if ! codesign --force --sign "$identity" --identifier "$identifier" "$bin" >/dev/null 2>&1; then
+	if ! sign_err="$(codesign --force --sign "$identity" --identifier "$identifier" "$bin" 2>&1)"; then
 		warn "codesign failed — the Accessibility grant may not apply to this build"
+		[ -n "$sign_err" ] && warn "  codesign: $sign_err"
 		return 1
 	fi
 	if [ "$identity" = "-" ]; then
@@ -104,6 +105,11 @@ sign_bin() {
 		ok "Designated requirement carries identifier ($identifier)"
 	else
 		warn "Designated requirement check failed — grant may not stick"
+	fi
+	if ! swift_signature_trusted "$bin"; then
+		warn "Code signature does not verify (missing/untrusted signing cert) — TCC will deny this binary"
+		warn "  Recreate the identity: bash scripts/ensure-signing-identity, then re-run"
+		return 1
 	fi
 	if codesign --verify --strict "$bin" >/dev/null 2>&1; then
 		ok "Code signature verifies (strict)"

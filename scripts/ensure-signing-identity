@@ -40,6 +40,16 @@ if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$CERT"; then
 	exit 0
 fi
 
+# The cert is not a valid codesigning identity. It may still exist as an
+# orphan (private key gone after a keychain reset/migration), which would
+# collide with importing a fresh key+cert pair under the same CN. Delete
+# it first, and best-effort unlock the login keychain (a TTY may prompt).
+security unlock-keychain "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1 || true
+if security find-certificate -c "$CERT" >/dev/null 2>&1; then
+	echo "  → Removing orphaned '$CERT' cert (no usable private key)..." >&2
+	security delete-certificate -c "$CERT" >/dev/null 2>&1 || true
+fi
+
 # Best-effort creation. Never fatal: callers fall back to ad-hoc ("-") with
 # a warning when this fails (headless CI, locked keychain, missing openssl).
 echo "  → Creating self-signed code-signing identity '$CERT' (one-time)..." >&2

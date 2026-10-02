@@ -181,6 +181,16 @@ if [ -n "$SWIFT_BIN" ]; then
 	else
 		force=0
 	fi
+	# Trust override: a string-matched row can still be dead when the
+	# signature no longer verifies (the signing cert was removed or
+	# rotated while the stamp's cdhash/authority happened to match), which
+	# leaves the daemon answering queries but denied every AX write.
+	# Force the revoke + re-grant regardless of stamp agreement.
+	if ! swift_signature_trusted "$SWIFT_BIN"; then
+		note "Swift signature does not verify (stale/untrusted cert) — forcing revoke + re-grant"
+		force=1
+		revoke_stale "$SWIFT_BIN"
+	fi
 	grant "$SWIFT_BIN" "$PANERU_SWIFT_IDENTIFIER" "$force"
 	# Record the granted identity so the next run detects drift. (A
 	# forced grant that actually failed stays visible: the AX gate in
