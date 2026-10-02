@@ -143,7 +143,7 @@ missing the edge band; short singles/tabs
 vertically center; cross-display drops resolve by full-point containment so
 stairs-arranged monitors land correctly; unarmed drags keep native text selection (zero AX
 traffic, ghost + glide-home only) and lone fullWidth-marked columns
-(e.g. the Firefox spawn pin below) center absolutely; borders hug the glass
+center absolutely; borders hug the glass
 with a padding-aware cutout for dimming and track live glass via boosted
 focused-window reads; mouse-follow warps land on the full-frame center,
 native-fullscreen windows stay rostered instead of vanishing, and display
@@ -400,9 +400,9 @@ moves. Two things make it feel native:
   (page-flip).
 - `options.preset_column_widths = { 0.3, 0.5, 1.0 }` cycling and
   `window_fullwidth` (Cmd+Option+M) cover on-demand sizing; new windows
-  start full-width (`options.default_ratio = 1.0`, large Firefox windows
-  re-pinned to `0.5` at spawn by the config handler), are appended at the
-  end and never resize existing ones.
+  start full-width (`options.default_ratio = 1.0`) and fill their tile
+  (`options.maximize_tiled_windows`), are appended at the end and never
+  resize existing ones.
 - Between-window gaps come from the `gaps` table (`horizontal = 8`,
   `vertical = 8`) and are the **exact** neighbour gap: paneru-swift insets
   every tiled window by half the configured gap per side, so two abutting
