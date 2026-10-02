@@ -404,12 +404,13 @@ moves. Two things make it feel native:
   re-pinned to `0.5` at spawn by the config handler), are appended at the
   end and never resize existing ones.
 - Between-window gaps come from the `gaps` table (`horizontal = 8`,
-  `vertical = 8`): the per-window inset every tiled window gets. The
-  visual gap between neighbours is the sum (`8 + 8 = 16px` between
-  columns); values clamp `0–50`, a per-window rule wins including `0` to
-  opt out, outer screen edges stay in `padding`. (Implementation: slots
-  abut and gaps apply as per-window AX padding, retargeted live on
-  reload — same user-visible values.)
+  `vertical = 8`) and are the **exact** neighbour gap: paneru-swift insets
+  every tiled window by half the configured gap per side, so two abutting
+  tiles show exactly `8px` of glass between them. (The Rust fork applies
+  the value per side instead, so its neighbour gap is `16px`.) Values clamp
+  `0–50`, a per-window rule wins including `0` to opt out, outer screen
+  edges stay in `padding`. Implementation: slots abut, gaps apply as
+  per-window AX padding, retargeted live on reload.
 - A lone column narrower than the viewport is centered
   (`options.center_single_column = true`); multi-column strips stay
   left-pinned. `auto_center` remains `false`, so focus changes never
@@ -430,7 +431,10 @@ moves. Two things make it feel native:
   re-tile), and strips fill the viewport on focus, move and drag
   so they never rest next to whitespace.
 - Tiled windows fill their tile slot (`options.maximize_tiled_windows = true`,
-  at launch snap and on every layout change).
+  at launch snap and on every layout change); the column's width is
+  model-owned and an app that clamps narrower is centered in its tile.
+  A multi-column strip's pitch is stable — an app resizing its own glass
+  never shifts the neighbours.
 - Driven moves glide with an ease-out-cubic curve (`options.animations = true`: fast
   attack, decelerating landing, lockstep bursts with synced join pacing, 2px first-tick kick,
   distance-proportional duration around the 180ms default (bounded 80–260ms

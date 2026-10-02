@@ -141,3 +141,37 @@ per-window `border_radius` rule.
 # exception: pin "ignore" if you run an older Paneru.)
 # ─────────────────────────────────────────────────────────────
 ```
+
+## paneru-swift divergences (deliberate parity breaks)
+
+`paneru-swift` (the Swift daemon built from the sibling `paneru` checkout)
+cannot match the Rust fork byte-for-byte on everything the floor above
+describes, so these behaviors intentionally differ. All are covered by
+`DaemonChecks`. Falling back to the Rust daemon reinterprets them.
+
+- **Gaps are exact.** The Rust fork applies `gaps.horizontal`/`vertical`
+  per side, so its neighbour gap is the sum (`16px` for `8`).
+  `paneru-swift` insets each window by half the configured gap per side, so
+  the neighbour gap is exactly the configured value (`8px`).
+- **`maximize_tiled_windows` / `default_ratio` are honored.** A fresh
+  column's width is the `default_ratio` fraction of its viewport and is
+  grown to fill the tile; an app that clamps narrower is presented centered
+  in its tile. (The Rust fork already honors these; the pre-rewrite Swift
+  daemon parsed but ignored them.)
+- **Model-owned pitch.** Column width is model-owned (never smaller than
+  live glass), so a multi-column strip's pitch is stable: an app resizing
+  its own frame never shifts the downstream columns.
+- **Void-safe hidden-row parking.** An inactive virtual row parks at
+  `right edge - sliver` with y clamped into the owner band (the Rust fork
+  parks at the bottom-right corner). On stairs desks this keeps the parked
+  row out of a neighbour's band.
+- **Display containment guarantee.** No managed strip member may rest on a
+  sibling display: the commit drain projects any such target to the owner
+  edge before it reaches AX, so only the explicit move-to-display command
+  can place a window on another screen.
+- **Virtual-row options are honored.** `create_virtual_workspace_automatically`,
+  `reap_empty_workspaces`, `virtual_workspace_animations`, and
+  `insert_windows_mid_strip` all take effect (the pre-rewrite Swift daemon
+  parsed but ignored most of them). `insert_windows_mid_strip` applies to
+  same-display moves and pointer drops; cross-display keyboard moves append.
+

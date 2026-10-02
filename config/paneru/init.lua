@@ -135,6 +135,8 @@ paneru.setup {
     -- behaviour; set to false to tile windows at their native sizes instead
     -- (slots derive from member sizes, positions stay managed). Needs a
     -- fork build containing e25b6f9; older binaries silently ignore it.
+    -- paneru-swift honors it too: a column grows to its model width and an
+    -- app that clamps narrower is presented centered in its tile.
     maximize_tiled_windows = true,
     -- Arrival reveal vs lazy expose: focused arrivals always land fully
     -- in view (full and partial cover alike, deferred until the strip is
@@ -164,21 +166,26 @@ paneru.setup {
     -- still wins; unset would keep the OS-given size. Clamped to a
     -- 0.0–1.0 ratio. Needs fork with d8b5677;
     -- older binaries silently ignore it. Saved session restore wins over
-    -- this on startup.
+    -- this on startup. paneru-swift honors it as the seeded model width
+    -- for a fresh column.
     default_ratio = 1.0,
     -- Dynamic rows: a new virtual-workspace row spawns when you cross past
     -- the last one, and empty rows are reaped (both booleans, default false
     -- upstream; upstream CONFIGURATION.md mislabels reap_empty_workspaces
-    -- as String — src/config.rs is Option<bool>).
+    -- as String — src/config.rs is Option<bool>). paneru-swift honors both.
     create_virtual_workspace_automatically = true,
     reap_empty_workspaces = true,
     -- Off: virtual-row switches snap instead of animating (native Spaces
     -- animation is what virtual rows exist to avoid). Default false upstream.
+    -- paneru-swift honors it: off snaps the row-switch moves, on glides them.
     virtual_workspace_animations = false,
     window_resize_cycle = true,
     -- On: a window moved to another strip (Cmd+Alt cross-display drag, or a
     -- virtual-workspace move) lands in the column matching its on-screen
     -- position, shifting the rest — instead of appending at the end.
+    -- paneru-swift honors it for same-display moves (virtual-row moves and
+    -- pointer drops); cross-display keyboard moves append, since keeping
+    -- the source x would land the window back on the source display.
     insert_windows_mid_strip = true,
   },
 
@@ -190,12 +197,15 @@ paneru.setup {
   -- ─── Between-window gaps (inner gutters) ───
   -- Per-window inset applied to every tiled window (needs fork with
   -- 43d3644; older binaries silently ignore this table and tile at zero
-  -- gaps unless a per-rule padding is set). The visual gap between
-  -- neighbours is the sum of the adjacent insets (8 + 8 = 16px between
-  -- columns by default). Values clamp 0–50; a per-window rule
-  -- `horizontal_padding` / `vertical_padding` wins — including 0, which
-  -- opts that app out of the global gaps. Outer screen edges use
-  -- `padding` above.
+  -- gaps unless a per-rule padding is set). The value is the exact
+  -- visual gap between neighbours: paneru-swift insets each window by
+  -- half the configured gap per side, so two abutting tiles show exactly
+  -- `horizontal`/`vertical` px of glass between them (8px by default).
+  -- The Rust fork instead applies the value per side (so its neighbour
+  -- gap is the sum, 16px); keep that in mind if you fall back to Rust.
+  -- Values clamp 0–50; a per-window rule `horizontal_padding` /
+  -- `vertical_padding` wins — including 0, which opts that app out of
+  -- the global gaps. Outer screen edges use `padding` above.
   gaps = { horizontal = 8, vertical = 8 },
 
   -- ─── Swipe & gestures ───
@@ -235,7 +245,7 @@ paneru.setup {
     active = {
       border = {
         enabled = true,
-        color = "#2b303c",
+        color = "#2b303cd6",
         opacity = 1.0,
         width = 2.0,
         radius = "auto",
@@ -248,17 +258,6 @@ paneru.setup {
   -- ─── Window rules ───
   windows = {
     calculator = { title = ".*", bundle_id = "com.apple.calculator", floating = true },
-    -- Per-window corner-radius override (live since upstream 08bdaf9;
-    -- older binaries ignore it). Example, disabled by default:
-    -- preview = { title = ".*", bundle_id = "com.apple.Preview", border_radius = 0 },
-    -- Declarative form of the window_spawned Firefox fix below (which
-    -- needs the full windowset API): pin main Firefox windows to 0.5 at
-    -- spawn so a restored size hint can't overlap the neighbour.
-    -- Popups/dialogs (< 800x600) keep their OS size.
-    firefox = {
-      title = ".*", bundle_id = "org.mozilla.firefox",
-      spawn_width = 0.5, spawn_min_width = 800, spawn_min_height = 600,
-    },
   },
 
   -- ─── Session restore (startup-only) ───
