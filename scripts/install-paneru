@@ -65,16 +65,24 @@ pick_bindir() {
 }
 
 # Persistent signing identity for sticky Accessibility grants. Resolved once
-# per run via scripts/ensure-signing-identity ("Paneru Local" self-signed
-# cert, or $PANERU_SIGN_IDENTITY override for a paid Developer ID). "-" means
-# ad-hoc fallback: installs work, but each byte change needs a fresh grant.
+# per run via the canonical daemon copy (../paneru/swift-daemon) when a
+# sibling checkout exists, else this repo's byte-identical fallback, else
+# $PANERU_SIGN_IDENTITY override for a paid Developer ID. "-" means ad-hoc
+# fallback: installs work, but each byte change needs a fresh grant.
 resolve_sign_identity() {
 	if [ -n "${PANERU_SIGN_IDENTITY_RESOLVED:-}" ]; then
 		echo "$PANERU_SIGN_IDENTITY_RESOLVED"
 		return 0
 	fi
-	local id
-	id="$(bash "$SCRIPT_DIR/ensure-signing-identity" 2>/dev/null || echo "-")"
+	local helper="" id
+	# Prefer the daemon repo's canonical copy when the sibling is present;
+	# fall back to the vendored copy so Rust-only installs stay standalone.
+	if [ -f "$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity" ]; then
+		helper="$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity"
+	else
+		helper="$SCRIPT_DIR/ensure-signing-identity"
+	fi
+	id="$(bash "$helper" 2>/dev/null || echo "-")"
 	[ -n "$id" ] || id="-"
 	PANERU_SIGN_IDENTITY_RESOLVED="$id"
 	export PANERU_SIGN_IDENTITY_RESOLVED

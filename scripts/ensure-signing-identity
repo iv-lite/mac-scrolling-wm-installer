@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Prints the code-signing identity install-paneru / repair-paneru should use.
 #
+# Fallback copy: the canonical version lives in the daemon repo
+# (`iv-lite/paneru/swift-daemon/ensure-signing-identity`). The installer
+# prefers that sibling copy when a checkout is present and falls back to
+# this one so Rust-only installs stay standalone. Keep the two
+# byte-identical.
+#
 #   PANERU_SIGN_CERT="${PANERU_SIGN_CERT:-Paneru Local}"
 #   PANERU_SIGN_IDENTITY (explicit override, e.g. a paid Developer ID)
 #

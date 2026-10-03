@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=lib/swift-common.sh
 source "$SCRIPT_DIR/lib/swift-common.sh"
 
@@ -25,7 +26,13 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 # Repair is the sole revoke path: grant-permissions grants-if-missing by
 # default and only revokes when PANERU_GRANT_REVOKE=1 (set below).
 export PANERU_GRANT_REVOKE=1
-SIGN_IDENTITY="$(bash "$SCRIPT_DIR/ensure-signing-identity" 2>/dev/null || echo "-")"
+# Prefer the daemon repo's canonical helper; fall back to the vendored copy.
+if [ -f "$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity" ]; then
+	ENSURE_SIGNING="$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity"
+else
+	ENSURE_SIGNING="$SCRIPT_DIR/ensure-signing-identity"
+fi
+SIGN_IDENTITY="$(bash "$ENSURE_SIGNING" 2>/dev/null || echo "-")"
 [ -n "$SIGN_IDENTITY" ] || SIGN_IDENTITY="-"
 # The installed binary (brew bin dir, already on PATH).
 PANERU_BIN="$(find_installed_bin paneru || true)"

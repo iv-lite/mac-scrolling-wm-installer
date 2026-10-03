@@ -67,7 +67,12 @@ pick_bindir() {
 }
 
 resolve_sign_identity() {
-	bash "$SCRIPT_DIR/ensure-signing-identity" 2>/dev/null || echo "-"
+	# Prefer the daemon repo's canonical copy; fall back to the vendored one.
+	if [ -f "$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity" ]; then
+		bash "$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity" 2>/dev/null || echo "-"
+	else
+		bash "$SCRIPT_DIR/ensure-signing-identity" 2>/dev/null || echo "-"
+	fi
 }
 
 sync_config() {
