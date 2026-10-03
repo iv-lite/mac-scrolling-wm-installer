@@ -81,6 +81,26 @@ resolve_sign_identity() {
 	echo "$id"
 }
 
+# True when $1 is signed with a stable designated requirement (identifier
+# + certificate), not an ad-hoc cdhash-only one. Used to decide whether a
+# byte-identical binary still needs re-signing.
+swift_dr_is_stable() {
+	local bin="$1"
+	command -v codesign >/dev/null 2>&1 || return 1
+	local dr
+	dr="$(codesign -d -r- "$bin" 2>/dev/null | grep -E 'designated =>' || true)"
+	[ -n "$dr" ] || return 1
+	# cdhash-only DR looks like: designated => cdhash H"..."
+	case "$dr" in
+		*cdhash*) return 1 ;;
+	esac
+	# Stable DR names the identifier and a certificate/anchor.
+	case "$dr" in
+		*identifier*|*certificate*|*anchor*) return 0 ;;
+	esac
+	return 1
+}
+
 # Sign $2 with identifier $1 using the persistent identity. Verifies the
 # designated requirement carries identifier+certificate (not cdhash-only)
 # and that `codesign --verify --strict` passes. Returns 0 on success.
@@ -374,9 +394,11 @@ fetch_swift_daemon() {
 			return 1
 		fi
 	fi
-	# Byte-identical: skip copy + re-sign (a fresh signature stamp would
-	# void a live grant for nothing). Stable identity keeps grants valid.
-	if [ -e "$bin" ] && cmp -s "$staged" "$bin"; then
+	# Byte-identical: skip copy + re-sign ONLY when the on-disk binary is
+	# already signed with the stable identity. A byte-identical ad-hoc
+	# binary (e.g. installed by an older tool) must be re-signed here, or
+	# it keeps its cdhash-only DR and voids the grant on the next rebuild.
+	if [ -e "$bin" ] && cmp -s "$staged" "$bin" && swift_dr_is_stable "$bin"; then
 		ok "Swift daemon binary unchanged ($bin)"
 	else
 		cp "$staged" "$bin"
