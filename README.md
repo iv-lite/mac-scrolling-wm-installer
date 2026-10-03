@@ -5,6 +5,10 @@ infinite-strip tiler with hot-reloadable TOML config, native macOS workspaces
 + virtual workspaces, and a workspace status popup), and **Ghostty**
 (terminal). Driven by Cmd+Option-key shortcuts that don't fight macOS defaults.
 
+The Swift daemon this installer can build and run from source is
+**`paneru-swift`** — the native Swift port maintained in the `iv-lite/paneru`
+fork (see `--swift` below).
+
 ## Requirements
 
 - macOS 14+ (Paneru)
