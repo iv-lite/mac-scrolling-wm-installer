@@ -8,7 +8,35 @@ cursor's fractional height onto the target instead of sticking at the
 edge; `lastWarpKind` gains `proportional:primary` / `proportional:fallback`
 stages) and fullWidth top-align (full-viewport members top-align instead
 of centering by live height), both with `DaemonChecks` coverage.
-Parity verified against upstream `f214e1d` (prev. `829b93a`, build-only:
+Parity verified against upstream `feat/swift-hardening` (the Swift
+hardening branch; its tip moves — it was `a520369` when this was written,
+and merges to `main` after live baking), prev. `f214e1d`, prev. `829b93a`.
+The hardening branch carries a performance/stability wave on top of
+`f214e1d` with no config-key or CLI surface change (daemon-internal plus
+one new env toggle, `PANERU_LUA_WORKER`):
+
+- **Idle-when-static tick clock.** A quiet frame (nothing pending, no
+  model work, no writer gap, no probes) drops the repeating 60Hz timer and
+  arms a one-shot backstop for the next slow-cadence duty. Idle CPU falls
+  from ~1.4–3.2% to ~0%; real events still wake the tick immediately.
+- **No synchronous AX on the main runloop.** AX position commits and
+  verify reads run on the worker lane with a generation counter; a wedged
+  lane is retired and re-issued on a fresh queue. The restore grace's
+  expected write backlog no longer logs `ax: writer stall` warnings.
+- **One strip-motion arbiter.** The per-path flap latches are replaced by
+  a single arbiter, so columns ride the strip rigidly (no gap opens
+  between them mid-glide).
+- **Soft Space handling.** Inactive-Space members are stashed (never
+  vanish-dropped) and re-adopted on return, with a self-heal pass.
+- **Lua worker lane (default on).** The interpreter runs on its own
+  thread, so a slow handler or `paneru.exec` cannot stall the tick. Set
+  `PANERU_LUA_WORKER=0` to fall back to the in-tick Lua path.
+- **Real parity gate.** `scripts/verify-swift.sh` replays the committed
+  Rust trace corpus at `swift-daemon/Tests/FrameParityChecks/corpus/` and
+  fails (never skips) when it is missing; the installer's `--verify`
+  delegates to it.
+
+Earlier, parity verified against upstream `f214e1d` (prev. `829b93a`, build-only:
 CLua builds with `LUA_USE_POSIX`, `Presentation` declares its `Geometry`
 dependency — no daemon, CLI, config, or plist surface change): tunable glide
 pacing bounds (`animation_min/max_duration_ms`, stock 180/80/260 with a

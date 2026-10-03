@@ -1,20 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Verify the Swift daemon source: every *Checks runner plus the
-# FrameParityChecks corpus replay (same suite CI runs).
+# Verify the Swift daemon source: the full-product release build (zero
+# warnings), every *Checks runner (verdict-checked), and the
+# FrameParityChecks corpus replay.
 # Usage: bash scripts/verify-swift <swift-daemon-pkg-dir>
-# Env: PANERU_TRACE_DIR (pre-dumped Rust trace corpus); when unset and
-# cargo exists, the corpus is dumped like CI does into a temp dir.
+# Env: PANERU_TRACE_DIR (pre-dumped Rust trace corpus); when unset the
+#      daemon's committed corpus is used (never skipped).
+#
+# The daemon now owns a canonical gate at ../scripts/verify-swift.sh: it
+# censuses build warnings, requires every runner's own
+# "<Name>: all checks passed" verdict line, and replays the committed Rust
+# trace corpus — failing (never skipping) when a corpus is missing. Prefer
+# it so the installer verifies exactly what CI verifies. The fallback below
+# covers older sibling checkouts that predate the committed corpus.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CYAN=$'\033[0;36m'
 GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
 RESET=$'\033[0m'
 
 note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
+warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 pkg="${1:-$REPO_ROOT/../paneru/swift-daemon}"
 if [ ! -f "$pkg/Package.swift" ]; then
@@ -22,37 +32,80 @@ if [ ! -f "$pkg/Package.swift" ]; then
 	exit 1
 fi
 
-note "Running Swift checks suite..."
-checks_bindir="$(cd "$pkg" && swift build -c release --show-bin-path)" || exit 1
-if ! (cd "$pkg" && swift build -c release); then
+# Canonical gate in the sibling checkout (paneru c110095+). It is the single
+# source of truth: warning census, named runners with verdict checks, and the
+# committed-corpus parity replay. Delegate when it is present.
+canonical="$pkg/../scripts/verify-swift.sh"
+if [ -f "$canonical" ]; then
+	note "Delegating to the daemon's canonical gate ($canonical)..."
+	# The gate prints its own "verify-swift: OK" verdict and exits nonzero on
+	# any failure (build warnings included).
+	if ! bash "$canonical" --release; then
+		echo "  Canonical Swift gate failed — fix ../paneru/swift-daemon, then re-run." >&2
+		exit 1
+	fi
+	exit 0
+fi
+
+# Fallback: older checkouts without scripts/verify-swift.sh. Build the full
+# product list release (censusing warnings), then run every checks binary and
+# require its verdict line, then replay parity against the committed corpus
+# when it exists (dump it with cargo only if there is no corpus at all).
+note "Running Swift checks suite (fallback path)..."
+build_log="$(mktemp)"
+trap 'rm -f "$build_log"' EXIT
+if ! (cd "$pkg" && swift build -c release) >"$build_log" 2>&1; then
+	cat "$build_log"
 	echo "  Swift build failed — fix ../paneru/swift-daemon, then re-run." >&2
 	exit 1
 fi
+if grep -E 'warning:' "$build_log" >/dev/null; then
+	cat "$build_log"
+	echo "  Swift build produced warnings — fix ../paneru/swift-daemon, then re-run." >&2
+	exit 1
+fi
+ok "build: clean"
+
+checks_bindir="$(cd "$pkg" && swift build -c release --show-bin-path)" || exit 1
 failed=0
 for runner in "$checks_bindir"/*Checks; do
 	[ -x "$runner" ] || continue
 	case "$runner" in *.build|*.dSYM) continue ;; esac
-	if ! "$runner" >/dev/null 2>&1; then
+	if ! out="$("$runner" 2>&1)"; then
+		echo "$out"
 		echo "  $(basename "$runner") failed — fix ../paneru/swift-daemon, then re-run." >&2
+		failed=1
+		continue
+	fi
+	# Require the runner's own verdict as its final line, so a silently
+	# partial/skipped runner cannot pass.
+	if [ "$(printf '%s' "$out" | tail -1)" != "$(basename "$runner"): all checks passed" ]; then
+		echo "$out"
+		echo "  $(basename "$runner") did not report success (skipped or partial)." >&2
 		failed=1
 	fi
 done
 if [ "$failed" -ne 0 ]; then exit 1; fi
 
+corpus="$pkg/Tests/FrameParityChecks/corpus"
 trace_dir="${PANERU_TRACE_DIR:-}"
 trace_tmp=""
+if [ -z "$trace_dir" ] && [ -d "$corpus" ] && [ -n "$(ls -A "$corpus" 2>/dev/null)" ]; then
+	trace_dir="$corpus"
+fi
 if [ -z "$trace_dir" ]; then
 	if command -v cargo >/dev/null 2>&1; then
 		trace_tmp="$(mktemp -d)"
 		note "Dumping Rust trace corpus ($trace_tmp)..."
 		if ! (cd "$REPO_ROOT/../paneru" && PANERU_TRACE_OUT="$trace_tmp" cargo test --all-targets trace >/dev/null 2>&1); then
-			echo "  Rust trace dump failed — fix ../paneru, then re-run (or set PANERU_TRACE_DIR to a pre-dumped corpus)." >&2
+			echo "  Rust trace dump failed — fix ../paneru, then re-run (or set PANERU_TRACE_DIR)." >&2
 			rm -rf "$trace_tmp"
 			exit 1
 		fi
 		trace_dir="$trace_tmp"
 	else
-		note "No cargo and no PANERU_TRACE_DIR — skipping FrameParityChecks (needs a Rust trace corpus)"
+		warn "No committed corpus, no cargo, and no PANERU_TRACE_DIR — cannot run FrameParityChecks"
+		warn "This checkout predates the committed corpus; the checks above still ran."
 	fi
 fi
 if [ -n "$trace_dir" ]; then
@@ -63,4 +116,4 @@ if [ -n "$trace_dir" ]; then
 	fi
 fi
 [ -n "$trace_tmp" ] && rm -rf "$trace_tmp"
-ok "Swift checks passed"
+ok "Swift checks passed (fallback path)"

@@ -127,7 +127,15 @@ quit+restart, SIGTERM/SIGINT). Stacks split viewport height, per-window
 SLS corner radii (plus per-window `border_radius` rule overrides),
 epoch-clocked eased glides, async AX writes with ack
 mailbox + stall watchdog, focus-heal, SLS strip-per-Space layouts, and
-modifier-armed cross-display pointer drags are live. Model focus actuates
+modifier-armed cross-display pointer drags are live. The tick is
+idle-when-static — a quiet frame drops the 60Hz timer and sleeps until
+the next slow-cadence duty or a real event, so a rested daemon costs
+~0% CPU instead of a busy display-rate loop — and all AX work (commits
+and verify reads) rides the worker lane, never the runloop that also owns
+the event tap; a wedged lane is retired and re-issued on a fresh queue.
+The Lua interpreter runs on its own thread too (so a slow handler or
+`paneru.exec` cannot stall the tick); set `PANERU_LUA_WORKER=0` in the
+agent env to fall back to the in-tick Lua path. Model focus actuates
 the OS without stealing key (hover/ambient arrivals claim only, close
 heals to the nearest survivor, and focus stranded on a hidden window (minimized
 or stashed on an inactive Space) heals to the nearest visible neighbor, clearing
@@ -158,14 +166,20 @@ and focus-stranding repairs, `move:` lines log
 cross-display transfers with source/target/members, and `stuck:` lines list
 windows the audit repaired three times running (retile watchlist) alongside
 `ax:` lane-retirement and `display:` refresh notes —
-`grep -E '^(drift|focus|overlap|perf|move|stuck|ax|display): ' /tmp/com.github.iv-lite.paneru-swift_$(id -u).out.log | tail`.
+`grep -E '^(drift|focus|overlap|perf|move|stuck|ax|display|space): ' /tmp/com.github.iv-lite.paneru-swift_$(id -u).out.log | tail`.
 Opt-in slow-tick timing for jank triage: `PANERU_PERF=1` in the agent env
 (restart to toggle) logs `perf:` phase breakdowns past 8ms.
 Release installs are
 unaffected (no Swift binary ships in release tarballs). With `--verify`,
-every Swift checks runner runs, then the Rust trace corpus is dumped
-like CI (`PANERU_TRACE_OUT cargo test trace`, or your `PANERU_TRACE_DIR`)
-and `FrameParityChecks` diffs the replay. Never set
+every Swift checks runner runs under the daemon's own gate
+(`scripts/verify-swift.sh` in the sibling checkout): the full-product
+release build must be warning-free, each runner must report its
+`all checks passed` verdict (a silently partial runner fails), and
+`FrameParityChecks` replays the committed Rust trace corpus at
+`swift-daemon/Tests/FrameParityChecks/corpus/` — failing, never skipping,
+when the corpus is missing. The installer delegates to that gate when the
+sibling checkout has it and falls back to a glob-and-dump path for older
+checkouts. Never set
 `PANERU_SWIFT_DAEMON` yourself: upstream `1`/`shadow` hard-errors the Rust
 daemon at launch. One path still needs a real login to verify: the
 launchd-held Mach port (`pq` against a hand-run daemon gets no reply —

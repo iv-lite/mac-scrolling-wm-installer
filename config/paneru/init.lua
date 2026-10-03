@@ -6,6 +6,11 @@
 -- All Paneru keybindings live in BINDINGS below (command vs chord);
 -- helpers/generate-shortcuts-json turns this table into the
 -- mac-cheatsheet-viewer JSON.
+--
+-- paneru-swift runs the Lua interpreter on its own thread by default, so
+-- a slow handler or `paneru.exec` cannot stall window management. Set
+-- PANERU_LUA_WORKER=0 in the agent environment to fall back to the in-tick
+-- interpreter (restart to toggle).
 
 local BINDINGS = {
   -- ─── Window focus (Cmd+Option+Arrows) ───
@@ -104,6 +109,10 @@ paneru.setup {
     -- since fork 7496610 (replaces the old animation_speed knob). Older
     -- binaries silently ignore unknown keys and glide on their own
     -- default, so new keys are safe on every build.
+    -- paneru-swift's tick is idle-when-static: a quiet frame drops the
+    -- display-rate timer and sleeps until the next slow-cadence duty or a
+    -- real event, so a rested daemon costs ~0% CPU — the glides below run
+    -- only while something is actually moving.
     animations = true,
     -- Tween length for driven moves in milliseconds, clamped 0–2000.
     -- Longer reads as a visible strip glide; shorter as snappier.
@@ -125,6 +134,10 @@ paneru.setup {
     -- supervised workers with sync fallback (restored in d67df09 —
     -- supervision was reverted in f5c1535) plus a degrade-to-sync
     -- fallback ladder with automatic recovery (837a6e4).
+    -- paneru-swift keeps every AX call off the main runloop too: commits
+    -- and verifies ride the worker lane, a wedged lane is retired and
+    -- re-issued on a fresh queue (generation counter), and the restore
+    -- grace's expected write backlog no longer logs stall warnings.
     -- Apps needing the enhanced-UI workaround always stay synchronous; set
     -- to false if testing shows regressions on your app mix. Older binaries
     -- silently ignore it.
