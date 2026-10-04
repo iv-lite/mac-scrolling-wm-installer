@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Live reload/restart for --swift development.
+# Live reload/restart for paneru-swift development.
 #   bash scripts/dev-swift-watch [--once]
 #
 # Watches two things:
 #   1. config/paneru/init.lua -> copy to ~/.config/paneru/init.lua.
 #      The Swift daemon hot-reloads it in place (DispatchSource watch,
 #      parse-then-swap) — no restart needed.
-#   2. ../paneru/swift-daemon/Sources (+ Package.swift) -> swift build,
+#   2. ../paneru-swift/swift-daemon/Sources (+ Package.swift) -> swift build,
 #      install to bindir, re-sign with the stable identity, then
 #      `launchctl kickstart` (restart in place, preserves the Mach
 #      service) + `pq state` health poll.
 #
-# Requires --prefer-local-builds layout (sibling ../paneru checkout).
+# Requires --prefer-local-builds layout (sibling ../paneru-swift checkout).
 # Uses fswatch when available, else a 1s poll loop. Ctrl-C to stop.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,7 +29,7 @@ note() { echo "  ${CYAN}→ $*${RESET}"; }
 ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
-PKG="$REPO_ROOT/../paneru/swift-daemon"
+PKG="$REPO_ROOT/../paneru-swift/swift-daemon"
 CONFIG_SRC="$REPO_ROOT/config/paneru/init.lua"
 CONFIG_DST="$HOME/.config/paneru/init.lua"
 POLL_INTERVAL="${PANERU_LIVE_POLL:-1}"
@@ -68,8 +68,8 @@ pick_bindir() {
 
 resolve_sign_identity() {
 	# Prefer the daemon repo's canonical copy; fall back to the vendored one.
-	if [ -f "$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity" ]; then
-		bash "$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity" 2>/dev/null || echo "-"
+	if [ -f "$REPO_ROOT/../paneru-swift/swift-daemon/ensure-signing-identity" ]; then
+		bash "$REPO_ROOT/../paneru-swift/swift-daemon/ensure-signing-identity" 2>/dev/null || echo "-"
 	else
 		bash "$SCRIPT_DIR/ensure-signing-identity" 2>/dev/null || echo "-"
 	fi
@@ -118,7 +118,7 @@ rebuild_and_restart() {
 	fi
 	ok "Installed $bin + $pq_bin"
 	if ! swift_start_agent; then
-		warn "Agent plist missing — re-run ./install --prefer-local-builds --swift first."
+		warn "Agent plist missing — re-run ./install --prefer-local-builds first."
 		return 1
 	fi
 	sleep 2

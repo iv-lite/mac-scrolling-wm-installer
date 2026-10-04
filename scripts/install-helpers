@@ -127,10 +127,11 @@ build_viewer_local() {
 	ok "mac-cheatsheet-viewer source ready in $VIEWER_SRC"
 
 	note "Building mac-cheatsheet-viewer.app..."
-	# Unlike ../paneru (pinned toolchain via rust-toolchain.toml + rustup
-	# in install-paneru), the viewer has no pinned toolchain, so whatever
+	# The viewer has no pinned toolchain, so whatever
 	# cargo is available builds it; only when cargo is missing entirely is
-	# a bare Homebrew rust installed.
+	# a bare Homebrew rust installed. (This is a requirement of the
+	# mac-cheatsheet-viewer Tauri build — unrelated to Paneru, which is
+	# Swift-only now.)
 	if ! command -v cargo >/dev/null 2>&1; then
 		note "Installing Rust toolchain via Homebrew..."
 		brew install rust

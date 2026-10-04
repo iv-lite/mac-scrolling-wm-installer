@@ -16,12 +16,13 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
-# Install Paneru from the iv-lite fork (native previous-display support)
+# Install paneru-swift (the only daemon; the Rust daemon is gone).
 # ─────────────────────────────────────────────────────────────
-# Same release-selection strategy as install-helpers: the newest tag in the
-# GitHub release list (not the special "latest" endpoint, which can drift;
-# drafts excluded, releases without the tarball skipped).
-# PANERU_REPO changes the repo, PANERU_TAG pins an exact tag.
+# Default: download the paneru-swift release tarball from GitHub.
+# With --prefer-local-builds (PREFER_LOCAL_BUILDS=1): build from
+# the sibling ../paneru-swift/swift-daemon checkout instead (paneru-swift,
+# RenderPlist, pq) — no release fallback on build failure.
+# PANERU_TAG pins an exact release tag (PANERU_REPO changes the repo).
 PANERU_REPO="${PANERU_REPO:-iv-lite/paneru}"
 if [ -n "${PANERU_TAG:-}" ]; then
 	PANERU_SOURCE="https://api.github.com/repos/$PANERU_REPO/releases/tags/$PANERU_TAG"
@@ -31,20 +32,8 @@ else
 	PANERU_LABEL="$PANERU_REPO (newest release in list)"
 fi
 
-# Upstream no longer converges anything: `paneru install` is write-once
-# (skips when the plist exists) and the plist pins the invoking binary's
-# path. So this script picks the install dir itself, copies the binary
-# there, signs it with the persistent identity from
-# scripts/ensure-signing-identity (stable identifier+certificate DR, so the
-# Accessibility grant survives rebuilds — ad-hoc `codesign -s -` is the
-# cdhash-only fallback), and invokes *that* binary's `install`/`install-app`
-# so plist + shim point at the installed path. Updates re-lay the plist via
-# uninstall+install. grant-permissions (next step) grants only when missing;
-# only a failed enable-services health poll falls back to repair-paneru
-# (the sole revoke+re-grant path).
-# Preferred dir is the brew bin dir (already on default macOS PATH, no PATH
-# hacks needed for later steps); ~/.local/bin is the fallback when neither
-# brew dir is writable.
+# The installed Swift daemon's signing identity (upstream Swift label).
+PANERU_SWIFT_ID="$PANERU_SWIFT_LABEL"
 
 pick_bindir() {
 	if [ -n "${PANERU_BINDIR:-}" ]; then
@@ -65,7 +54,7 @@ pick_bindir() {
 }
 
 # Persistent signing identity for sticky Accessibility grants. Resolved once
-# per run via the canonical daemon copy (../paneru/swift-daemon) when a
+# per run via the canonical daemon copy (../paneru-swift/swift-daemon) when a
 # sibling checkout exists, else this repo's byte-identical fallback, else
 # $PANERU_SIGN_IDENTITY override for a paid Developer ID. "-" means ad-hoc
 # fallback: installs work, but each byte change needs a fresh grant.
@@ -75,10 +64,8 @@ resolve_sign_identity() {
 		return 0
 	fi
 	local helper="" id
-	# Prefer the daemon repo's canonical copy when the sibling is present;
-	# fall back to the vendored copy so Rust-only installs stay standalone.
-	if [ -f "$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity" ]; then
-		helper="$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity"
+	if [ -f "$REPO_ROOT/../paneru-swift/swift-daemon/ensure-signing-identity" ]; then
+		helper="$REPO_ROOT/../paneru-swift/swift-daemon/ensure-signing-identity"
 	else
 		helper="$SCRIPT_DIR/ensure-signing-identity"
 	fi
@@ -98,11 +85,9 @@ swift_dr_is_stable() {
 	local dr
 	dr="$(codesign -d -r- "$bin" 2>/dev/null | grep -E 'designated =>' || true)"
 	[ -n "$dr" ] || return 1
-	# cdhash-only DR looks like: designated => cdhash H"..."
 	case "$dr" in
 		*cdhash*) return 1 ;;
 	esac
-	# Stable DR names the identifier and a certificate/anchor.
 	case "$dr" in
 		*identifier*|*certificate*|*anchor*) return 0 ;;
 	esac
@@ -148,204 +133,234 @@ sign_bin() {
 	return 0
 }
 
-fetch_paneru() {
-	local tar_url tmp staged bin bindir
-	bindir="$(pick_bindir)" || return 1
-	bin="$bindir/paneru"
-	tmp="$(mktemp -d)"
-	# --prefer-local-builds: build the sibling checkout instead of
-	# downloading a release. Builds in place (keeps target/ cache, tests
-	# dirty WIP as-is unless PANERU_VERIFY=1 / --verify). Failures abort —
-	# no release fallback.
-	# Plain `cargo build --release --bin paneru` is the upstream-suggested
-	# command: default features (lua + vendored LuaJIT) need no system Lua
-	# or pkg-config, and .cargo/config.toml routes the link through the
-	# repo's rustc wrapper (assets/rustc-sign.sh), which ad-hoc-signs the
-	# final binary with the stable identifier at compile time. An exported
-	# RUSTC_WRAPPER (e.g. sccache, as in CI) overrides that wrapper — the
-	# install-time re-pin below covers that case.
-	if [ -n "${PREFER_LOCAL_BUILDS:-}" ] && [ -f "$REPO_ROOT/../paneru/Cargo.toml" ]; then
-		note "Building Paneru from sibling checkout ($REPO_ROOT/../paneru)..."
-		# Command-line-tools SDKs: paneru's build.rs hard-requires them.
-		if ! xcode-select -p >/dev/null 2>&1; then
-			rm -rf "$tmp"
-			echo "  Xcode command-line tools not found — the Paneru build needs their SDKs." >&2
-			echo "  Run 'xcode-select --install', then re-run ./install." >&2
-			return 1
-		fi
-		# Toolchain: paneru pins the minor release in rust-toolchain.toml
-		# (every stable bump invalidates the whole target cache), honored
-		# via rustup. A bare Homebrew cargo ignores the pin and drifts with
-		# brew upgrades, so provision rustup when cargo is missing and put
-		# its shims first so the pin applies even next to a brewed cargo.
-		if ! command -v cargo >/dev/null 2>&1; then
-			if ! command -v rustup >/dev/null 2>&1; then
-				note "Installing Rust via rustup (honors ../paneru/rust-toolchain.toml)..."
-				if ! command -v brew >/dev/null 2>&1; then
-					rm -rf "$tmp"
-					echo "  Neither cargo/rustup nor Homebrew found — install rustup from https://rustup.rs, then re-run." >&2
-					return 1
-				fi
-				brew install rustup-init
-				rustup-init -y --no-modify-path
-				ok "rustup installed"
-			fi
-			# shellcheck disable=SC1091
-			. "$HOME/.cargo/env" 2>/dev/null || true
-		fi
-		if command -v rustup >/dev/null 2>&1; then
-			if [ -d "$HOME/.cargo/bin" ]; then
-				export PATH="$HOME/.cargo/bin:$PATH"
-			fi
-			if ! (cd "$REPO_ROOT/../paneru" && rustup toolchain install); then
-				rm -rf "$tmp"
-				echo "  Pinned Rust toolchain install failed — aborting." >&2
-				return 1
-			fi
-		else
-			pin="$(grep -E '^channel' "$REPO_ROOT/../paneru/rust-toolchain.toml" | grep -oE '[0-9]+\.[0-9]+' | head -1 || true)"
-			got="$(rustc --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-			if [ -n "${pin:-}" ] && [ -n "${got:-}" ] && [ "${got%.*}" != "$pin" ]; then
-				warn "rustc $got does not match ../paneru/rust-toolchain.toml (channel $pin); install rustup for reproducible builds"
-			fi
-		fi
-		if [ -n "${RUSTC_WRAPPER:-}" ]; then
-			note "RUSTC_WRAPPER=$RUSTC_WRAPPER overrides the repo rustc-sign wrapper — the install-time re-pin below covers signing."
-		fi
-		# Opt-in gate (same suite CI runs): fmt, clippy, tests.
-		if [ -n "${PANERU_VERIFY:-}" ]; then
-			note "Verifying Paneru source (fmt, clippy, tests)..."
-			if ! (cd "$REPO_ROOT/../paneru" && cargo fmt --check); then
-				rm -rf "$tmp"
-				echo "  Paneru 'cargo fmt --check' failed — run 'cargo fmt' in ../paneru, then re-run." >&2
-				return 1
-			fi
-			if ! (cd "$REPO_ROOT/../paneru" && cargo clippy --all-targets -- -D warnings); then
-				rm -rf "$tmp"
-				echo "  Paneru clippy failed — fix the warnings in ../paneru, then re-run." >&2
-				return 1
-			fi
-			test_failed=0
-			if command -v cargo-nextest >/dev/null 2>&1; then
-				(cd "$REPO_ROOT/../paneru" && cargo nextest run --workspace --all-targets) || test_failed=1
-			elif ! (cd "$REPO_ROOT/../paneru" && cargo test --all-targets); then
-				test_failed=1
-			fi
-			if [ "$test_failed" -ne 0 ]; then
-				rm -rf "$tmp"
-				echo "  Paneru tests failed — fix ../paneru, then re-run." >&2
-				return 1
-			fi
-			ok "Paneru source verified"
-		fi
-		if ! (cd "$REPO_ROOT/../paneru" && cargo build --release --bin paneru); then
-			rm -rf "$tmp"
-			echo "  Local Paneru build failed — aborting (no release fallback with --prefer-local-builds)." >&2
-			return 1
-		fi
-		staged="$REPO_ROOT/../paneru/target/release/paneru"
-		if [ ! -x "$staged" ]; then
-			note "Build finished but $staged is missing or not executable"
-			rm -rf "$tmp"
-			return 1
-		fi
-		ok "Paneru built from local source"
-	else
-		if [ -n "${PREFER_LOCAL_BUILDS:-}" ]; then
-			note "No sibling checkout at $REPO_ROOT/../paneru — falling back to release download"
-		fi
-		note "Fetching Paneru release ($PANERU_LABEL)..."
-		tar_url="$(curl -fsSL "$PANERU_SOURCE" \
-			| grep -o '"browser_download_url": *"[^"]*paneru-[^"]*\.tar\.gz"' | head -1 | cut -d'"' -f4 || true)"
-		if [ -z "$tar_url" ]; then
-			note "No paneru-*.tar.gz asset on release ($PANERU_LABEL)"
-			rm -rf "$tmp"
-			return 1
-		fi
-		note "Downloading $(basename "$tar_url")..."
-		if ! curl -fsSL "$tar_url" -o "$tmp/paneru.tgz"; then
-			note "Download failed"
-			rm -rf "$tmp"
-			return 1
-		fi
-		if ! tar -xzf "$tmp/paneru.tgz" -C "$tmp"; then
-			note "Extraction failed"
-			rm -rf "$tmp"
-			return 1
-		fi
-		staged="$(find "$tmp" -maxdepth 2 -name paneru -type f | head -1 || true)"
-		if [ -z "$staged" ]; then
-			note "No paneru binary inside the release tarball"
-			rm -rf "$tmp"
-			return 1
-		fi
+# swift-daemon is Swift 6 language mode (swift-tools-version 6.0): older
+# toolchains fail deep in the build, so gate source builds here with a
+# clear message. Unparseable output only warns — future toolchains must
+# never hard-block on this check.
+swift_toolchain_six() {
+	local swift_major
+	swift_major="$(swift --version 2>&1 | grep -oE 'Swift version [0-9]+' | grep -oE '[0-9]+' | head -1 || true)"
+	if [ -n "$swift_major" ] && [ "$swift_major" -lt 6 ]; then
+		echo "Swift $swift_major detected — paneru-swift needs the Swift 6 toolchain (Xcode 16+)." >&2
+		echo "Update Xcode (App Store) or the command-line tools ('xcode-select --install'), then re-run." >&2
+		return 1
 	fi
-	# Stop the running daemon before overwriting its binary. The plist
-	# below is re-laid from the installed binary, so every install vector
-	# lands on the same path and the service never strands an old daemon.
-	if command -v paneru >/dev/null 2>&1; then
-		paneru stop >/dev/null 2>&1 || true
-	fi
-	mkdir -p "$(dirname "$bin")"
-	# Byte-identical: skip the copy and the re-sign (same bytes ⇒ same
-	# binary); the plist/app-shim steps further down still run (they live
-	# outside fetch_paneru). With the stable signing identity, changed-bytes
-	# installs keep the same TCC identity — grant-permissions (next step)
-	# grants only when missing, a no-op here.
-	if [ -e "$bin" ] && cmp -s "$staged" "$bin"; then
-		rm -rf "$tmp"
-		ok "Paneru binary unchanged ($bin)"
-		return 0
-	fi
-	cp "$staged" "$bin"
-	chmod +x "$bin"
-	rm -rf "$tmp"
-	hash -r 2>/dev/null || true
-	if [ -n "${PREFER_LOCAL_BUILDS:-}" ] && [ -f "$REPO_ROOT/../paneru/Cargo.toml" ]; then
-		ok "Paneru installed to $bin (from local source build)"
-	else
-		ok "Paneru installed to $bin (from GitHub release)"
-	fi
-	# Signing identity: the persistent identity from ensure-signing-identity
-	# gives a stable identifier+certificate DR so the Accessibility grant
-	# survives rebuilds (local builds already carry the identifier via the
-	# repo rustc wrapper unless RUSTC_WRAPPER overrides it; release tarballs
-	# may not — either way we re-sign here). grant-permissions (next step)
-	# grants only when missing.
-	sign_bin "com.github.karinushka.paneru" "$bin" || true
-	note "Binary (re)installed — grant-permissions (next) grants Accessibility"
-	note "only when missing (stable identity keeps existing grants valid)."
 	return 0
 }
 
-# See docs/version-floor.md for the fork feature floor (event-tap
-# watchdog, previousdisplay commands, animation/gaps/ax_writer keys).
-# ─────────────────────────────────────────────────────────────
-# shellcheck disable=SC2034
-PANERU_SWIFT_ID="$PANERU_SWIFT_LABEL"
+# Render the launchd agent plist for the installed binary and pin the
+# PANERU_MACH_SERVICE env var to the Swift label (swift-common.sh's pq
+# wrapper relies on it). `render` is an optional RenderPlist binary from a
+# source build; when absent (release tarballs do not ship it) the plist is
+# emitted here, byte-faithful in keys to the daemon's `launchAgentPlist`
+# (`swift-daemon/Sources/Service/Service.swift`): KeepAlive
+# {Crashed, !SuccessfulExit}, Label, MachServices, Nice -20, ProcessType
+# Interactive, Program, EnvironmentVariables {NO_COLOR, RUST_LOG,
+# XDG_CONFIG_HOME}, RunAtLoad, ThrottleInterval 30, StandardOut/ErrorPath.
+render_agent_plist_bash() {
+	local bin="$1" plist="$2" out_log="$3" err_log="$4" xdg_home="$5" rust_log
+	rust_log="${RUST_LOG:-info}"
+	cat > "$plist" <<-EOF
+		<?xml version="1.0" encoding="UTF-8"?>
+		<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+		<plist version="1.0">
+		  <dict>
+		    <key>KeepAlive</key>
+		    <dict>
+		      <key>Crashed</key>
+		      <true />
+		      <key>SuccessfulExit</key>
+		      <false />
+		    </dict>
+		    <key>Label</key>
+		    <string>$PANERU_SWIFT_LABEL</string>
+		    <key>MachServices</key>
+		    <dict>
+		      <key>$PANERU_SWIFT_LABEL</key>
+		      <true />
+		    </dict>
+		    <key>Nice</key>
+		    <integer>-20</integer>
+		    <key>ProcessType</key>
+		    <string>Interactive</string>
+		    <key>Program</key>
+		    <string>$bin</string>
+		    <key>EnvironmentVariables</key>
+		    <dict>
+		      <key>NO_COLOR</key>
+		      <string>1</string>
+		      <key>RUST_LOG</key>
+		      <string>$rust_log</string>
+		      <key>XDG_CONFIG_HOME</key>
+		      <string>$xdg_home</string>
+		    </dict>
+		    <key>RunAtLoad</key>
+		    <true />
+		    <key>ThrottleInterval</key>
+		    <integer>30</integer>
+		    <key>StandardErrorPath</key>
+		    <string>$err_log</string>
+		    <key>StandardOutPath</key>
+		    <string>$out_log</string>
+		  </dict>
+		</plist>
+		EOF
+}
 
-fetch_swift_daemon() {
-	local bindir bin staged render pkg plist out_log err_log xdg_home
-	if [ -z "${PANERU_SWIFT:-}" ]; then
-		return 0
+# Render the launchd agent plist for the installed binary and pin the
+# PANERU_MACH_SERVICE env var to the Swift label (swift-common.sh's pq
+# wrapper relies on it). Shared by release and source installs.
+render_agent_plist() {
+	local bin="$1" render="$2" plist out_log err_log xdg_home
+	plist="$HOME/Library/LaunchAgents/$PANERU_SWIFT_LABEL.plist"
+	out_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log"
+	err_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log"
+	xdg_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+	mkdir -p "$(dirname "$plist")"
+	if [ -n "$render" ] && [ -x "$render" ]; then
+		if ! "$render" "$PANERU_SWIFT_LABEL" "$bin" "$out_log" "$err_log" "$xdg_home" > "$plist"; then
+			note "RenderPlist failed — skipping agent plist"
+			return 1
+		fi
+	else
+		render_agent_plist_bash "$bin" "$plist" "$out_log" "$err_log" "$xdg_home"
 	fi
-	pkg="$REPO_ROOT/../paneru/swift-daemon"
-	if [ ! -f "$REPO_ROOT/../paneru/Cargo.toml" ] || [ ! -f "$pkg/Package.swift" ]; then
-		echo "  --swift needs a sibling checkout with swift-daemon ($pkg/Package.swift missing) — aborting." >&2
+	if command -v /usr/libexec/PlistBuddy >/dev/null 2>&1; then
+		/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:PANERU_MACH_SERVICE string $PANERU_SWIFT_LABEL" "$plist" >/dev/null 2>&1 \
+			|| /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:PANERU_MACH_SERVICE $PANERU_SWIFT_LABEL" "$plist" >/dev/null 2>&1 \
+			|| warn "Could not pin PANERU_MACH_SERVICE in $plist — pq may not reach a bootstrapped agent"
+	else
+		warn "PlistBuddy not found — skipping PANERU_MACH_SERVICE pin (pq may not reach a bootstrapped agent)"
+	fi
+	touch "$out_log" "$err_log" 2>/dev/null || true
+	ok "Swift agent plist rendered ($plist)"
+}
+
+# Install the two staged binaries (paneru-swift + pq) into the bindir:
+# stop a running agent, byte-identical fast path, sign with the persistent
+# identity, stamp, and render the agent plist. `staged` and `pg_staged` are
+# absolute paths to freshly built or downloaded binaries.
+install_staged_swift() {
+	local staged="$1" render="$2" pq_staged="$3" bindir bin pq_bin
+	bindir="$(pick_bindir)" || return 1
+	bin="$bindir/paneru-swift"
+	pq_bin="$bindir/pq"
+	# Migrate the previous Swift label once (upstream d04db61 renamed the
+	# Swift identity): stop the old agent and drop its plist/logs so two
+	# Swift agents never overlap.
+	swift_migrate_old_agent
+	# Boot out a running Swift agent before overwriting its binary.
+	if swift_bootstrapped; then
+		launchctl bootout "gui/$(id -u)/$PANERU_SWIFT_LABEL" >/dev/null 2>&1 || true
+		sleep 1
+	fi
+	mkdir -p "$(dirname "$bin")"
+	# No stable signing identity, no install: ad-hoc signatures embed a
+	# cdhash-only designated requirement, so every rebuild looks like a
+	# new app to TCC and voids the Accessibility grant — the next boot
+	# then tiles nothing, silently. Byte-identical reinstalls are exempt
+	# (same bytes ⇒ same cdhash ⇒ the live grant still applies).
+	if [ ! -e "$bin" ] || ! cmp -s "$staged" "$bin"; then
+		if [ "$(resolve_sign_identity)" = "-" ] && [ -z "${PANERU_ALLOW_ADHOC:-}" ]; then
+			echo "  Refusing install: no stable signing identity (ad-hoc fallback)." >&2
+			echo "  An ad-hoc paneru-swift loses its Accessibility grant on the next rebuild." >&2
+			echo "  Run 'bash scripts/ensure-signing-identity', then re-run — or override once with PANERU_ALLOW_ADHOC=1." >&2
+			return 1
+		fi
+	fi
+	# Byte-identical: skip copy + re-sign ONLY when the on-disk binary is
+	# already signed with the stable identity. A byte-identical ad-hoc
+	# binary (e.g. installed by an older tool) must be re-signed here, or
+	# it keeps its cdhash-only DR and voids the grant on the next rebuild.
+	if [ -e "$bin" ] && cmp -s "$staged" "$bin" && swift_dr_is_stable "$bin"; then
+		ok "Swift daemon binary unchanged ($bin)"
+	else
+		cp "$staged" "$bin"
+		chmod +x "$bin"
+		hash -r 2>/dev/null || true
+		ok "Swift daemon installed to $bin"
+		sign_bin "$PANERU_SWIFT_ID" "$bin" || true
+	fi
+	# Identity stamp: identifier + cdhash + path. grant-permissions
+	# compares it on the next run — any drift (rebuild, rename, move)
+	# forces the grant flow instead of trusting stale TCC rows.
+	swift_write_stamp "$bin"
+	# pq rides along unsigned: it needs no Accessibility grant (it only
+	# talks to the daemon over XPC), so no identifier pinning here.
+	if [ -e "$pq_bin" ] && cmp -s "$pq_staged" "$pq_bin"; then
+		ok "pq unchanged ($pq_bin)"
+	else
+		cp "$pq_staged" "$pq_bin"
+		chmod +x "$pq_bin"
+		hash -r 2>/dev/null || true
+		ok "pq installed to $pq_bin (state queries + script-state CLI)"
+	fi
+	render_agent_plist "$bin" "$render" || return 1
+	note "Swift daemon (re)installed with a stable signing identity — the"
+	note "renamed identifier (upstream renamed to com.github.iv-lite.paneru-swift)"
+	note "re-prompts once: remove the stale old Swift Accessibility row, toggle"
+	note "the new paneru-swift row on; later rebuilds keep the grant."
+	note "grant-permissions (next) grants only when missing; enable-services"
+	note "bootstraps the agent."
+	return 0
+}
+
+# ─────────────────────────────────────────────────────────────
+# Default path: download the paneru-swift release tarball.
+# ─────────────────────────────────────────────────────────────
+fetch_swift_release() {
+	local tmp tar_url staged render pq_staged
+	note "Fetching paneru-swift release ($PANERU_LABEL)..."
+	tar_url="$(curl -fsSL "$PANERU_SOURCE" \
+		| grep -o '"browser_download_url": *"[^"]*paneru-swift-[^"]*\.tar\.gz"' | head -1 | cut -d'"' -f4 || true)"
+	if [ -z "$tar_url" ]; then
+		note "No paneru-swift-*.tar.gz asset on release ($PANERU_LABEL)"
 		return 1
+	fi
+	tmp="$(mktemp -d)"
+	trap 'rm -rf "$tmp"' EXIT
+	note "Downloading $(basename "$tar_url")..."
+	if ! curl -fsSL "$tar_url" -o "$tmp/paneru-swift.tgz"; then
+		note "Download failed"
+		return 1
+	fi
+	if ! tar -xzf "$tmp/paneru-swift.tgz" -C "$tmp"; then
+		note "Extraction failed"
+		return 1
+	fi
+	staged="$(find "$tmp" -maxdepth 3 -name paneru-swift -type f | head -1 || true)"
+	pq_staged="$(find "$tmp" -maxdepth 3 -name pq -type f | head -1 || true)"
+	if [ -z "$staged" ] || [ ! -x "$staged" ] || [ -z "$pq_staged" ] || [ ! -x "$pq_staged" ]; then
+		note "Release tarball is missing the paneru-swift and/or pq binary"
+		return 1
+	fi
+	# Release tarballs do not ship RenderPlist (daemon-build-only): the
+	# plist falls back to the bash template inside install_staged_swift.
+	render="$(find "$tmp" -maxdepth 3 -name RenderPlist -type f | head -1 || true)"
+	[ -n "$render" ] && [ -x "$render" ] || render=""
+	ok "paneru-swift release downloaded ($(basename "$tar_url"))"
+	install_staged_swift "$staged" "$render" "$pq_staged"
+	local status=$?
+	rm -rf "$tmp"
+	trap - EXIT
+	return "$status"
+}
+
+# ─────────────────────────────────────────────────────────────
+# --prefer-local-builds path: build from the sibling ../paneru-swift checkout.
+# ─────────────────────────────────────────────────────────────
+fetch_swift_local() {
+	local pkg staged render pq_staged bindir
+	pkg="$REPO_ROOT/../paneru-swift/swift-daemon"
+	if [ ! -f "$pkg/Package.swift" ]; then
+		note "No sibling checkout with swift-daemon ($pkg/Package.swift missing) — falling back to release download"
+		return 2
 	fi
 	if ! command -v swift >/dev/null 2>&1; then
 		echo "  'swift' not found — install the Xcode command-line tools ('xcode-select --install'), then re-run." >&2
 		return 1
 	fi
-	# swift-daemon is Swift 6 language mode (swift-tools-version 6.0):
-	# older toolchains fail deep in the build, so gate here with a clear
-	# message. Unparseable output only warns — future toolchains must
-	# never hard-block on this check.
-	swift_major="$(swift --version 2>&1 | grep -oE 'Swift version [0-9]+' | grep -oE '[0-9]+' | head -1 || true)"
-	if [ -n "$swift_major" ] && [ "$swift_major" -lt 6 ]; then
-		echo "  Swift $swift_major detected — swift-daemon needs the Swift 6 toolchain (Xcode 16+)." >&2
-		echo "  Update Xcode (App Store) or the command-line tools ('xcode-select --install'), then re-run." >&2
+	if ! swift_toolchain_six; then
 		return 1
 	fi
 	note "Building Swift daemon from sibling checkout ($pkg)..."
@@ -364,115 +379,24 @@ fetch_swift_daemon() {
 	staged="$bindir/paneru-swift"
 	render="$bindir/RenderPlist"
 	pq_staged="$bindir/pq"
-	if [ ! -x "$staged" ]; then
-		note "Swift build finished but $staged is missing or not executable"
-		return 1
-	fi
-	if [ ! -x "$render" ]; then
-		note "Swift build finished but $render is missing or not executable"
-		return 1
-	fi
-	if [ ! -x "$pq_staged" ]; then
-		note "Swift build finished but $pq_staged is missing or not executable"
+	if [ ! -x "$staged" ] || [ ! -x "$render" ] || [ ! -x "$pq_staged" ]; then
+		note "Swift build finished but one of paneru-swift/RenderPlist/pq is missing or not executable"
 		return 1
 	fi
 	ok "Swift daemon built from local source"
-	bindir="$(pick_bindir)" || return 1
-	bin="$bindir/paneru-swift"
-	# Migrate the previous Swift label once (upstream d04db61 renamed the
-	# Swift identity; the Rust agent is untouched): stop the old agent and
-	# drop its plist/logs so two Swift agents never overlap.
-	swift_migrate_old_agent
-	# Boot out a running Swift agent before overwriting its binary.
-	if swift_bootstrapped; then
-		launchctl bootout "gui/$(id -u)/$PANERU_SWIFT_LABEL" >/dev/null 2>&1 || true
-		sleep 1
-	fi
-	mkdir -p "$(dirname "$bin")"
-	# No stable signing identity, no install: ad-hoc signatures embed a
-	# cdhash-only designated requirement, so every rebuild looks like a
-	# new app to TCC and voids the Accessibility grant — the next boot
-	# then tiles nothing, silently. Byte-identical reinstalls are exempt
-	# (same bytes ⇒ same cdhash ⇒ the live grant still applies).
-	if [ ! -e "$bin" ] || ! cmp -s "$staged" "$bin"; then
-		if [ "$(resolve_sign_identity)" = "-" ] && [ -z "${PANERU_ALLOW_ADHOC:-}" ]; then
-			echo "  Refusing Swift install: no stable signing identity (ad-hoc fallback)." >&2
-			echo "  An ad-hoc paneru-swift loses its Accessibility grant on the next rebuild." >&2
-			echo "  Run 'bash scripts/ensure-signing-identity', then re-run — or override once with PANERU_ALLOW_ADHOC=1." >&2
-			return 1
-		fi
-	fi
-	# Byte-identical: skip copy + re-sign ONLY when the on-disk binary is
-	# already signed with the stable identity. A byte-identical ad-hoc
-	# binary (e.g. installed by an older tool) must be re-signed here, or
-	# it keeps its cdhash-only DR and voids the grant on the next rebuild.
-	if [ -e "$bin" ] && cmp -s "$staged" "$bin" && swift_dr_is_stable "$bin"; then
-		ok "Swift daemon binary unchanged ($bin)"
-	else
-		cp "$staged" "$bin"
-		chmod +x "$bin"
-		hash -r 2>/dev/null || true
-		ok "Swift daemon installed to $bin (from local source build)"
-		sign_bin "$PANERU_SWIFT_ID" "$bin" || true
-	fi
-	# Identity stamp: identifier + cdhash + path. grant-permissions
-	# compares it on the next run — any drift (rebuild, rename, move)
-	# forces the grant flow instead of trusting stale TCC rows.
-	swift_write_stamp "$bin"
-	# pq rides along unsigned: it needs no Accessibility grant (it only
-	# talks to the daemon over XPC), so no identifier pinning here.
-	pq_bin="$bindir/pq"
-	if [ -e "$pq_bin" ] && cmp -s "$pq_staged" "$pq_bin"; then
-		ok "pq unchanged ($pq_bin)"
-	else
-		cp "$pq_staged" "$pq_bin"
-		chmod +x "$pq_bin"
-		hash -r 2>/dev/null || true
-		ok "pq installed to $pq_bin (state queries + script-state CLI)"
-	fi
-	# Render the agent plist (upstream RenderPlist model). The
-	# PANERU_MACH_SERVICE pin tracks the Swift label (renamed to the
-	# iv-lite identity in upstream d04db61) — see swift-common.sh.
-	plist="$HOME/Library/LaunchAgents/$PANERU_SWIFT_LABEL.plist"
-	out_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).out.log"
-	err_log="/tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log"
-	xdg_home="${XDG_CONFIG_HOME:-$HOME/.config}"
-	mkdir -p "$(dirname "$plist")"
-	if ! "$render" "$PANERU_SWIFT_LABEL" "$bin" "$out_log" "$err_log" "$xdg_home" > "$plist"; then
-		note "RenderPlist failed — skipping agent plist"
-		return 1
-	fi
-	if command -v /usr/libexec/PlistBuddy >/dev/null 2>&1; then
-		/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:PANERU_MACH_SERVICE string $PANERU_SWIFT_LABEL" "$plist" >/dev/null 2>&1 \
-			|| /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:PANERU_MACH_SERVICE $PANERU_SWIFT_LABEL" "$plist" >/dev/null 2>&1 \
-			|| warn "Could not pin PANERU_MACH_SERVICE in $plist — pq may not reach a bootstrapped agent"
-	else
-		warn "PlistBuddy not found — skipping PANERU_MACH_SERVICE pin (pq may not reach a bootstrapped agent)"
-	fi
-	touch "$out_log" "$err_log" 2>/dev/null || true
-	ok "Swift agent plist rendered ($plist)"
-	note "Swift daemon (re)installed with a stable signing identity — the"
-	note "renamed identifier (upstream d04db61) re-prompts once: remove the"
-	note "stale old Swift Accessibility row, toggle the new paneru-swift row"
-	note "on; later rebuilds keep the grant. grant-permissions (next) grants"
-	note "only when missing; enable-services bootstraps the agent when PANERU_SWIFT=1."
-	return 0
+	install_staged_swift "$staged" "$render" "$pq_staged"
 }
 
-if ! fetch_swift_daemon; then
-	warn "Swift daemon build failed."
-	warn "Fix ../paneru/swift-daemon (or drop --swift for a Rust-only install), then re-run."
-	exit 1
-fi
-
-# Swift-only mode (--swift): the Rust daemon is neither built nor kept.
-# Remove its service/binary/shim so two tilers never fight, then skip
-# every Rust-only step below (version floor, probe, plist re-lay).
-# TCC rows are left alone (revokes need FDA and fail noisily without it).
-remove_rust_for_swift() {
+# ─────────────────────────────────────────────────────────────
+# Legacy cleanup: a pre-existing Rust daemon install (binary, service,
+# app shim) must not fight the Swift daemon over windows/taps. Run on
+# every install so a previous Rust-era setup is retired. TCC rows are
+# left alone (revokes need FDA and fail noisily without it).
+# ─────────────────────────────────────────────────────────────
+remove_legacy_rust() {
 	local rust_bin candidate plist
 	if command -v paneru >/dev/null 2>&1; then
-		note "Stopping Rust daemon (Swift-only install)..."
+		note "Stopping legacy Rust daemon..."
 		paneru stop >/dev/null 2>&1 || true
 	fi
 	rust_bin="$(command -v paneru 2>/dev/null || true)"
@@ -483,65 +407,55 @@ remove_rust_for_swift() {
 	if [ -f "$plist" ]; then
 		launchctl bootout "gui/$(id -u)/com.github.karinushka.paneru" >/dev/null 2>&1 || true
 		rm -f "$plist"
-		ok "Rust launchd service removed"
+		ok "Legacy Rust launchd service removed"
 	fi
 	for candidate in /opt/homebrew/bin/paneru /usr/local/bin/paneru "$HOME/.local/bin/paneru"; do
 		if [ -f "$candidate" ]; then
-			rm -f "$candidate" && ok "Removed Rust binary $candidate"
+			rm -f "$candidate" && ok "Removed legacy Rust binary $candidate"
 		fi
 	done
 	if [ -n "${PANERU_BINDIR:-}" ] && [ -f "$PANERU_BINDIR/paneru" ]; then
-		rm -f "$PANERU_BINDIR/paneru" && ok "Removed Rust binary $PANERU_BINDIR/paneru"
+		rm -f "$PANERU_BINDIR/paneru" && ok "Removed legacy Rust binary $PANERU_BINDIR/paneru"
 	fi
 	if [ -d "$HOME/Applications/Paneru.app" ]; then
 		rm -rf "$HOME/Applications/Paneru.app"
-		ok "Removed ~/Applications/Paneru.app (Rust shim; Swift uses no shim)"
+		ok "Removed ~/Applications/Paneru.app (legacy Rust shim; Swift uses no shim)"
 	fi
 	hash -r 2>/dev/null || true
 }
 
-if [ -n "${PANERU_SWIFT:-}" ]; then
-	remove_rust_for_swift
-else
-	if ! fetch_paneru; then
-		warn "Paneru release fetch failed for $PANERU_LABEL."
-		warn "Check your network or set PANERU_TAG to a known tag, then re-run."
+# ─────────────────────────────────────────────────────────────
+# Dispatch: release by default; source build under --prefer-local-builds.
+# ─────────────────────────────────────────────────────────────
+if [ -n "${PREFER_LOCAL_BUILDS:-}" ]; then
+	note "Local builds preferred — building from the sibling ../paneru-swift checkout."
+	fetch_swift_local
+	status=$?
+	if [ "$status" -eq 1 ]; then
+		warn "Local Swift build failed — aborting (no release fallback with --prefer-local-builds)."
 		exit 1
 	fi
-	# Downgrade path (Swift-only -> Rust): a bootstrapped Swift agent
-	# would fight the Rust daemon over windows/taps, so park it.
-	if swift_bootstrapped; then
-		note "Stopping Swift agent (Rust install takes over)..."
-		swift_stop_agent
+	if [ "$status" -eq 2 ]; then
+		# No sibling checkout — fall through to the release download.
+		note "No sibling checkout — falling back to release download."
+		if ! fetch_swift_release; then
+			warn "paneru-swift release fetch failed for $PANERU_LABEL."
+			warn "Check your network or set PANERU_TAG to a known tag, then re-run."
+			exit 1
+		fi
 	fi
+elif ! fetch_swift_release; then
+	warn "paneru-swift release fetch failed for $PANERU_LABEL."
+	warn "Check your network or set PANERU_TAG to a known tag, then re-run."
+	warn "Or pass --prefer-local-builds to build from a sibling ../paneru-swift checkout."
+	exit 1
 fi
 
-# Fork feature floor (watchdog, previousdisplay, animation/gaps keys):
-# see docs/version-floor.md — older binaries ignore unknown keys except
-# restore.missing_windows="drop" (pin "ignore" on old builds).
-# Rust-only: skipped in Swift-only mode (no Rust binary installed).
-# ─────────────────────────────────────────────────────────────
-if [ -z "${PANERU_SWIFT:-}" ]; then
-	version="$(paneru --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-	case "${version:-0.0.0}" in
-		0.1*|0.2*|0.3*|0.4*|0.5*|0.6*|0.7*|0.8*|0.9*|[1-9]*)
-			ok "Paneru ${version} (fork with previous-display support)"
-			case "${version:-0.0.0}" in
-				0.1*)
-					warn "Paneru ${version} predates v0.2.2 — the Cmd+Alt cross-display drag is inactive until you upgrade"
-					;;
-			esac
-			;;
-		*)
-			warn "Paneru ${version:-unknown} looks older than the fork's v0.1.0 —"
-			warn "previous-display commands may be missing. Re-run to retry the fetch."
-			;;
-	esac
-
-	if ! paneru send-cmd mouse previousdisplay >/dev/null 2>&1; then
-		note "Native previous-display check did not succeed (expected with no second display)"
-		note "or the daemon is not running yet — enable-services starts it below."
-	fi
+# Always retire a pre-existing Rust daemon so two tilers never fight.
+if command -v paneru >/dev/null 2>&1 \
+	|| [ -f "$HOME/Library/LaunchAgents/com.github.karinushka.paneru.plist" ] \
+	|| [ -d "$HOME/Applications/Paneru.app" ]; then
+	remove_legacy_rust
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -563,61 +477,8 @@ note "Menu-bar workspace indicator is off (upstream event-tap starvation bug, ka
 note "the popup still shows the active workspace. Re-enable after a Paneru release ships the fix."
 note "Cmd+Shift+? opens the shortcut cheat sheet via the helper above."
 
-# ─────────────────────────────────────────────────────────────
-# launchd service + app shim (Rust-only; skipped in Swift-only mode —
-# fetch_swift_daemon already rendered the Swift agent plist above).
-# ─────────────────────────────────────────────────────────────
-if [ -n "${PANERU_SWIFT:-}" ]; then
-	SWIFT_BIN_DONE="$(command -v paneru-swift 2>/dev/null || true)"
-	warn "Swift daemon will be started by enable-services after permissions are granted."
-	echo "     (grant Accessibility once to ${SWIFT_BIN_DONE:-paneru-swift} — the stable"
-	echo "      signing identity keeps it valid across updates; no remove/regrant needed)"
-	exit 0
-fi
-# Upstream `paneru install` is write-once: it writes the plist pointing at
-# the invoking binary and skips when the plist already exists (no drift
-# heal). So re-lay the plist from the just-installed binary on every run
-# (uninstall is a no-op when nothing is installed): the plist then always
-# pins the installed path. Invoke via the installed path itself so a PATH
-# shadow can never strand an old daemon. The app shim embeds the invoking
-# path too (no staleness detection upstream), so refresh it every run.
-INSTALLED_BIN="$(command -v paneru 2>/dev/null || true)"
-if [ -z "$INSTALLED_BIN" ] || [ ! -x "$INSTALLED_BIN" ]; then
-	# Fallback dir (~/.local/bin) may not be on PATH — locate it directly.
-	for candidate in "$HOME/.local/bin/paneru" /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
-		if [ -x "$candidate" ]; then
-			INSTALLED_BIN="$candidate"
-			break
-		fi
-	done
-fi
-if [ -z "$INSTALLED_BIN" ] || [ ! -x "$INSTALLED_BIN" ]; then
-	warn "paneru not found after install — skipping service setup"
-	exit 1
-fi
-case ":$PATH:" in
-	*":$(dirname "$INSTALLED_BIN"):"*) ;;
-	*) export PATH="$(dirname "$INSTALLED_BIN"):$PATH" ;;
-esac
-hash -r 2>/dev/null || true
-note "Installing Paneru launchd service ($INSTALLED_BIN)..."
-"$INSTALLED_BIN" uninstall >/dev/null 2>&1 || true
-"$INSTALLED_BIN" install
-ok "Paneru service installed (plist pins the installed binary)"
-"$INSTALLED_BIN" install-app >/dev/null 2>&1 || true
-ok "Paneru app launcher refreshed"
-# Re-sign the app shim with the same persistent identity so the
-# Tahoe-era Accessibility picker (which prefers .app bundles over bare
-# Mach-O binaries) keeps a stable bundle entry across updates.
-if [ -d "$HOME/Applications/Paneru.app" ] && command -v codesign >/dev/null 2>&1; then
-	APP_SIGN_ID="$(resolve_sign_identity)"
-	if [ "$APP_SIGN_ID" != "-" ]; then
-		codesign --force --deep --sign "$APP_SIGN_ID" "$HOME/Applications/Paneru.app" >/dev/null 2>&1 \
-			&& ok "App launcher re-signed with stable identity ('$APP_SIGN_ID')" \
-			|| warn "App launcher re-sign failed — picker entry may not stick"
-	fi
-fi
-
-warn "Paneru will be started by enable-services after permissions are granted."
-echo "     (grant Accessibility once to $INSTALLED_BIN / Paneru.app — the stable"
+SWIFT_BIN_DONE="$(command -v paneru-swift 2>/dev/null || true)"
+warn "Swift daemon will be started by enable-services after permissions are granted."
+echo "     (grant Accessibility once to ${SWIFT_BIN_DONE:-paneru-swift} — the stable"
 echo "      signing identity keeps it valid across updates; no remove/regrant needed)"
+exit 0

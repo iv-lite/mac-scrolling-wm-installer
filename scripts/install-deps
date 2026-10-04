@@ -169,7 +169,7 @@ fi
 # scripted TCC writes and hands off to Paneru's native setup dialog instead
 # (approve it / flip the toggle in System Settings and tiling starts).
 # ─────────────────────────────────────────────────────────────
-if command -v paneru >/dev/null 2>&1 && command -v tccutil-rs >/dev/null 2>&1; then
+if command -v paneru-swift >/dev/null 2>&1 && command -v tccutil-rs >/dev/null 2>&1; then
 	if ! tccutil-rs list --service Accessibility >/dev/null 2>&1; then
 		warn "This terminal cannot read the TCC database (no Full Disk Access) —"
 		warn "scripted grant handling is off for this run; the daemon dialog takes over."

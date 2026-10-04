@@ -16,10 +16,10 @@ ok()   { echo "  ${GREEN}✓ $*${RESET}"; }
 warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 
 # ─────────────────────────────────────────────────────────────
-# Self-repair an unhealthy Paneru: re-sign with the persistent identity,
-# revoke + re-grant Accessibility, restart, re-check. With stable signing
-# this path runs only when the health poll actually fails (listed-but-dead
-# grant) — routine upgrades never land here.
+# Self-repair an unhealthy paneru-swift: re-sign with the persistent
+# identity, revoke + re-grant Accessibility, restart, re-check. With
+# stable signing this path runs only when the health poll actually fails
+# (listed-but-dead grant) — routine upgrades never land here.
 # Called by enable-services when the health poll fails; safe to run by
 # hand too: bash scripts/repair-paneru
 # ─────────────────────────────────────────────────────────────
@@ -27,159 +27,83 @@ warn() { echo "  ${YELLOW}⚠ $*${RESET}"; }
 # default and only revokes when PANERU_GRANT_REVOKE=1 (set below).
 export PANERU_GRANT_REVOKE=1
 # Prefer the daemon repo's canonical helper; fall back to the vendored copy.
-if [ -f "$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity" ]; then
-	ENSURE_SIGNING="$REPO_ROOT/../paneru/swift-daemon/ensure-signing-identity"
+if [ -f "$REPO_ROOT/../paneru-swift/swift-daemon/ensure-signing-identity" ]; then
+	ENSURE_SIGNING="$REPO_ROOT/../paneru-swift/swift-daemon/ensure-signing-identity"
 else
 	ENSURE_SIGNING="$SCRIPT_DIR/ensure-signing-identity"
 fi
 SIGN_IDENTITY="$(bash "$ENSURE_SIGNING" 2>/dev/null || echo "-")"
 [ -n "$SIGN_IDENTITY" ] || SIGN_IDENTITY="-"
-# The installed binary (brew bin dir, already on PATH).
-PANERU_BIN="$(find_installed_bin paneru || true)"
 
-# Swift daemon branch (shared helpers in lib/swift-common.sh): when its
-# agent is bootstrapped, re-sign → re-grant → kickstart → pq poll.
-# Swift-only (PANERU_SWIFT=1): fail fast, never fall through to Rust.
-# Otherwise falls through to Rust when no Swift agent runs.
-# ─────────────────────────────────────────────────────────────
 SWIFT_ID="$PANERU_SWIFT_LABEL"
 SWIFT_BIN="$(find_installed_bin paneru-swift || true)"
 PQ_BIN="$(command -v pq 2>/dev/null || true)"
 
-if swift_bootstrapped; then
-	note "Swift agent bootstrapped — repairing the Swift daemon..."
-	round=0
-	while [ "$round" -lt 2 ]; do
-		round=$(( round + 1 ))
-		sign_err=""
-		if [ -n "$SWIFT_BIN" ] && command -v codesign >/dev/null 2>&1; then
-			# Stop the agent first: signing a running binary can be refused,
-			# and the new signature only takes effect on the next exec.
-			swift_stop_agent >/dev/null 2>&1 || true
-		fi
-		note "Swift repair round $round/2: re-sign → re-grant → kickstart..."
-		if [ -n "$SWIFT_BIN" ] && command -v codesign >/dev/null 2>&1 \
-			&& sign_err="$(codesign --force --sign "$SIGN_IDENTITY" --identifier "$SWIFT_ID" "$SWIFT_BIN" 2>&1)" \
-			&& codesign -dv "$SWIFT_BIN" 2>&1 | grep -q "Identifier=$SWIFT_ID"; then
-			if ! swift_signature_trusted "$SWIFT_BIN"; then
-				warn "Swift re-signed but the signature does not verify — the '$SIGN_IDENTITY' cert is missing/untrusted"
-				warn "  Recreate it manually: bash scripts/ensure-signing-identity, then re-run this repair"
-			elif [ "$SIGN_IDENTITY" = "-" ]; then
-				warn "Swift re-signed ad-hoc — grant will not survive the next rebuild"
-			else
-				ok "Swift re-signed with stable identity '$SIGN_IDENTITY' ($SWIFT_ID)"
-			fi
-		else
-			warn "Swift codesign pinning failed (binary missing or codesign refused)"
-			[ -n "$sign_err" ] && warn "  codesign: $sign_err"
-		fi
-		bash "$SCRIPT_DIR/grant-permissions" || warn "grant-permissions reported failure"
-		if swift_start_agent; then
-			note "Swift agent kickstarted — re-checking..."
-		else
-			warn "Swift agent kickstart failed"
-		fi
-		# Verdict is the AX write path, not query liveness: a grant-less
-		# daemon answers `pq state` while tiling nothing.
-		if verdict="$(swift_ax_proven 15)"; then
-			ok "Swift daemon repaired: $verdict"
-			exit 0
-		fi
-		warn "Still unhealthy after round $round"
-	done
-	warn "Swift daemon is still not answering — check /tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log (likely the Accessibility grant)."
-	warn "Live state without launchd: cat /tmp/paneru-swift-state.json; persistent state: ~/.local/state/paneru/state.json (plus .bak; state.crashed marks a dirty exit)."
-	if [ -n "${PANERU_SWIFT:-}" ]; then
-		warn "Swift-only mode: not falling through to Rust."
-		exit 1
-	fi
-	warn "Falling through to the Rust path below; boot the Swift agent out first if tiling stays down."
-	swift_stop_agent
-fi
-
-if [ -n "${PANERU_SWIFT:-}" ] && ! swift_bootstrapped; then
-	warn "Swift-only mode: Swift agent not bootstrapped — nothing to repair (re-run ./install --swift)."
-	exit 1
-fi
-
-if [ -z "$PANERU_BIN" ]; then
-	warn "paneru not on PATH — nothing to repair"
+if [ -z "$SWIFT_BIN" ]; then
+	warn "paneru-swift not on PATH — re-run ./install first"
 	exit 0
 fi
-
-codesign_paneru() {
-	command -v codesign >/dev/null 2>&1 || return 1
-	codesign --force --sign "$SIGN_IDENTITY" --identifier com.github.karinushka.paneru "$PANERU_BIN" >/dev/null 2>&1 || return 1
-	codesign -dv "$PANERU_BIN" 2>&1 | grep -q 'Identifier=com.github.karinushka.paneru'
-}
-
-restart_paneru() {
-	if pgrep -qx paneru >/dev/null 2>&1; then
-		"$PANERU_BIN" restart >/dev/null 2>&1
-	else
-		"$PANERU_BIN" start >/dev/null 2>&1
-	fi
-}
-
-wait_healthy() {
-	local i
-	for i in $(seq 1 10); do
-		if "$PANERU_BIN" query state --json >/dev/null 2>&1; then
-			return 0
-		fi
-		sleep 1
-	done
-	return 1
-}
-
-manual_steps() {
-	echo "     Fix, in order:"
-	echo "       1. bash scripts/ensure-signing-identity  (one-time stable cert)"
-	echo "       2. codesign --force --sign \"\$(bash scripts/ensure-signing-identity 2>/dev/null)\" --identifier com.github.karinushka.paneru \"\$(command -v paneru)\""
-	echo "       3. bash scripts/grant-permissions  (terminal needs Full Disk Access for this to work)"
-	echo "       4. Or grant manually: System Settings → Privacy & Security → Accessibility → enable 'paneru'"
-	echo "       5. paneru restart"
-}
 
 round=0
 while [ "$round" -lt 2 ]; do
 	round=$(( round + 1 ))
-	note "Repair round $round/2: re-sign → re-grant → restart..."
-	if codesign_paneru; then
-		if [ "$SIGN_IDENTITY" = "-" ]; then
-			warn "Re-signed ad-hoc — grant will not survive the next rebuild"
+	sign_err=""
+	if command -v codesign >/dev/null 2>&1; then
+		# Stop the agent first: signing a running binary can be refused,
+		# and the new signature only takes effect on the next exec.
+		swift_stop_agent >/dev/null 2>&1 || true
+	fi
+	note "Swift repair round $round/2: re-sign → re-grant → kickstart..."
+	if command -v codesign >/dev/null 2>&1 \
+		&& sign_err="$(codesign --force --sign "$SIGN_IDENTITY" --identifier "$SWIFT_ID" "$SWIFT_BIN" 2>&1)" \
+		&& codesign -dv "$SWIFT_BIN" 2>&1 | grep -q "Identifier=$SWIFT_ID"; then
+		if ! swift_signature_trusted "$SWIFT_BIN"; then
+			warn "Swift re-signed but the signature does not verify — the '$SIGN_IDENTITY' cert is missing/untrusted"
+			warn "  Recreate it manually: bash scripts/ensure-signing-identity, then re-run this repair"
+		elif [ "$SIGN_IDENTITY" = "-" ]; then
+			warn "Swift re-signed ad-hoc — grant will not survive the next rebuild"
 		else
-			ok "Re-signed with stable identity '$SIGN_IDENTITY' (com.github.karinushka.paneru)"
+			ok "Swift re-signed with stable identity '$SIGN_IDENTITY' ($SWIFT_ID)"
 		fi
 	else
-		warn "codesign pinning failed (codesign missing or refused)"
+		warn "Swift codesign pinning failed (binary missing or codesign refused)"
+		[ -n "$sign_err" ] && warn "  codesign: $sign_err"
 	fi
 	bash "$SCRIPT_DIR/grant-permissions" || warn "grant-permissions reported failure"
-	if restart_paneru; then
-		note "Paneru restarted — re-checking..."
+	if swift_start_agent; then
+		note "Swift agent kickstarted — re-checking..."
 	else
-		warn "Paneru restart failed"
+		warn "Swift agent kickstart failed"
 	fi
-	if wait_healthy; then
-		ok "Paneru answers state queries (repaired)"
+	# Verdict is the AX write path, not query liveness: a grant-less
+	# daemon answers `pq state` while tiling nothing.
+	if verdict="$(swift_ax_proven 15)"; then
+		ok "Swift daemon repaired: $verdict"
 		exit 0
 	fi
 	warn "Still unhealthy after round $round"
 done
+
+warn "paneru-swift is still not answering — check /tmp/${PANERU_SWIFT_LABEL}_$(id -u).err.log (likely the Accessibility grant)."
+warn "Live state without launchd: cat /tmp/paneru-swift-state.json; persistent state: ~/.local/state/paneru/state.json (plus .bak; state.crashed marks a dirty exit)."
 
 # Automated repair exhausted. One interactive chance for the manual
 # grant (TTY only — never block SSH/CI/test VMs).
 if [ -t 0 ]; then
 	warn "Automatic repair did not restore tiling."
 	echo "     Grant manually: System Settings → Privacy & Security →"
-	echo "     Accessibility → enable 'paneru', then press Enter."
-	read -r -p "     Press Enter to restart Paneru and re-check (or Ctrl-C to skip): " _ || true
-	if restart_paneru && wait_healthy; then
-		ok "Paneru answers state queries (repaired after manual grant)"
+	echo "     Accessibility → enable 'paneru-swift', then press Enter."
+	read -r -p "     Press Enter to restart paneru-swift and re-check (or Ctrl-C to skip): " _ || true
+	swift_stop_agent >/dev/null 2>&1 || true
+	if swift_start_agent && verdict="$(swift_ax_proven 15)"; then
+		ok "Swift daemon repaired after manual grant: $verdict"
 		exit 0
 	fi
 fi
 
-warn "Paneru is still not answering state queries — likely running WITHOUT Accessibility access (no tiling)."
-manual_steps
+warn "paneru-swift is still not answering — likely running WITHOUT Accessibility access (no tiling)."
+echo "     Fix, in order:"
+echo "       1. bash scripts/ensure-signing-identity  (one-time stable cert)"
+echo "       2. bash scripts/grant-permissions  (terminal needs Full Disk Access for this to work)"
+echo "       3. Or grant manually: System Settings → Privacy & Security → Accessibility → enable 'paneru-swift'"
 exit 0

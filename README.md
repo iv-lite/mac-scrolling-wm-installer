@@ -1,13 +1,14 @@
 # paneru-wm-installer
 
 A niri-like window management setup for macOS, built on **Paneru** (sliding
-infinite-strip tiler with hot-reloadable TOML config, native macOS workspaces
+infinite-strip tiler with Lua-configurable options, native macOS workspaces
 + virtual workspaces, and a workspace status popup), and **Ghostty**
 (terminal). Driven by Cmd+Option-key shortcuts that don't fight macOS defaults.
 
-The Swift daemon this installer can build and run from source is
-**`paneru-swift`** — the native Swift port maintained in the `iv-lite/paneru`
-fork (see `--swift` below).
+The daemon this installer installs is **`paneru-swift`** — the native Swift
+daemon maintained in the `iv-lite/paneru` fork (there is no Rust daemon
+anymore; the upstream Bevy/ECS Paneru was removed and its trace corpus frozen
+as the frame-parity gate).
 
 ## Requirements
 
@@ -24,17 +25,16 @@ fork (see `--swift` below).
 ```
 
 Re-running `./install` **upgrades** an existing setup: Homebrew components
-(Ghostty, tccutil-rs) are updated (no-op when current), Paneru is refreshed
-from its GitHub releases into the brew bin dir (`/opt/homebrew/bin/paneru`,
-`~/.local/bin/paneru` fallback; `PANERU_BINDIR` overrides), configs are
-refreshed from this repo (previous copies kept as `*.bak`), the launchd
-plist is re-laid from the installed binary, and the service is restarted so
-the new binary/config apply immediately. Upstream `paneru install` is
-write-once (skips when the plist exists and pins the invoking binary's
-path), so the installer re-lays the plist itself on every run — upgrades keep
-the existing Accessibility grant (stable `Paneru Local` signing identity;
-grant-permissions grants only when missing, and only a failed post-start
-health check triggers repair, the sole revoke path).
+(Ghostty, tccutil-rs) are updated (no-op when current), paneru-swift is
+refreshed from its GitHub releases into the brew bin dir
+(`/opt/homebrew/bin/paneru-swift` + `pq`, `~/.local/bin` fallback;
+`PANERU_BINDIR` overrides), configs are refreshed from this repo (previous
+copies kept as `*.bak`), the launchd plist is re-rendered from the installed
+binary, and the agent is restarted so the new binary/config apply
+immediately. Upgrades keep the existing Accessibility grant (stable `Paneru
+Local` signing identity; grant-permissions grants only when missing, and
+only a failed post-start health check triggers repair, the sole revoke
+path).
 
 ### Local development (`--prefer-local-builds`)
 
@@ -45,51 +45,39 @@ health check triggers repair, the sole revoke path).
 With sibling checkouts next to this repo, the installer builds them from
 source instead of downloading releases — no release needed to test a change:
 
-| Sibling repo | Built with | Used for |
-|---|---|---|
-| `../paneru` | `cargo build --release --bin paneru` (in place, keeps `target/` cache) | the installed Rust binary (Rust installs only) |
-| `../paneru/swift-daemon` | `swift build -c release` (`paneru-swift` + `RenderPlist` + `pq`, in place keeping `.build/` cache) | the Swift daemon (always from source — `--swift` implies a local build, no release exists) |
-| `../mac-cheatsheet-viewer` | local Tauri build (same as the release-fetch fallback) | the cheat-sheet app |
+| Sibling repo                   | Built with                                                                                                                                     | Used for                            |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `../paneru-swift/swift-daemon` | `swift build -c release` (`paneru-swift` + `RenderPlist` + `pq`, in place keeping `.build/` cache; fully offline — local targets + vendored C) | the Swift daemon, built from source |
+| `../mac-cheatsheet-viewer`     | local Tauri build (same as the release-fetch fallback)                                                                                         | the cheat-sheet app                 |
 
-A missing sibling falls back to its release download (except Swift, which
-has no release artifact and aborts when the checkout is missing); a failed
-local build aborts the install (fail fast, so errors surface).
-`--prefer-local-builds` alone builds the Rust daemon; adding `--swift`
-switches to a Swift-only install (the Rust daemon is neither built nor
-kept). Brew/curl dependencies (Ghostty, tccutil-rs, Antigen) are
-unaffected by the flag. In VM tests,
-forward it via `PREVIEW_INSTALL_ARGS=--prefer-local-builds ./tests/preview install`.
+A missing sibling falls back to its release download (Swift release tarballs
+are published by `iv-lite/paneru` CI as `paneru-swift-*.tar.gz`); a failed
+local build aborts the install (fail fast, so errors surface). Brew/curl
+dependencies (Ghostty, tccutil-rs, Antigen) are unaffected by the flag. In
+VM tests, forward it via
+`PREVIEW_INSTALL_ARGS=--prefer-local-builds ./tests/preview install`.
 
-The Paneru build follows the upstream-suggested process: the pinned toolchain
-from `../paneru/rust-toolchain.toml` via rustup (a bare Homebrew cargo would
-ignore the pin), plain `cargo build --release --bin paneru` (default features
-build the vendored LuaJIT — no system Lua needed), and the repo's rustc
-wrapper signs the binary with the stable identifier at compile time. The
-installer preflights the Xcode command-line tools (needed for the macOS SDKs)
-and re-pins the identifier on the installed binary unconditionally. To run the
-same gate CI runs before installing (fmt, clippy, tests — Rust local builds
-only; on release installs `--verify` is a no-op for Rust but still gates
-the Swift checks when `--swift` is set):
+To run the same gate CI runs before installing (the daemon's canonical
+Swift gate: full-product release build with zero warnings, every `*Checks`
+runner, and the frozen-corpus parity replay):
 
 ```sh
 ./install --prefer-local-builds --verify   # or PANERU_VERIFY=1
 ```
 
-### Swift daemon (`--swift`)
+### Installing paneru-swift
 
 ```sh
-./install --prefer-local-builds --swift   # or PANERU_SWIFT=1
+./install
+# or, from a sibling source checkout: ./install --prefer-local-builds
 ```
 
-With a sibling `../paneru` checkout containing `swift-daemon/`, this builds
-the upstream `paneru-swift` + `RenderPlist` + `pq` products
-(`swift build -c release`, in place keeping `.build/` cache; fully
-offline — all targets are local plus vendored C; Swift 6 toolchain
+The installer fetches the `paneru-swift` + `pq` release tarball from
+`iv-lite/paneru` GitHub releases (or builds both from the sibling
+`../paneru-swift/swift-daemon` with `--prefer-local-builds`; Swift 6 toolchain
 required, i.e. Xcode 16+ — the installer aborts otherwise with a clear
-message) and installs
-`paneru-swift` and `pq`, the daemon signed with
-upstream's Swift identifier (`com.github.iv-lite.paneru-swift`, renamed in
-upstream `d04db61`) under the
+message) and installs both, the daemon signed with
+upstream's Swift identifier (`com.github.iv-lite.paneru-swift`) under the
 persistent `Paneru Local` signing identity (`scripts/ensure-signing-identity`,
 `PANERU_SIGN_IDENTITY` overrides for a paid Developer ID) so the grant
 converges with a manual upstream install instead of forking identity —
@@ -98,33 +86,28 @@ re-prompts once: remove the stale old-Swift Accessibility row
 `com.github.karinushka.paneru.swift`, toggle the new `paneru-swift` row on;
 `PANERU_SIGN_CERT` renames the
 cert before first use only)
-(`pq` needs no grant — it only talks to the daemon over XPC, and is
-otherwise uninstalled upstream; the installer ships it for health
-checks). `enable-services` then bootstraps the
+(`pq` needs no grant — it only talks to the daemon over XPC, and shares the
+agent's plist pins; the installer ships it for health checks).
+`enable-services` then bootstraps the
 Swift agent (`com.github.iv-lite.paneru-swift`, same model as upstream
 `swift-daemon/install-service.sh`, which migrates the previous
 `...karinushka.paneru.swift` agent away — this installer does the same on
-every `--swift` install). Swift-only: the Rust daemon is neither built
-nor kept — an existing Rust service/binary/shim is removed so two tilers
-never fight, and a missing/unhealthy Swift agent is a hard error (no Rust
-fallback). Downgrading back is plain `./install` (re-fetches Rust and parks
-the Swift agent). The installed plist also pins `PANERU_MACH_SERVICE` to the
-Swift label (the daemon default since upstream `0d3c2ab`, renamed in
-`d04db61`): the daemon
-resolves its listener via `paneruServiceNameResolved()` (suffixed unless
-overridden) while the plist advertises the suffixed Mach service, so
-launchd always routes `pq` to the agent — and `pq` is invoked with the
+every install). A pre-existing legacy Rust daemon (binary, service, app
+shim) is removed so two tilers never fight, and a missing/unhealthy Swift
+agent is a hard error. The installed plist also pins `PANERU_MACH_SERVICE` to the
+Swift label: the daemon
+resolves its listener via `paneruServiceNameResolved()` while the plist
+advertises the suffixed Mach service, so launchd always routes `pq` to the
+agent — and `pq` is invoked with the
 same env (falling back to bare `pq` for daemons without the pin). Lua handlers and full
 TOML options are hosted (`swift.toml` fallback exists upstream, but this
 installer ships Lua-only `init.lua`, which replaces TOML rather than
 layering); queries answer over XPC with `pq` as the shell one-liner
 (`pq state`, `pq active`, `pq virtual-workspaces`, `pq on-screen`,
 `pq run`, `pq state-get`/`state-write`, `pq state-remove`, `pq apply`,
-`pq subscribe` — the last two mirror Rust `paneru state remove` and
-`paneru subscribe`, the latter streaming daemon events as JSON lines
-until interrupted) — `enable-services`
-and `repair-paneru` use `pq state` as the Swift health check, same as
-`paneru query state` for Rust. Session restore persists across restarts
+`pq subscribe` — mirroring the daemon's script-state and event surfaces)
+— `enable-services`
+and `repair-paneru` use `pq state` as the Swift health check. Session restore persists across restarts
 (XDG state dir, 30s dirty cadence + `.bak`, crash marker; display UUIDs
 consulted first), every controlled shutdown saves (menubar/XPC
 quit+restart, SIGTERM/SIGINT). Stacks split viewport height, per-window
@@ -174,50 +157,23 @@ windows the audit repaired three times running (retile watchlist) alongside
 Opt-in slow-tick timing for jank triage: `PANERU_PERF=1` in the agent env
 (restart to toggle) logs `perf:` phase breakdowns past 8ms.
 Release installs are
-unaffected (no Swift binary ships in release tarballs). With `--verify`,
+unaffected (the release tarball ships paneru-swift + pq). With `--verify`,
 every Swift checks runner runs under the daemon's own gate
 (`scripts/verify-swift.sh` in the sibling checkout): the full-product
 release build must be warning-free, each runner must report its
 `all checks passed` verdict (a silently partial runner fails), and
-`FrameParityChecks` replays the committed Rust trace corpus at
+`FrameParityChecks` replays the FROZEN committed trace corpus at
 `swift-daemon/Tests/FrameParityChecks/corpus/` — failing, never skipping,
 when the corpus is missing. The installer delegates to that gate when the
-sibling checkout has it and falls back to a glob-and-dump path for older
-checkouts. Never set
-`PANERU_SWIFT_DAEMON` yourself: upstream `1`/`shadow` hard-errors the Rust
-daemon at launch. One path still needs a real login to verify: the
+sibling checkout has it. One path still needs a real login to verify: the
 launchd-held Mach port (`pq` against a hand-run daemon gets no reply —
 expected, use `cat /tmp/paneru-swift-state.json` instead).
-
-Observer mode: `paneru-swift --shadow` runs the Swift daemon as a dry-run
-observer beside live Rust — no AX writes, no cursor warps, no overlay
-paint, no menubar, no XPC serve, no session saves. It polls the running
-Rust daemon (`paneru query state --json`, so `paneru` must be on `PATH`)
-and logs rest-state diffs (`shadow: DIFF…`, capped per poll); rest state
-lands at `/tmp/paneru-swift-shadow.json` instead of
-`/tmp/paneru-swift-state.json`. Hand-run only (never bootstrapped);
-`uninstall` cleans up both state files. Unavailable after a Swift-only
-install (no Rust binary is kept) — use a Rust install for shadow runs.
-
-Cutover (Rust→Swift cold flip): `bash scripts/cutover-flip` migrates the
-live Rust layout to Swift without losing window placement — `paneru
-handoff` captures strips/offsets/focus to ephemeral
-`/tmp/paneru-handoff.json` (never the session file), Rust stops, and the
-Swift binary hand-runs with `--flip-from` (the launchd agent cannot take
-flags, so the flipped daemon is `nohup`-detached, not launchd-managed,
-and the agent stays disabled until the next `./install --swift`). A
-failed health poll undoes the flip automatically (Swift killed, Rust
-restarted). `rollback` returns to Rust (it only ever stops the recorded
-flip PID, never the launchd agent); `status` reports both sides.
-Grants are untouched (same binary path, stable identity).
-Requires both binaries present — not usable after a Swift-only install
-removed Rust (re-install Rust first, or just `./install --swift`).
 
 Live reload during development (config hot-reloads in place, source
 changes rebuild + kickstart the agent):
 
 ```sh
-./install --prefer-local-builds --swift --live   # or PANERU_LIVE=1
+./install --prefer-local-builds --live   # or PANERU_LIVE=1
 # or, after an install: bash scripts/dev-swift-watch
 ```
 
@@ -228,18 +184,18 @@ Shared Swift helpers live in `scripts/lib/swift-common.sh` (label,
 
 The installer runs these steps from `scripts/`:
 
-| Script | Purpose |
-|---|---|
-| `install-deps` | Install Homebrew if missing, tccutil-rs from its GitHub releases (tracks latest; `TCCUTIL_RS_VERSION` pins) |
-| `configure-system` | Enable "Displays have separate Spaces"; show the native menu bar (Paneru draws its indicator in it) |
-| `install-ghostty` | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar) |
-| `install-antigen` | Install Antigen (`~/antigen.zsh`) + write `~/.config/zsh/antigen.zsh` (git, command-not-found, completions, autosuggestions, syntax-highlighting last, typewritten theme) + wire it into `~/.zshrc` |
-| `install-paneru` | Install Paneru from the `iv-lite/paneru` GitHub releases (newest in list; `PANERU_TAG` pins) into the brew bin dir + write `~/.config/paneru/init.lua` + re-lay its launchd service from the installed binary and refresh the app shim (binaries signed with the persistent `Paneru Local` identity so grants survive updates) |
-| `ensure-signing-identity` | Create/reuse the persistent self-signed `Paneru Local` code-signing identity (one-time keychain approval; `PANERU_SIGN_IDENTITY`/`PANERU_SIGN_CERT` override) |
-| `repair-paneru` | Self-repair an unhealthy daemon: re-sign (stable identity) → revoke + re-grant → restart → re-check (run by `enable-services` on failed health poll, or by hand; the only revoke path) |
-| `install-helpers` | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build) |
-| `grant-permissions` | Grant-if-missing Accessibility via tccutil-rs (user → sudo → manual fallback; never revokes except under `PANERU_GRANT_REVOKE=1` from repair); hands off to the daemon dialog without Full Disk Access |
-| `enable-services` | Start Paneru |
+| Script                    | Purpose                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `install-deps`            | Install Homebrew if missing, tccutil-rs from its GitHub releases (tracks latest; `TCCUTIL_RS_VERSION` pins)                                                                                                                                                                                                                                                                              |
+| `configure-system`        | Enable "Displays have separate Spaces"; show the native menu bar (Paneru draws its indicator in it)                                                                                                                                                                                                                                                                                      |
+| `install-ghostty`         | Install Ghostty + write `~/.config/ghostty/config` (frameless title bar)                                                                                                                                                                                                                                                                                                                 |
+| `install-antigen`         | Install Antigen (`~/antigen.zsh`) + write `~/.config/zsh/antigen.zsh` (git, command-not-found, completions, autosuggestions, syntax-highlighting last, typewritten theme) + wire it into `~/.zshrc`                                                                                                                                                                                      |
+| `install-paneru`          | Install paneru-swift + pq from the `iv-lite/paneru` GitHub releases (newest in list; `PANERU_TAG` pins) into the brew bin dir (or build from the sibling `../paneru-swift/swift-daemon` with `--prefer-local-builds`) + write `~/.config/paneru/init.lua` + render the Swift agent's launchd plist (daemon signed with the persistent `Paneru Local` identity so grants survive updates) |
+| `ensure-signing-identity` | Create/reuse the persistent self-signed `Paneru Local` code-signing identity (one-time keychain approval; `PANERU_SIGN_IDENTITY`/`PANERU_SIGN_CERT` override)                                                                                                                                                                                                                            |
+| `repair-paneru`           | Self-repair an unhealthy daemon: re-sign (stable identity) → revoke + re-grant → restart → re-check (run by `enable-services` on failed health poll, or by hand; the only revoke path)                                                                                                                                                                                                   |
+| `install-helpers`         | Install the shortcut helpers into `~/.config/mac-scrolling-wm/helpers/` and install the macOS cheat-sheet viewer app (fetches a pre-built release from GitHub at `iv-lite/mac-cheatsheet-viewer`, falls back to a local source build)                                                                                                                                                    |
+| `grant-permissions`       | Grant-if-missing Accessibility via tccutil-rs (user → sudo → manual fallback; never revokes except under `PANERU_GRANT_REVOKE=1` from repair); hands off to the daemon dialog without Full Disk Access                                                                                                                                                                                   |
+| `enable-services`         | Start Paneru                                                                                                                                                                                                                                                                                                                                                                             |
 
 ### After install
 
@@ -265,16 +221,16 @@ window in the same lane), **Ctrl**.
 
 ### Navigation & layout
 
-| Shortcut | Action |
-|---|---|
-| `Cmd` + `Option` + Arrows | Move focus between windows |
-| 3-finger swipe (← / →) | Page through windows — one full-width window per swipe, snapping on release (`rift-swipe` is gone; Paneru snaps + focuses natively) |
-| `Cmd` + `Option` + `Shift` + Arrows | Move window (swap) |
-| `Cmd` + `Option` + `W` | Cycle the focused column width (0.3 / 0.5 / 1) |
-| `Cmd` + `Option` + `Shift` + `W` | Cycle width backwards |
-| `Cmd` + `Option` + `Space` | Center the focused window/viewport |
-| `Cmd` + `Option` + `Shift` + `Space` | Snap an overflowing window into the viewport |
-| `Cmd` + `Option` + `M` | Toggle full-width for the focused window |
+| Shortcut                             | Action                                                                                                                              |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `Cmd` + `Option` + Arrows            | Move focus between windows                                                                                                          |
+| 3-finger swipe (← / →)               | Page through windows — one full-width window per swipe, snapping on release (`rift-swipe` is gone; Paneru snaps + focuses natively) |
+| `Cmd` + `Option` + `Shift` + Arrows  | Move window (swap)                                                                                                                  |
+| `Cmd` + `Option` + `W`               | Cycle the focused column width (0.3 / 0.5 / 1)                                                                                      |
+| `Cmd` + `Option` + `Shift` + `W`     | Cycle width backwards                                                                                                               |
+| `Cmd` + `Option` + `Space`           | Center the focused window/viewport                                                                                                  |
+| `Cmd` + `Option` + `Shift` + `Space` | Snap an overflowing window into the viewport                                                                                        |
+| `Cmd` + `Option` + `M`               | Toggle full-width for the focused window                                                                                            |
 
 > Focus **follows the mouse**, and keyboard navigation warps the cursor to
 > the **center** of the focused window (`focus_follows_mouse` /
@@ -284,12 +240,12 @@ window in the same lane), **Ctrl**.
 
 ### Workspaces (dynamic rows)
 
-| Shortcut | Action |
-|---|---|
-| `Ctrl` + `Option` + `↑` / `↓` | Switch to the previous/next virtual workspace row (rows are created on demand past the last one) |
-| `Ctrl` + `Option` + `Shift` + `↑` / `↓` | Move the focused window to the previous/next row and follow |
-| 3-finger swipe (↑ / ↓) | Switch virtual workspace rows (trackpad) |
-| `Cmd` + `Option` + `Tab` | Focus the last-focused window on this workspace |
+| Shortcut                                | Action                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `Ctrl` + `Option` + `↑` / `↓`           | Switch to the previous/next virtual workspace row (rows are created on demand past the last one) |
+| `Ctrl` + `Option` + `Shift` + `↑` / `↓` | Move the focused window to the previous/next row and follow                                      |
+| 3-finger swipe (↑ / ↓)                  | Switch virtual workspace rows (trackpad)                                                         |
+| `Cmd` + `Option` + `Tab`                | Focus the last-focused window on this workspace                                                  |
 
 > Workspace rows are **dynamic**: a new row spawns when you cross the last one
 > and vanishes once it's empty (`create_virtual_workspace_automatically = true` /
@@ -301,19 +257,19 @@ window in the same lane), **Ctrl**.
 
 ### Displays (multi-monitor)
 
-| Shortcut | Action |
-|---|---|
-| `Cmd` + `Ctrl` + `←` | Focus the previous display (window stays put) |
-| `Cmd` + `Ctrl` + `→` | Focus the next display (window stays put) |
-| `Cmd` + `Ctrl` + `Shift` + `←` | Move the focused window to the previous display and follow |
-| `Cmd` + `Ctrl` + `Shift` + `→` | Move the focused window to the next display and follow |
-| `Cmd` + `Ctrl` + `Alt` + `←` | Send the focused window to the previous display (stay) |
-| `Cmd` + `Ctrl` + `Alt` + `→` | Send the focused window to the next display (stay) |
-| `Cmd` + `Ctrl` + `↑` | Warp the mouse to the next display |
-| `Cmd` + `Ctrl` + `↓` | Warp the mouse to the previous display |
+| Shortcut                                 | Action                                                                                                                                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Cmd` + `Ctrl` + `←`                     | Focus the previous display (window stays put)                                                                                                                                        |
+| `Cmd` + `Ctrl` + `→`                     | Focus the next display (window stays put)                                                                                                                                            |
+| `Cmd` + `Ctrl` + `Shift` + `←`           | Move the focused window to the previous display and follow                                                                                                                           |
+| `Cmd` + `Ctrl` + `Shift` + `→`           | Move the focused window to the next display and follow                                                                                                                               |
+| `Cmd` + `Ctrl` + `Alt` + `←`             | Send the focused window to the previous display (stay)                                                                                                                               |
+| `Cmd` + `Ctrl` + `Alt` + `→`             | Send the focused window to the next display (stay)                                                                                                                                   |
+| `Cmd` + `Ctrl` + `↑`                     | Warp the mouse to the next display                                                                                                                                                   |
+| `Cmd` + `Ctrl` + `↓`                     | Warp the mouse to the previous display                                                                                                                                               |
 | `Cmd` + `Alt` + drag across display edge | Hold to arm, cross the edge to move the window to that display live (lands in nearest column; unarmed drags move the column with the pointer and glide home instead of transferring) |
-| `Cmd` + `Option` + `↑`/`↓` | Focus a column above/below — crosses displays when no window is there |
-| `Cmd` + `Option` + `Shift` + `↑`/`↓` | Move a window to the display above/below (when no window is there to swap with) |
+| `Cmd` + `Option` + `↑`/`↓`               | Focus a column above/below — crosses displays when no window is there                                                                                                                |
+| `Cmd` + `Option` + `Shift` + `↑`/`↓`     | Move a window to the display above/below (when no window is there to swap with)                                                                                                      |
 
 Display navigation is native in the installed Paneru fork
 (`iv-lite/paneru`, fetched from its GitHub releases by
@@ -350,22 +306,22 @@ no Lua modules, no compiled helpers.
 
 ### Window state
 
-| Shortcut | Action |
-|---|---|
-| `Cmd` + `Option` + `V` | Toggle floating/tiled |
-| `Cmd` + `Option` + `O` | Stack the window into the neighbouring column |
-| `Cmd` + `Option` + `Shift` + `O` | Pull a window out of a stack |
-| `Cmd` + `Option` + `B` | Balance all columns to the focused window's width |
-| `Cmd` + `Option` + `Shift` + `E` | Equalize the heights in a stack |
-| `Cmd` + `Option` + `Shift` + `C` | Copy a Paneru window rule for the focused window |
-| `Cmd` + `Option` + `Ctrl` + `Q` | Quit Paneru |
+| Shortcut                         | Action                                            |
+| -------------------------------- | ------------------------------------------------- |
+| `Cmd` + `Option` + `V`           | Toggle floating/tiled                             |
+| `Cmd` + `Option` + `O`           | Stack the window into the neighbouring column     |
+| `Cmd` + `Option` + `Shift` + `O` | Pull a window out of a stack                      |
+| `Cmd` + `Option` + `B`           | Balance all columns to the focused window's width |
+| `Cmd` + `Option` + `Shift` + `E` | Equalize the heights in a stack                   |
+| `Cmd` + `Option` + `Shift` + `C` | Copy a Paneru window rule for the focused window  |
+| `Cmd` + `Option` + `Ctrl` + `Q`  | Quit Paneru                                       |
 
 ### Apps & misc
 
-| Shortcut | Action |
-|---|---|
-| `Cmd` + `Option` + `Shift` + `R` | Restart Paneru (config also live-reloads on save) |
-| `Cmd` + `Shift` + `?` | Show the shortcut cheat sheet (regenerates the JSON from `init.lua`, then opens `mac-cheatsheet-viewer`) |
+| Shortcut                         | Action                                                                                                   |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `Cmd` + `Option` + `Shift` + `R` | Restart Paneru (config also live-reloads on save)                                                        |
+| `Cmd` + `Shift` + `?`            | Show the shortcut cheat sheet (regenerates the JSON from `init.lua`, then opens `mac-cheatsheet-viewer`) |
 
 ### Shortcut cheat sheet (Cmd+Shift+?)
 
@@ -505,12 +461,12 @@ has to happen per app. This installer does what's safely possible:
   `macos-titlebar-style = hidden` and `macos-window-buttons = hidden` (keeps
   rounded corners and borders). Drag the window by its edge with `Option+Click`.
 - **Other apps:** use each app's native toggle:
-  | App | How |
-  |---|---|
-  | Finder, Mail, Notes, Safari, Chrome, Slack | `View → Hide Toolbar` (often `Cmd+Option+T`) |
-  | Safari fullscreen | `View → Always Show Toolbar in Full Screen` off |
-  | Ghostty | handled for you above |
-  | VS Code | no clean path since 1.94 (hair-line third-party extensions only — not shipped) |
+  | App                                        | How                                                                            |
+  | ------------------------------------------ | ------------------------------------------------------------------------------ |
+  | Finder, Mail, Notes, Safari, Chrome, Slack | `View → Hide Toolbar` (often `Cmd+Option+T`)                                   |
+  | Safari fullscreen                          | `View → Always Show Toolbar in Full Screen` off                                |
+  | Ghostty                                    | handled for you above                                                          |
+  | VS Code                                    | no clean path since 1.94 (hair-line third-party extensions only — not shipped) |
 
 > Global tools that strip titlebars everywhere (e.g. `Brutalium`, `winBuddy`)
 > inject code into running apps and require disabling SIP — out of scope here,
@@ -524,9 +480,9 @@ menu-bar workspace indicator's live view starves the run loop that services
 Paneru's `CGEventTap`, so macOS disables the tap and keybindings (clicks and
 swipes too) silently stop working. This repo works around it by shipping
 `workspace_menu_status = false` (workspace switches are still announced by the
-popup). Immediate recourse: `paneru restart`. Re-enable the indicator once a
-Paneru release includes the #390 fix; concurrently, keep Paneru at ≥ 0.5.0 so
-the event-tap watchdog (karinushka/paneru#350) is present. The Swift daemon
+popup). Immediate recourse: `swift-daemon/install-service.sh restart` (or
+re-run `./install`). Re-enable the indicator once a
+Paneru release includes the #390 fix. The Swift daemon
 additionally re-arms a macOS-disabled tap on its own within ~5s (during the
 gap native gestures win outright), so a brief dead spell resolves without a
 restart. Swipe-gesture note: the tap consumes exactly the configured finger
@@ -537,18 +493,17 @@ gesture wins whenever the counts match.
 **Paneru runs but doesn't tile after an upgrade.** Upgrades keep the existing
 Accessibility grant: the installer signs every binary with the persistent
 `Paneru Local` identity (`scripts/ensure-signing-identity`, identifier
-`com.github.karinushka.paneru` for Rust / `com.github.iv-lite.paneru-swift`
-for Swift), so the TCC row stays valid across
-rebuilds. Re-run `./install` — it re-lays the plist from the installed binary
-(`paneru uninstall` + `paneru install`, since upstream `install` is write-once)
-and grants only when missing — no remove/regrant, no fresh manual grant.
-One-time migration from old ad-hoc installs: remove the stale `paneru` /
+`com.github.iv-lite.paneru-swift`), so the TCC row stays valid across
+rebuilds. Re-run `./install` — it re-renders the agent plist from the
+installed binary and grants only when missing — no remove/regrant, no fresh
+manual grant.
+One-time migration from old ad-hoc installs: remove the stale
 `paneru-swift` entries with `–` in System Settings → Privacy & Security →
 Accessibility, re-run `./install`, then toggle them back on once; all later
-updates stay sticky. The upstream `d04db61` Swift rename is the same one-time
+updates stay sticky. The upstream Swift rename is the same one-time
 shape: delete the stale `com.github.karinushka.paneru.swift` row and toggle
-the new `paneru-swift` row on once (the `--swift` install already migrates
-the old agent's plist/logs away; Rust is untouched).
+the new `paneru-swift` row on once (the installer already migrates
+the old agent's plist/logs away).
 If it is still dead, the grant is stale-but-listed: `enable-services`
 runs a self-repair on an unhealthy daemon (`scripts/repair-paneru`: re-sign
 with the stable identity → revoke + re-grant → restart → re-check, twice,
@@ -566,9 +521,9 @@ see no tiling, repair by hand:
 
 ```sh
 bash scripts/ensure-signing-identity  # one-time stable cert
-codesign --force --sign "$(bash scripts/ensure-signing-identity 2>/dev/null)" --identifier com.github.karinushka.paneru "$(command -v paneru)"
+codesign --force --sign "$(bash scripts/ensure-signing-identity 2>/dev/null)" --identifier com.github.iv-lite.paneru-swift "$(command -v paneru-swift)"
 bash scripts/grant-permissions   # terminal needs Full Disk Access for this
-paneru restart
+swift-daemon/install-service.sh restart
 ```
 
 **Paneru won't start / instantly exits.** Paneru hard-exits unless it has
@@ -578,16 +533,16 @@ failed, give the terminal **Full Disk Access** first, then:
 
 ```sh
 bash scripts/grant-permissions
-paneru restart
+swift-daemon/install-service.sh restart
 ```
 
-Paneru's own debug trail: `paneru printstate` (via `paneru send-cmd printstate`),
-logs from its LaunchAgent, and the interactive `paneru` front-run for the same
-output. A quick health check of the whole stack:
+Paneru's own debug trail: `pq run printstate`,
+logs from its LaunchAgent, and `cat /tmp/paneru-swift-state.json`. A quick
+health check of the whole stack:
 
 ```sh
 bash scripts/ensure-separate-spaces check   # must print "enabled (mode 1)"
-paneru query state --json                   # must print a JSON snapshot (service up)
+pq state                                    # must print a JSON snapshot (service up)
 ```
 
 ## Multi-monitor
@@ -618,8 +573,8 @@ paneru query state --json                   # must print a JSON snapshot (servic
 ./uninstall
 ```
 
-Stops and removes Paneru (release binary, launchd service, app launcher;
-plus `paneru-swift`/`pq` and the Swift agent when `--swift` was used),
+Stops and removes paneru-swift (release binary, launchd agent, `pq`;
+legacy Rust `paneru` binary/app shim too if still present),
 revokes its Accessibility grant, moves configs (from `~/.config/paneru`,
 `~/.config/ghostty`, `~/.config/mac-scrolling-wm`, `~/.config/zsh/antigen.zsh`,
 plus `~/.paneru*` and
@@ -637,10 +592,10 @@ skipped, never warned about.
 The `tests/preview` workflow runs `./install` inside a real macOS guest VM.
 The host OS is auto-detected and a matching hypervisor backend is used:
 
-| Host | Backend | Requirements |
-| --- | --- | --- |
-| macOS (Apple Silicon) | Tart (`tests/lib/backend_tart.sh`) | macOS 15+, Homebrew; `tart`/`sshpass` auto-installed |
-| Linux x86_64 | QEMU/KVM + OpenCore (`tests/lib/backend_qemu.sh`) | `/dev/kvm`, `qemu-system-x86`, `sshpass`, `rsync`, a macOS Sequoia disk |
+| Host                  | Backend                                           | Requirements                                                            |
+| --------------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| macOS (Apple Silicon) | Tart (`tests/lib/backend_tart.sh`)                | macOS 15+, Homebrew; `tart`/`sshpass` auto-installed                    |
+| Linux x86_64          | QEMU/KVM + OpenCore (`tests/lib/backend_qemu.sh`) | `/dev/kvm`, `qemu-system-x86`, `sshpass`, `rsync`, a macOS Sequoia disk |
 
 macOS host:
 

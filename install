@@ -27,45 +27,36 @@ run_step() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Flags: --help, --prefer-local-builds, --verify, --swift, --live
+# Flags: --help, --prefer-local-builds, --verify, --live
 # ─────────────────────────────────────────────────────────────
 for arg in "$@"; do
 	case "$arg" in
 		--help|-h)
-			echo "Usage: ./install [--prefer-local-builds] [--verify] [--swift] [--live]"
+			echo "Usage: ./install [--prefer-local-builds] [--verify] [--live]"
 			echo ""
-			echo "  Installs Paneru + Ghostty with an niri-like sliding-strip"
-			echo "  layout."
+			echo "  Installs Paneru (the paneru-swift daemon) + Ghostty with"
+			echo "  an niri-like sliding-strip layout."
 			echo ""
 			echo "  --prefer-local-builds  Build sibling checkouts in ../ instead"
-			echo "                         of downloading releases: ../paneru"
-			echo "                         (cargo) and ../mac-cheatsheet-viewer"
-			echo "                         (tauri). Alone it builds the Rust"
-			echo "                         daemon; with --swift it builds the"
-			echo "                         Swift daemon only (Rust neither"
-			echo "                         built nor kept). Local build failures"
-			echo "                         abort the install (no release fallback)."
+			echo "                         of downloading releases: ../paneru-swift"
+			echo "                         (swift-daemon: paneru-swift + pq) and"
+			echo "                         ../mac-cheatsheet-viewer (tauri)."
+			echo "                         paneru-swift is always built from"
+			echo "                         source here (no release fallback on"
+			echo "                         build failure)."
 			echo "  --verify               With --prefer-local-builds, verify"
-			echo "                         ../paneru first (fmt, clippy, tests —"
-			echo "                         same suite CI runs); aborts on failure."
-			echo "                         On release installs (no local sources)"
-			echo "                         this is a no-op for Rust; the Swift"
-			echo "                         checks still run with --swift."
-			echo "                         Same as PANERU_VERIFY=1."
-			echo "  --swift                Swift-only mode: always builds the Swift"
-			echo "                         daemon from source (../paneru/swift-daemon,"
-			echo "                         paneru-swift + pq products — implies a"
-			echo "                         local build, aborts when the checkout"
-			echo "                         is missing) and runs it under its own"
-			echo "                         launchd agent. The Rust daemon is"
-			echo "                         neither built nor kept (existing Rust"
-			echo "                         service/binary/shim is removed);"
-			echo "                         failures abort with no Rust fallback."
-			echo "                         Same as PANERU_SWIFT=1."
-			echo "  --live                 With --swift, stay in a watch loop after"
-			echo "                         install: config copies live-reload in"
-			echo "                         place, source changes rebuild + kickstart"
-			echo "                         the agent. Same as PANERU_LIVE=1."
+			echo "                         ../paneru-swift/swift-daemon first (the"
+			echo "                         daemon's canonical Swift gate: release"
+			echo "                         build with zero warnings, every"
+			echo "                         *Checks runner, frozen-corpus parity"
+			echo "                         replay); aborts on failure. On"
+			echo "                         release installs (no local sources)"
+			echo "                         this is a no-op. Same as PANERU_VERIFY=1."
+			echo "  --live                 With --prefer-local-builds, stay in a"
+			echo "                         watch loop after install: config copies"
+			echo "                         live-reload in place, source changes"
+			echo "                         rebuild + kickstart the agent. Same as"
+			echo "                         PANERU_LIVE=1."
 			exit 0
 			;;
 		--prefer-local-builds)
@@ -73,9 +64,6 @@ for arg in "$@"; do
 			;;
 		--verify)
 			export PANERU_VERIFY=1
-			;;
-		--swift)
-			export PANERU_SWIFT=1
 			;;
 		--live)
 			export PANERU_LIVE=1
@@ -87,8 +75,8 @@ for arg in "$@"; do
 	esac
 done
 
-if [ -n "${PANERU_LIVE:-}" ] && [ -z "${PANERU_SWIFT:-}" ]; then
-	echo "  --live needs --swift (live watch is Swift-daemon only)." >&2
+if [ -n "${PANERU_LIVE:-}" ] && [ -z "${PREFER_LOCAL_BUILDS:-}" ]; then
+	echo "  --live needs --prefer-local-builds (live watch rebuilds the sibling checkout)." >&2
 	exit 1
 fi
 
@@ -100,7 +88,7 @@ fi
 
 # Fresh install vs. upgrade of an existing setup (the binary lives in the
 # brew bin dir, already on PATH — install-paneru puts it there).
-if command -v paneru >/dev/null 2>&1; then
+if command -v paneru-swift >/dev/null 2>&1 || command -v pq >/dev/null 2>&1; then
 	MODE="upgrade"
 else
 	MODE="install"

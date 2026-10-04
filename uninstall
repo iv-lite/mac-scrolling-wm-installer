@@ -24,7 +24,8 @@ echo "   • Stop/remove Paneru (service + app launcher)"
 echo "   • Revoke its Accessibility permission"
 echo "   • Move configs to ~/.config/backups (not deleted, incl. shortcut helpers)"
 echo "   • Remove Antigen shell setup (~/antigen.zsh, bundling, ~/.zshrc block)"
-echo "   • Remove the Paneru release binary (plus paneru-swift when --swift was used)"
+echo "   • Remove the paneru-swift + pq release binaries"
+echo "     (and the legacy Rust paneru binary/app shim if still present)"
 echo "   • Remove the tccutil-rs release binary"
 echo "   • Uninstall brew packages (you'll choose which to keep)"
 echo "     ghostty"
@@ -64,17 +65,15 @@ if pgrep -qx paneru-swift >/dev/null 2>&1; then
 fi
 if command -v paneru >/dev/null 2>&1; then
 	if paneru stop >/dev/null 2>&1; then
-		ok "Paneru stopped"
+		ok "Legacy Rust daemon stopped"
 	fi
 	if paneru uninstall >/dev/null 2>&1; then
-		ok "Paneru service removed"
+		ok "Legacy Rust service removed"
 	fi
 	if command -v paneru >/dev/null 2>&1; then
 		paneru uninstall-app >/dev/null 2>&1 || true
-		ok "Paneru app launcher removed (if present)"
+		ok "Legacy Rust app launcher removed (if present)"
 	fi
-else
-	warn "paneru not found on PATH — skipping CLI stop; falling back to plist removal below"
 fi
 # Belt-and-braces in case the CLI wasn't available to clean up after itself
 if [ -f ~/Library/LaunchAgents/com.github.karinushka.paneru.plist ]; then
@@ -164,8 +163,8 @@ if [ -n "${XDG_STATE_HOME:-}" ] && [ "${XDG_STATE_HOME}/paneru" != "$HOME/.local
 	fi
 fi
 # Swift daemon live state + launchd logs (recreated on next install).
-# Includes the --shadow observer rest state when that mode was used, and
-# both the current (iv-lite) and previous (karinushka) Swift log names.
+# Covers both the current (iv-lite) and previous (karinushka) Swift log
+# names (the legacy shadow-mode state file is cleaned too, if any remains).
 for f in /tmp/paneru-swift-state.json /tmp/paneru-swift-shadow.json "/tmp/${SWIFT_LABEL}_$(id -u).out.log" "/tmp/${SWIFT_LABEL}_$(id -u).err.log" "/tmp/${SWIFT_OLD_LABEL}_$(id -u).out.log" "/tmp/${SWIFT_OLD_LABEL}_$(id -u).err.log"; do
 	if [ -e "$f" ]; then
 		mv "$f" "$BACKUP_DIR/" 2>/dev/null && ok "Moved $f → $BACKUP_DIR/"

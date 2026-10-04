@@ -73,9 +73,8 @@ revoke_stale() {
 	done
 }
 
-# Signing identifiers stamped onto the binaries (same ones install-paneru
-# signs with). TCC rows may be keyed by path or by identifier.
-PANERU_IDENTIFIER="com.github.karinushka.paneru"
+# Signing identifier stamped onto the binary (the same one install-paneru
+# signs with). TCC rows may be keyed by the binary path or the identifier.
 PANERU_SWIFT_IDENTIFIER="$PANERU_SWIFT_LABEL"
 
 grant_present() {
@@ -147,17 +146,9 @@ grant() {
 
 note "Granting Accessibility permissions..."
 
-# The installed binary (on PATH — install-paneru puts it in the brew bin
-# dir). A leftover copy elsewhere is granted too when it exists, so a PATH
-# shadow can never keep an ungranted identity alive. The Swift daemon slice
-# (paneru-swift, opt-in via --swift) holds its own grant when installed.
-PANERU_BIN="$(command -v paneru 2>/dev/null || true)"
-grant "$PANERU_BIN" "$PANERU_IDENTIFIER"
-for extra in "$HOME/.local/bin/paneru" /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
-	if [ -n "$extra" ] && [ -e "$extra" ] && [ "$extra" != "$PANERU_BIN" ]; then
-		grant "$extra" "$PANERU_IDENTIFIER"
-	fi
-done
+# The installed paneru-swift binary (on PATH — install-paneru puts it in
+# the brew bin dir). A leftover copy elsewhere is granted too when it
+# exists, so a PATH shadow can never keep an ungranted identity alive.
 SWIFT_BIN="$(find_installed_bin paneru-swift || true)"
 if [ -n "$SWIFT_BIN" ]; then
 	# Install-identity drift (rebuild, rename, move, cert rotation):
@@ -230,12 +221,6 @@ verify_grant() {
 }
 
 if command -v tccutil-rs >/dev/null 2>&1; then
-	verify_grant "$PANERU_BIN" "$PANERU_IDENTIFIER"
-	for extra in "$HOME/.local/bin/paneru" /opt/homebrew/bin/paneru /usr/local/bin/paneru; do
-		if [ -n "$extra" ] && [ -e "$extra" ] && [ "$extra" != "$PANERU_BIN" ]; then
-			verify_grant "$extra" "$PANERU_IDENTIFIER"
-		fi
-	done
 	if [ -n "${SWIFT_BIN:-}" ]; then
 		verify_grant "$SWIFT_BIN" "$PANERU_SWIFT_IDENTIFIER"
 	fi

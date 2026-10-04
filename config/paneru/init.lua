@@ -101,28 +101,15 @@ paneru.setup {
     horizontal_mouse_warp_offset = 0,
     preset_column_widths = { 0.3, 0.5, 1.0 },
     -- On: driven moves glide (ease-out-cubic fast attack with decelerating
-    -- landing — lockstep bursts with synced pacing via join_duration, 2px
-    -- first-tick kick, distance-proportional duration around the 180ms
-    -- default, bounded 80–260ms against a viewport-scaled travel
-    -- reference); false snaps instantly. Glide pacing is
-    -- animation_duration_ms with the min/max bounds below. One switch
-    -- since fork 7496610 (replaces the old animation_speed knob). Older
-    -- binaries silently ignore unknown keys and glide on their own
-    -- default, so new keys are safe on every build.
+    -- landing); false snaps instantly. One switch: glide pacing is internal
+    -- to the daemon (distance-proportional around a base duration with tuned
+    -- bounds, shared by movement, resize, and strip translation) — there is
+    -- no animation_duration_ms / min / max knob anymore.
     -- paneru-swift's tick is idle-when-static: a quiet frame drops the
     -- display-rate timer and sleeps until the next slow-cadence duty or a
     -- real event, so a rested daemon costs ~0% CPU — the glides below run
     -- only while something is actually moving.
     animations = true,
-    -- Tween length for driven moves in milliseconds, clamped 0–2000.
-    -- Longer reads as a visible strip glide; shorter as snappier.
-    -- animations = false still snaps instantly regardless. Default 180.
-    animation_duration_ms = 180,
-    -- Glide pacing bounds in milliseconds: distance-proportional durations
-    -- clamp into [min, max] (max floored at min; min clamped 0–1000, max
-    -- 0–2000). Defaults 80/260. Older binaries silently ignore them.
-    animation_min_duration_ms = 80,
-    animation_max_duration_ms = 260,
     -- AX writer thread (default-on upstream since d1fb7dd): AX position
     -- commits (moves plus driving resizes, since d67df09) go to a
     -- dedicated thread with per-window coalescing instead of blocking the
@@ -183,15 +170,14 @@ paneru.setup {
     -- for a fresh column.
     default_ratio = 1.0,
     -- Dynamic rows: a new virtual-workspace row spawns when you cross past
-    -- the last one, and empty rows are reaped (both booleans, default false
-    -- upstream; upstream CONFIGURATION.md mislabels reap_empty_workspaces
-    -- as String — src/config.rs is Option<bool>). paneru-swift honors both.
+    -- the last one, and empty rows are reaped (both booleans, default
+    -- false upstream). paneru-swift honors both.
     create_virtual_workspace_automatically = true,
     reap_empty_workspaces = true,
     -- Off: virtual-row switches snap instead of animating (native Spaces
     -- animation is what virtual rows exist to avoid). Default false upstream.
     -- paneru-swift honors it: off snaps the row-switch moves, on glides them.
-    virtual_workspace_animations = false,
+    virtual_workspace_animations = true,
     window_resize_cycle = true,
     -- On: a window moved to another strip (Cmd+Alt cross-display drag, or a
     -- virtual-workspace move) lands in the column matching its on-screen
@@ -208,14 +194,10 @@ paneru.setup {
   padding = { top = 8, bottom = 8, left = 8, right = 8 },
 
   -- ─── Between-window gaps (inner gutters) ───
-  -- Per-window inset applied to every tiled window (needs fork with
-  -- 43d3644; older binaries silently ignore this table and tile at zero
-  -- gaps unless a per-rule padding is set). The value is the exact
+  -- Per-window inset applied to every tiled window. The value is the exact
   -- visual gap between neighbours: paneru-swift insets each window by
   -- half the configured gap per side, so two abutting tiles show exactly
   -- `horizontal`/`vertical` px of glass between them (8px by default).
-  -- The Rust fork instead applies the value per side (so its neighbour
-  -- gap is the sum, 16px); keep that in mind if you fall back to Rust.
   -- Values clamp 0–50; a per-window rule `horizontal_padding` /
   -- `vertical_padding` wins — including 0, which opts that app out of
   -- the global gaps. Outer screen edges use `padding` above.
@@ -241,7 +223,7 @@ paneru.setup {
   -- keybindings silently stop working after leaving native fullscreen.
   -- Upstream fix: karinushka/paneru#390 (merged to main after v0.5.0). Keep
   -- workspace_menu_status = false until a release ships it; flipping it to
-  -- true needs a `paneru restart`.
+  -- true needs a `swift-daemon/install-service.sh restart`.
   decorations = {
     workspace_menu_status = false,
     workspace_popup_status = true,

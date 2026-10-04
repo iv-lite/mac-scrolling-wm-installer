@@ -31,10 +31,12 @@ one new env toggle, `PANERU_LUA_WORKER`):
 - **Lua worker lane (default on).** The interpreter runs on its own
   thread, so a slow handler or `paneru.exec` cannot stall the tick. Set
   `PANERU_LUA_WORKER=0` to fall back to the in-tick Lua path.
-- **Real parity gate.** `scripts/verify-swift.sh` replays the committed
-  Rust trace corpus at `swift-daemon/Tests/FrameParityChecks/corpus/` and
+- **Real parity gate.** `scripts/verify-swift.sh` replays the FROZEN
+  committed Rust-truth trace corpus at
+  `swift-daemon/Tests/FrameParityChecks/corpus/` and
   fails (never skips) when it is missing; the installer's `--verify`
-  delegates to it.
+  delegates to it. There is no live Rust to re-dump — the corpus is a
+  fixed snapshot (the Rust daemon was removed from `iv-lite/paneru`).
 
 Earlier, parity verified against upstream `f214e1d` (prev. `829b93a`, build-only:
 CLua builds with `LUA_USE_POSIX`, `Presentation` declares its `Geometry`
@@ -56,7 +58,7 @@ state leaks closed. Before that
 (from `d04db61`): the Swift
 identity is renamed to `com.github.iv-lite.paneru-swift` (label, signing
 identifier, Mach default, log paths — install migrates the previous
-`...karinushka.paneru.swift` agent away, Rust untouched; the rename
+`...karinushka.paneru.swift` agent away; the rename
 re-prompts the Accessibility grant once), plus the rest-state `overlap:`
 watch with slot verdicts, opt-in `PANERU_PERF=1` slow-tick `perf:` timing,
 width-change reveal re-evaluation, hover-echo warp suppression,
@@ -68,9 +70,10 @@ threshold now governs unfocused windows only, so partially-hidden focus
 reveals too), plus the 5s audit drift re-home with `drift:` diagnostics
 and `focus:` reveal/center logs (`4e0fc64`). Before that (from `0d3c2ab`): the Swift
 Mach default is now the suffixed label (our `PANERU_MACH_SERVICE` pin is
-belt-and-braces for new binaries, still load-bearing for pre-fix ones),
-plus the Rust→Swift cold-flip cutover (`paneru handoff` →
-`paneru-swift --flip-from`, see README cutover section). Earlier delta
+belt-and-braces for new binaries, still load-bearing for pre-fix ones).
+(The Rust→Swift cold-flip cutover shipped in this era is gone: `paneru
+handoff` and the `--flip-from` handoff producer were removed with the Rust
+daemon.) Earlier delta
 (from `6688825`): `pq subscribe` / `pq state-remove` parity commands and
 the Swift 6 language floor (Xcode 16+). Before that (from `e33c52c`):
 behavior fixes plus the `--shadow` observer flag and the now-live
@@ -96,19 +99,14 @@ per-window `border_radius` rule.
 # d67df09) and options.maximize_tiled_windows
 # (needs e25b6f9). options.animations = true (ease-out-cubic fast attack
 # with decelerating landing, lockstep bursts with synced pacing via
-# join_duration, first-tick kick, distance-proportional duration around
-# the 180ms default bounded 80–260ms against a viewport-scaled travel
-# reference; needs 7496610 — the old
-# animation_speed knob is gone) plus options.animation_duration_ms = 180
-# (clamped 0–2000; animations = false still snaps; pre-knob binaries
-# silently ignore it and glide on their own default; ease-out-cubic
-# since 0a967df, join_duration pacing since 684b931, 250ms default +
-# duration knob since 21ed647, 180ms default + min/max bounds since
-# 4c29f48) plus options.animation_min_duration_ms = 80 (clamped 0–1000)
-# and options.animation_max_duration_ms = 260 (clamped 0–2000, floored at
-# the min; older binaries silently ignore both), plus
+# join_duration, first-tick kick; needs 7496610 — the old
+# animation_speed knob is gone). Glide pacing is now internal to the
+# daemon (distance-proportional around a base duration with tuned bounds):
+# the animation_duration_ms / animation_min_duration_ms /
+# animation_max_duration_ms keys were REMOVED (a single `animations`
+# toggle only), so this config no longer sets them, plus
 # options.virtual_workspace_animations =
-# false (no config needed on older binaries — false is the default).
+# true (on in this setup; off is the upstream default).
 # Unarmed window drags move the grabbed column with the pointer and glide
 # home on release; only armed (mouse_drag_display_modifier) drags reorder
 # or transfer across displays. The removed keys left_drag_scrolls_strip
@@ -172,10 +170,10 @@ per-window `border_radius` rule.
 
 ## paneru-swift divergences (deliberate parity breaks)
 
-`paneru-swift` (the Swift daemon built from the sibling `paneru` checkout)
-cannot match the Rust fork byte-for-byte on everything the floor above
-describes, so these behaviors intentionally differ. All are covered by
-`DaemonChecks`. Falling back to the Rust daemon reinterprets them.
+`paneru-swift` (the Swift daemon built from the sibling `paneru-swift` checkout)
+cannot match the removed Rust fork byte-for-byte on everything the floor
+above describes, so these behaviors intentionally differ. All are covered by
+`DaemonChecks`.
 
 - **Gaps are exact.** The Rust fork applies `gaps.horizontal`/`vertical`
   per side, so its neighbour gap is the sum (`16px` for `8`).
