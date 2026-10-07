@@ -245,7 +245,7 @@ window in the same lane), **Ctrl**.
 | `Ctrl` + `Option` + `↑` / `↓`           | Switch to the previous/next virtual workspace row (rows are created on demand past the last one) |
 | `Ctrl` + `Option` + `Shift` + `↑` / `↓` | Move the focused window to the previous/next row and follow                                      |
 | 3-finger swipe (↑ / ↓)                  | Switch virtual workspace rows (trackpad)                                                         |
-| `Cmd` + `Option` + `Tab`                | Focus the last-focused window on this workspace                                                  |
+| `Cmd` + `Option` + `Tab`                | Focus the last-focused managed window                                                            |
 
 > Workspace rows are **dynamic**: a new row spawns when you cross the last one
 > and vanishes once it's empty (`create_virtual_workspace_automatically = true` /
@@ -320,6 +320,7 @@ no Lua modules, no compiled helpers.
 
 | Shortcut                         | Action                                                                                                   |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `Cmd` + `Ctrl` + `T`             | Open a new Ghostty window                                                                                |
 | `Cmd` + `Option` + `Shift` + `R` | Restart Paneru (config also live-reloads on save)                                                        |
 | `Cmd` + `Shift` + `?`            | Show the shortcut cheat sheet (regenerates the JSON from `init.lua`, then opens `mac-cheatsheet-viewer`) |
 

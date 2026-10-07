@@ -43,7 +43,7 @@ CURATED = {
     "window virtual south": ("Workspaces", "Next workspace row"),
     "window virtualmove north": ("Workspaces", "Move window, follow to previous row"),
     "window virtualmove south": ("Workspaces", "Move window, follow to next row"),
-    "window focus managed": ("Workspaces", "Cycle managed windows"),
+    "window focus managed": ("Workspaces", "Focus the last-focused managed window"),
     "window previousdisplay": ("Displays", "Move window to previous display"),
     "window nextdisplay": ("Displays", "Move window to next display"),
     "window previousdisplaysend": ("Displays", "Send window to previous display (stay)"),

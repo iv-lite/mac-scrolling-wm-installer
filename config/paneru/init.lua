@@ -35,7 +35,7 @@ local BINDINGS = {
   ["window virtual south"] = "ctrl + alt - downarrow",
   ["window virtualmove north"] = "ctrl + alt + shift - uparrow",
   ["window virtualmove south"] = "ctrl + alt + shift - downarrow",
-  ["window focus managed"] = "cmd + alt - tab",
+  ["window focus managed"] = "cmd + alt - tab", -- focus the last-focused managed window
   -- Workspace rows are created on demand (south past the last row spawns one)
   -- and reaped when empty; the 3-finger vertical swipe also cycles them.
 
@@ -285,7 +285,9 @@ paneru.setup {
 -- Display focus/move are plain BINDINGS-table entries above (native
 -- previousdisplay/nextdisplay in the iv-lite fork — true inverses on any
 -- number of displays, empty displays included). The ↑/↓ warps below are
--- extra chords onto the same mouse commands, kept from the previous setup.
+-- extra chords onto the same mouse commands, kept from the previous setup:
+-- ↑ = next, ↓ = previous — the opposite of the Ctrl+Option workspace lane
+-- (north = previous), so the two lanes do not share an up/down convention.
 paneru.bind("cmd + ctrl - uparrow", function() paneru.mouse.next_display() end)
 paneru.bind("cmd + ctrl - downarrow", function() paneru.mouse.previous_display() end)
 
